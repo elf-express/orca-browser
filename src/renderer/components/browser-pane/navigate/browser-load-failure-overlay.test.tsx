@@ -81,8 +81,8 @@ describe('BrowserLoadFailureOverlay', () => {
     render(
       <BrowserLoadFailureOverlay
         loadError={{
-          code: -102,
-          description: 'ERR_CONNECTION_REFUSED',
+          code: -202,
+          description: 'ERR_CERT_AUTHORITY_INVALID',
           validatedUrl: 'https://localhost:3443/'
         }}
         currentUrl="https://localhost:3443/"

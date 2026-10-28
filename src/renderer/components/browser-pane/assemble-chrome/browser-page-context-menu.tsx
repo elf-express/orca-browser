@@ -193,7 +193,7 @@ export function BrowserPageContextMenu({
               }}
             >
               {translate(
-                'auto.components.browser.pane.BrowserPane.b5b87d6cbb',
+                'auto.components.browser.contextMenu.openLinkInNewPage',
                 'Open Link in New Page'
               )}
             </button>
@@ -210,7 +210,7 @@ export function BrowserPageContextMenu({
             >
               {translate(
                 'auto.components.browser.pane.BrowserPane.8ce4f6b12e',
-                'Open Link in Default Browser'
+                'Open Link In Default Browser'
               )}
             </button>
             <button
@@ -221,7 +221,7 @@ export function BrowserPageContextMenu({
                 closeMenu()
               }}
             >
-              {translate('auto.components.browser.pane.BrowserPane.efb0e8f7f3', 'Copy Link')}
+              {translate('auto.components.browser.contextMenu.copyLink', 'Copy Link')}
             </button>
             <div className="my-1 h-px bg-border/70" />
           </>
@@ -287,7 +287,7 @@ export function BrowserPageContextMenu({
         >
           {translate(
             'auto.components.browser.pane.BrowserPane.f7ab83f7ed',
-            'Open Page in Default Browser'
+            'Open Page In Default Browser'
           )}
         </button>
         <button

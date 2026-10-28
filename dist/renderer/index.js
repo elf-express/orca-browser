@@ -3897,7 +3897,7 @@ function BrowserPageToolbar({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
-import { jsx as jsx17 } from "react/jsx-runtime";
+import { jsx as jsx17, jsxs as jsxs11 } from "react/jsx-runtime";
 function BrowserPageChromeHeader({
   chromeHeaderRef,
   browserTab,
@@ -3909,32 +3909,49 @@ function BrowserPageChromeHeader({
   setAddressBarValue,
   submitAddressBar,
   navigateToUrl,
-  currentUrl
+  currentUrl,
+  resourceNotice,
+  setResourceNotice
 }) {
-  return /* @__PURE__ */ jsx17("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: /* @__PURE__ */ jsx17(
-    BrowserPageToolbar,
-    {
-      browserPageId: browserTab.id,
-      canGoBack: browserTab.canGoBack,
-      canGoForward: browserTab.canGoForward,
-      loading: browserTab.loading,
-      currentUrl,
-      webviewRef,
-      reloadMenuOpen: reload.reloadMenuOpen,
-      setReloadMenuOpen: reload.setReloadMenuOpen,
-      reloadButtonLabel: reload.reloadButtonLabel,
-      reloadButtonLabelKind: reload.reloadButtonLabelKind,
-      reloadShortcut: reload.reloadShortcut,
-      hardReloadShortcut: reload.hardReloadShortcut,
-      runReloadTrigger: reload.runReloadTrigger,
-      addressBarValue,
-      setAddressBarValue,
-      submitAddressBar,
-      navigateToUrl,
-      addressBarInputRef,
-      dismissAddressBarSuggestionsRef
-    }
-  ) });
+  return /* @__PURE__ */ jsxs11("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
+    /* @__PURE__ */ jsx17(
+      BrowserPageToolbar,
+      {
+        browserPageId: browserTab.id,
+        canGoBack: browserTab.canGoBack,
+        canGoForward: browserTab.canGoForward,
+        loading: browserTab.loading,
+        currentUrl,
+        webviewRef,
+        reloadMenuOpen: reload.reloadMenuOpen,
+        setReloadMenuOpen: reload.setReloadMenuOpen,
+        reloadButtonLabel: reload.reloadButtonLabel,
+        reloadButtonLabelKind: reload.reloadButtonLabelKind,
+        reloadShortcut: reload.reloadShortcut,
+        hardReloadShortcut: reload.hardReloadShortcut,
+        runReloadTrigger: reload.runReloadTrigger,
+        addressBarValue,
+        setAddressBarValue,
+        submitAddressBar,
+        navigateToUrl,
+        addressBarInputRef,
+        dismissAddressBarSuggestionsRef
+      }
+    ),
+    resourceNotice ? /* @__PURE__ */ jsxs11("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
+      /* @__PURE__ */ jsx17("span", { children: resourceNotice }),
+      /* @__PURE__ */ jsx17(
+        "button",
+        {
+          type: "button",
+          onClick: () => setResourceNotice(null),
+          className: "shrink-0 text-muted-foreground/60 hover:text-foreground",
+          "aria-label": translate("auto.components.browser.pane.BrowserPane.2fdca7df09", "Dismiss"),
+          children: "\u2715"
+        }
+      )
+    ] }) : null
+  ] });
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-chrome-focus.ts
@@ -5279,7 +5296,7 @@ import {
   useState as useState7
 } from "react";
 import { createPortal } from "react-dom";
-import { Fragment as Fragment2, jsx as jsx18, jsxs as jsxs11 } from "react/jsx-runtime";
+import { Fragment as Fragment2, jsx as jsx18, jsxs as jsxs12 } from "react/jsx-runtime";
 var MENU_ITEM_CLASS = "relative flex w-full cursor-default items-center gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium outline-none select-none hover:bg-black/8 focus:bg-black/8 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/14 dark:focus:bg-white/14";
 function BrowserPageContextMenu({
   browserPageId,
@@ -5401,9 +5418,9 @@ function BrowserPageContextMenu({
     return null;
   }
   return createPortal(
-    /* @__PURE__ */ jsxs11(Fragment2, { children: [
+    /* @__PURE__ */ jsxs12(Fragment2, { children: [
       /* @__PURE__ */ jsx18("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
-      /* @__PURE__ */ jsxs11(
+      /* @__PURE__ */ jsxs12(
         "div",
         {
           ref: contextMenuRef,
@@ -5415,7 +5432,7 @@ function BrowserPageContextMenu({
           style: { left: contextMenu.x, top: contextMenu.y },
           className: "fixed z-50 min-w-[13rem] overflow-hidden rounded-[11px] border border-black/14 bg-[rgba(255,255,255,0.82)] p-1 text-black shadow-[0_16px_36px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:text-white dark:shadow-[0_20px_44px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)]",
           children: [
-            contextMenu.linkUrl ? /* @__PURE__ */ jsxs11(Fragment2, { children: [
+            contextMenu.linkUrl ? /* @__PURE__ */ jsxs12(Fragment2, { children: [
               /* @__PURE__ */ jsx18(
                 "button",
                 {
@@ -5428,7 +5445,7 @@ function BrowserPageContextMenu({
                     closeMenu();
                   },
                   children: translate(
-                    "auto.components.browser.pane.BrowserPane.b5b87d6cbb",
+                    "auto.components.browser.contextMenu.openLinkInNewPage",
                     "Open Link in New Page"
                   )
                 }
@@ -5447,7 +5464,7 @@ function BrowserPageContextMenu({
                   },
                   children: translate(
                     "auto.components.browser.pane.BrowserPane.8ce4f6b12e",
-                    "Open Link in Default Browser"
+                    "Open Link In Default Browser"
                   )
                 }
               ),
@@ -5460,12 +5477,12 @@ function BrowserPageContextMenu({
                     void window.browserAPI.writeClipboardText(contextMenu.linkUrl ?? "");
                     closeMenu();
                   },
-                  children: translate("auto.components.browser.pane.BrowserPane.efb0e8f7f3", "Copy Link")
+                  children: translate("auto.components.browser.contextMenu.copyLink", "Copy Link")
                 }
               ),
               /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs11(Fragment2, { children: [
+            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs12(Fragment2, { children: [
               /* @__PURE__ */ jsx18(
                 "button",
                 {
@@ -5533,7 +5550,7 @@ function BrowserPageContextMenu({
                 },
                 children: translate(
                   "auto.components.browser.pane.BrowserPane.f7ab83f7ed",
-                  "Open Page in Default Browser"
+                  "Open Page In Default Browser"
                 )
               }
             ),
@@ -5572,7 +5589,7 @@ function BrowserPageContextMenu({
 
 // src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.tsx
 import { Copy, ExternalLink as ExternalLink2, Globe as Globe3, RefreshCw as RefreshCw3 } from "lucide-react";
-import { jsx as jsx19, jsxs as jsxs12 } from "react/jsx-runtime";
+import { jsx as jsx19, jsxs as jsxs13 } from "react/jsx-runtime";
 function getLoadErrorMetadata(loadError) {
   try {
     const parsed = new URL(loadError.validatedUrl);
@@ -5597,14 +5614,14 @@ function BrowserLoadFailureOverlay({
   const meta = getLoadErrorMetadata(loadError);
   const guestRecoveryError = loadError.code === BROWSER_GUEST_RECOVERY_ERROR_CODE;
   const recoveryHint = formatLoadFailureRecoveryHint(meta, loadError);
-  return /* @__PURE__ */ jsx19("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs12("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
+  return /* @__PURE__ */ jsx19("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs13("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
     /* @__PURE__ */ jsx19("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx19(Globe3, { className: "size-5" }) }),
     /* @__PURE__ */ jsx19("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
       value0: meta.host
     }) : translate("browser.loadFailure.cantLoadPage", "Can't load this page") }),
     /* @__PURE__ */ jsx19("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
     recoveryHint ? /* @__PURE__ */ jsx19("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
-    /* @__PURE__ */ jsxs12("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
+    /* @__PURE__ */ jsxs13("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
       httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx19(
         Button,
         {
@@ -5614,11 +5631,11 @@ function BrowserLoadFailureOverlay({
           children: translate("browser.loadFailure.tryHttps", "Try HTTPS")
         }
       ) : null,
-      /* @__PURE__ */ jsxs12(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
+      /* @__PURE__ */ jsxs13(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
         /* @__PURE__ */ jsx19(RefreshCw3, { className: "size-4" }),
         translate("browser.loadFailure.retry", "Retry")
       ] }),
-      /* @__PURE__ */ jsxs12(
+      /* @__PURE__ */ jsxs13(
         Button,
         {
           size: "sm",
@@ -5631,7 +5648,7 @@ function BrowserLoadFailureOverlay({
           ]
         }
       ),
-      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs12(
+      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs13(
         Button,
         {
           size: "sm",
@@ -5649,12 +5666,12 @@ function BrowserLoadFailureOverlay({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.tsx
-import { jsxs as jsxs13 } from "react/jsx-runtime";
+import { jsxs as jsxs14 } from "react/jsx-runtime";
 function BrowserPageZoomIndicator({
   state,
   percent
 }) {
-  return /* @__PURE__ */ jsxs13(
+  return /* @__PURE__ */ jsxs14(
     "div",
     {
       role: "status",
@@ -5686,7 +5703,7 @@ function getFindRequestQuery(query) {
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { jsx as jsx20, jsxs as jsxs14 } from "react/jsx-runtime";
+import { jsx as jsx20, jsxs as jsxs15 } from "react/jsx-runtime";
 function BrowserFind({
   isOpen,
   onClose,
@@ -5809,7 +5826,7 @@ function BrowserFind({
   if (!isOpen) {
     return null;
   }
-  return /* @__PURE__ */ jsxs14(
+  return /* @__PURE__ */ jsxs15(
     "div",
     {
       className: "absolute top-2 right-2 z-50 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/95 px-2 py-1 shadow-lg backdrop-blur-sm",
@@ -5879,7 +5896,7 @@ function BrowserFind({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
-import { Fragment as Fragment3, jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
+import { Fragment as Fragment3, jsx as jsx21, jsxs as jsxs16 } from "react/jsx-runtime";
 function BrowserPageViewportOverlays({
   browserZoomIndicatorState,
   browserZoomPercent,
@@ -5895,7 +5912,7 @@ function BrowserPageViewportOverlays({
   navigateToUrl,
   setResourceNotice
 }) {
-  return /* @__PURE__ */ jsxs15(Fragment3, { children: [
+  return /* @__PURE__ */ jsxs16(Fragment3, { children: [
     /* @__PURE__ */ jsx21(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
     /* @__PURE__ */ jsx21(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
     showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx21(
@@ -5976,7 +5993,7 @@ function useBrowserPageFindShortcuts({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { jsx as jsx22, jsxs as jsxs16 } from "react/jsx-runtime";
+import { jsx as jsx22, jsxs as jsxs17 } from "react/jsx-runtime";
 function BrowserPagePane({
   browserTab,
   workspaceId,
@@ -6177,7 +6194,7 @@ function BrowserPagePane({
     }
     webview.style.display = showFailureOverlay ? "none" : "flex";
   }, [showFailureOverlay]);
-  return /* @__PURE__ */ jsxs16(
+  return /* @__PURE__ */ jsxs17(
     "div",
     {
       "data-browser-page-pane-id": browserTab.id,
@@ -6212,22 +6229,11 @@ function BrowserPagePane({
             setAddressBarValue,
             submitAddressBar,
             navigateToUrl,
-            currentUrl: liveBrowserUrl
+            currentUrl: liveBrowserUrl,
+            resourceNotice,
+            setResourceNotice
           }
         ),
-        resourceNotice ? /* @__PURE__ */ jsxs16("div", { className: "pointer-events-auto flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
-          /* @__PURE__ */ jsx22("span", { children: resourceNotice }),
-          /* @__PURE__ */ jsx22(
-            "button",
-            {
-              type: "button",
-              onClick: () => setResourceNotice(null),
-              className: "shrink-0 text-muted-foreground/60 hover:text-foreground",
-              "aria-label": translate("auto.components.browser.pane.BrowserPane.2fdca7df09", "Dismiss"),
-              children: "\u2715"
-            }
-          )
-        ] }) : null,
         pageViewport?.container ? createPortal2(
           /* @__PURE__ */ jsx22(
             BrowserPageViewportOverlays,
@@ -6274,7 +6280,7 @@ function DeferredBrowserContent({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { jsx as jsx24, jsxs as jsxs17 } from "react/jsx-runtime";
+import { jsx as jsx24, jsxs as jsxs18 } from "react/jsx-runtime";
 function BrowserScopePane({
   scopeId,
   isActive
@@ -6288,7 +6294,7 @@ function BrowserScopePane({
   const activeBrowserPage = browserPages.find((page) => page.id === activePageId) ?? browserPages[0] ?? null;
   const browserPageIds = useMemo5(() => browserPages.map((page) => page.id), [browserPages]);
   const hasAdmittedPage = useAnyBrowserPageMountAdmission(browserPageIds);
-  return /* @__PURE__ */ jsxs17("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
+  return /* @__PURE__ */ jsxs18("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
     browserPages.length >= 2 ? /* @__PURE__ */ jsx24(
       BrowserPageStrip,
       {
@@ -6328,7 +6334,7 @@ function BrowserScopePane({
 var browser_workspace_pane_default = BrowserScopePane;
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { Fragment as Fragment5, jsx as jsx25, jsxs as jsxs18 } from "react/jsx-runtime";
+import { Fragment as Fragment5, jsx as jsx25, jsxs as jsxs19 } from "react/jsx-runtime";
 var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
   scopeId
 }) {
@@ -6353,7 +6359,7 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
     }),
     [anchorName, isActive]
   );
-  return /* @__PURE__ */ jsxs18(
+  return /* @__PURE__ */ jsxs19(
     "div",
     {
       style,
@@ -6416,7 +6422,7 @@ function useBrowserStateIpcBridge() {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { jsx as jsx26, jsxs as jsxs19 } from "react/jsx-runtime";
+import { jsx as jsx26, jsxs as jsxs20 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
@@ -6426,7 +6432,7 @@ function BrowserPluginProvider(props) {
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  return /* @__PURE__ */ jsxs19(BrowserRendererHostContext.Provider, { value: host, children: [
+  return /* @__PURE__ */ jsxs20(BrowserRendererHostContext.Provider, { value: host, children: [
     children,
     hasBrowserApi ? /* @__PURE__ */ jsx26(BrowserPaneOverlayLayer, {}) : null
   ] });

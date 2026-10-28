@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../../lib/utils'
-import { translate } from '../../../i18n'
 import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
 import { normalizeExternalBrowserUrl } from '../../../../shared/browser-url'
 import { getLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
@@ -296,20 +295,9 @@ export function BrowserPagePane({
         submitAddressBar={submitAddressBar}
         navigateToUrl={navigateToUrl}
         currentUrl={liveBrowserUrl}
+        resourceNotice={resourceNotice}
+        setResourceNotice={setResourceNotice}
       />
-      {resourceNotice ? (
-        <div className="pointer-events-auto flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">
-          <span>{resourceNotice}</span>
-          <button
-            type="button"
-            onClick={() => setResourceNotice(null)}
-            className="shrink-0 text-muted-foreground/60 hover:text-foreground"
-            aria-label={translate('auto.components.browser.pane.BrowserPane.2fdca7df09', 'Dismiss')}
-          >
-            ✕
-          </button>
-        </div>
-      ) : null}
       {pageViewport?.container
         ? createPortal(
             <BrowserPageViewportOverlays

@@ -94,6 +94,13 @@ describe('BrowserPageContextMenu', () => {
     expect(screen.queryByRole('menuitem', { name: 'Copy Link' })).toBeNull()
   })
 
+  it('keeps the Orca labels for the default-browser items', () => {
+    renderMenu()
+    openMenu({ linkUrl: 'https://l.test/' })
+    expect(screen.getByRole('menuitem', { name: 'Open Link In Default Browser' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Open Page In Default Browser' })).toBeTruthy()
+  })
+
   it('copies the page URL', () => {
     renderMenu()
     openMenu()

@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react'
 import type { BrowserPage as BrowserPageState } from '../../../../shared/browser-workspace-types'
+import { translate } from '../../../i18n'
 import { BrowserPageToolbar } from './browser-page-toolbar'
 import type { useBrowserPageReloadActions } from '../navigate/use-browser-page-reload-actions'
 
@@ -14,7 +15,9 @@ export function BrowserPageChromeHeader({
   setAddressBarValue,
   submitAddressBar,
   navigateToUrl,
-  currentUrl
+  currentUrl,
+  resourceNotice,
+  setResourceNotice
 }: {
   chromeHeaderRef: RefObject<HTMLDivElement | null>
   browserTab: BrowserPageState
@@ -27,6 +30,8 @@ export function BrowserPageChromeHeader({
   submitAddressBar: () => void
   navigateToUrl: (url: string) => void
   currentUrl: string
+  resourceNotice: string | null
+  setResourceNotice: Dispatch<SetStateAction<string | null>>
 }): React.JSX.Element {
   return (
     <div ref={chromeHeaderRef} className="pointer-events-auto shrink-0">
@@ -51,6 +56,19 @@ export function BrowserPageChromeHeader({
         addressBarInputRef={addressBarInputRef}
         dismissAddressBarSuggestionsRef={dismissAddressBarSuggestionsRef}
       />
+      {resourceNotice ? (
+        <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">
+          <span>{resourceNotice}</span>
+          <button
+            type="button"
+            onClick={() => setResourceNotice(null)}
+            className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+            aria-label={translate('auto.components.browser.pane.BrowserPane.2fdca7df09', 'Dismiss')}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
