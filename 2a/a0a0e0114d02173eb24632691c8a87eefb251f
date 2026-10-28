@@ -1,0 +1,39 @@
+src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.test.tsx
+  s_aa47a447e01641::t_7d70201f4b3704 5,7,10,25-57,69,71-73,85,96,107-110,120
+src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
+  s_9462d204306c0d::t_a625d8ffa015a1 1,67-71,195-197,223,241
+src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.test.tsx
+  s_aa47a447e01641::t_5001abb7f95a78 346-447
+src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
+  s_9462d204306c0d::t_4dadf9cf3b869c 21,66-67,80-87,115-119,128-138,303-320,343-382,420,423,436-440
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_036d8bf0327e09 182-183
+src/renderer/components/browser-pane/describe-page/browser-page-types.ts
+  s_aa47a447e01641::t_bf9431ad263e39 58-59
+dist/renderer/index.js
+  s_aa47a447e01641::t_273fd8f663dd6d 1454,9213-9214,9229-9233,9241-9251,9388-9401,9422-9457,9493,9496,9508-9512,12493-12497,12611-12613,12643,12658,12805,12833-12841,12844-12845,12847-12849,12853,12855,12857-12858,12865,12904-12905,12907-12908,13162,13169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2aa0a0e0114d02173eb24632691c8a87eefb251f",
+  "prompts": {},
+  "sessions": {
+    "s_9462d204306c0d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a80b414e-fbb2-48e7-b914-d8028f89eabe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
