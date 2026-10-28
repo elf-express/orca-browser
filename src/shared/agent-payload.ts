@@ -14,7 +14,7 @@ export const BROWSER_AGENT_IMAGE_NAMES = {
 const SAFE_AGENT_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:'])
 const PNG_DATA_URL_PREFIX = 'data:image/png;base64,'
 
-/** Drops query and hash and keeps only http(s), file and about:blank URLs; anything else becomes ''. */
+/** Drops credentials, query and hash and keeps only http(s), file and about:blank URLs; anything else becomes ''. */
 export function sanitizeAgentPageUrl(rawUrl: string): string {
   if (!rawUrl) {
     return ''
@@ -27,6 +27,8 @@ export function sanitizeAgentPageUrl(rawUrl: string): string {
     if (!SAFE_AGENT_URL_PROTOCOLS.has(url.protocol)) {
       return ''
     }
+    url.username = ''
+    url.password = ''
     url.search = ''
     url.hash = ''
     return url.toString()

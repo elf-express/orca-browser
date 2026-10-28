@@ -7,7 +7,8 @@ import { clampGrabPayload } from './browser-grab-payload'
 
 describe('buildGuestOverlayScript', () => {
   it.each([
-    ['arm', '7786b94188002262ad921efb05cf4e4e22ad605b3fdb5bee6e040381f8dd95e7'],
+    // The arm hash changed deliberately: sanitizeUrl now also drops URL credentials (E-460).
+    ['arm', 'c63da7bce4a1ebac1fc1366bb186762e344d1a0355aae7f694fea9ddbaad2866'],
     ['awaitClick', '80ab6e9d7fe561791bab56e44e8dbee49698c03fa1ea87a1014e41143d463efd'],
     ['finalize', '91bd9836b0536c9579e0d4648d30679c0b4a5893d9a43110a70e67d6804fd291'],
     ['extractHover', 'cf0ee3ac61669daefa7db9389233c1abfe9f0fb9e7257300c761987aac914b02'],
@@ -129,6 +130,21 @@ describe('buildGuestOverlayScript', () => {
     expect(script).toContain('sanitizeUrl')
     expect(script).toContain("u.search = ''")
     expect(script).toContain("u.hash = ''")
+  })
+
+  it('arm script sanitizeUrl strips credentials, query and hash when evaluated', () => {
+    const script = buildGuestOverlayScript('arm')
+    const start = script.indexOf('function sanitizeUrl(url)')
+    const end = script.indexOf('function createTextAccumulator')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const sanitizeUrl = runInNewContext(
+      `var SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:']);${script.slice(start, end)};sanitizeUrl`,
+      { URL }
+    ) as (url: string) => string
+    expect(sanitizeUrl('https://user:pass@host/p?t=1#h')).toBe('https://host/p')
+    expect(sanitizeUrl('https://user@host/p')).toBe('https://host/p')
+    expect(sanitizeUrl('javascript:alert(1)')).toBe('')
   })
 
   it('arm script sanitizeUrl returns empty string on parse failure', () => {

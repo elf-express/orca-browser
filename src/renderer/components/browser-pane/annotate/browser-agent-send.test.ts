@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { BrowserGrabPayload } from '../../../../shared/browser-grab-types'
 import { makeAnnotation } from '../../../store/browser-annotation-test-fixture'
 import { BrowserRendererHostContext, type BrowserRendererHost } from '../../../host-context'
+import { clampGrabPayload } from '../../../../main/browser/browser-grab-payload'
+import { useBrowserAnnotationStore } from '../../../store/browser-annotation-store'
 import { formatBrowserAnnotationsAsMarkdown } from './browser-annotation-output'
 import {
   buildAnnotationAgentPayload,
@@ -175,5 +177,38 @@ describe('send helpers', () => {
     const host: BrowserRendererHost = { t: (_key, fallback) => fallback }
     const { result } = renderHook(() => useSendToAgent(), { wrapper: hostWrapper(host) })
     expect(result.current).toBeNull()
+  })
+})
+
+describe('payloads built from a page URL with credentials', () => {
+  const credentialUrl = 'https://alice:hunter2@example.com/account?t=1'
+
+  it('grab payload from the clamped page has no credentials in pageUrl or text', () => {
+    const raw = makeGrabPayload()
+    const clamped = clampGrabPayload({
+      ...raw,
+      page: { ...raw.page, sanitizedUrl: credentialUrl }
+    })
+    expect(clamped).not.toBeNull()
+    const payload = buildGrabAgentPayload(clamped as unknown as BrowserGrabPayload)
+    expect(payload.pageUrl).toBe('https://example.com/account')
+    expect(payload.text).not.toContain('alice')
+    expect(payload.text).not.toContain('hunter2')
+  })
+
+  it('annotation payload from a stored note has no credentials in pageUrl or text', () => {
+    useBrowserAnnotationStore.setState({
+      browserAnnotationsByPageId: {},
+      browserAnnotationMarkerIdsByPageId: {}
+    })
+    const annotation = makeAnnotation('page-1')
+    annotation.payload.page.sanitizedUrl = credentialUrl
+    useBrowserAnnotationStore.getState().addBrowserPageAnnotation(annotation)
+    const payload = buildAnnotationAgentPayload(
+      useBrowserAnnotationStore.getState().browserAnnotationsByPageId['page-1']
+    )
+    expect(payload?.pageUrl).toBe('https://example.com/account')
+    expect(payload?.text).not.toContain('alice')
+    expect(payload?.text).not.toContain('hunter2')
   })
 })

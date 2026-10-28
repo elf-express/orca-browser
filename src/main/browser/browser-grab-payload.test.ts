@@ -123,6 +123,25 @@ describe('clampGrabPayload', () => {
     expect(payload?.target.sourceFile).toBe('src/Button.tsx:12:4')
   })
 
+  it('strips URL credentials from page and attribute URLs', () => {
+    const payload = clampGrabPayload(
+      makeRawPayload({
+        page: {
+          ...(makeRawPayload().page as Record<string, unknown>),
+          sanitizedUrl: 'https://user:pass@host/p?t=1#h'
+        },
+        target: {
+          ...(makeRawPayload().target as Record<string, unknown>),
+          attributes: { href: 'https://user@host/next?x=1', src: 'https://u:p@cdn.test/a.png' }
+        }
+      })
+    )
+
+    expect(payload?.page.sanitizedUrl).toBe('https://host/p')
+    expect(payload?.target.attributes.href).toBe('https://host/next')
+    expect(payload?.target.attributes.src).toBe('https://cdn.test/a.png')
+  })
+
   it('drops executable and embedded URL schemes from page and attribute URLs', () => {
     const payload = clampGrabPayload(
       makeRawPayload({

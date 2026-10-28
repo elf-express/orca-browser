@@ -17,6 +17,8 @@ function sanitizeAgentPageUrl(rawUrl) {
     if (!SAFE_AGENT_URL_PROTOCOLS.has(url.protocol)) {
       return "";
     }
+    url.username = "";
+    url.password = "";
     url.search = "";
     url.hash = "";
     return url.toString();

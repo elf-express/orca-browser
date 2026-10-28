@@ -15,7 +15,7 @@ declare const BROWSER_AGENT_IMAGE_NAMES: {
     readonly grab: "browser-grab.png";
     readonly markup: "browser-markup.png";
 };
-/** Drops query and hash and keeps only http(s), file and about:blank URLs; anything else becomes ''. */
+/** Drops credentials, query and hash and keeps only http(s), file and about:blank URLs; anything else becomes ''. */
 declare function sanitizeAgentPageUrl(rawUrl: string): string;
 /** Converts a PNG data URL into a payload image; any other input yields null. */
 declare function pngDataUrlToAgentImage(name: string, dataUrl: string | null | undefined): BrowserAgentPayload['images'][number] | null;

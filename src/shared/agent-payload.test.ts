@@ -17,6 +17,12 @@ describe('sanitizeAgentPageUrl', () => {
     expect(sanitizeAgentPageUrl('')).toBe('')
   })
 
+  it('strips URL credentials', () => {
+    expect(sanitizeAgentPageUrl('https://user:pass@host/p?t=1')).toBe('https://host/p')
+    expect(sanitizeAgentPageUrl('https://user@host/p')).toBe('https://host/p')
+    expect(sanitizeAgentPageUrl('http://user:pass@host:8080/p#h')).toBe('http://host:8080/p')
+  })
+
   it('keeps about:blank only', () => {
     expect(sanitizeAgentPageUrl('about:blank')).toBe('about:blank')
     expect(sanitizeAgentPageUrl('about:srcdoc')).toBe('')

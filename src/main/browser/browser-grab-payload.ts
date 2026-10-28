@@ -74,6 +74,8 @@ export function clampGrabPayload(raw: unknown): BrowserGrabPayload | null {
       if (!SAFE_GRAB_URL_PROTOCOLS.has(url.protocol)) {
         return ''
       }
+      url.username = ''
+      url.password = ''
       url.search = ''
       url.hash = ''
       return url.toString()

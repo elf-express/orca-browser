@@ -1113,6 +1113,8 @@ var GRAB_GUEST_FOUNDATION_SCRIPT = `(function() {
       if (!SAFE_URL_PROTOCOLS.has(u.protocol)) {
         return '';
       }
+      u.username = '';
+      u.password = '';
       u.search = '';
       u.hash = '';
       return u.toString();
@@ -2015,6 +2017,8 @@ function clampGrabPayload(raw) {
       if (!SAFE_GRAB_URL_PROTOCOLS.has(url.protocol)) {
         return "";
       }
+      url.username = "";
+      url.password = "";
       url.search = "";
       url.hash = "";
       return url.toString();

@@ -78,6 +78,8 @@ export const GRAB_GUEST_FOUNDATION_SCRIPT = `(function() {
       if (!SAFE_URL_PROTOCOLS.has(u.protocol)) {
         return '';
       }
+      u.username = '';
+      u.password = '';
       u.search = '';
       u.hash = '';
       return u.toString();
