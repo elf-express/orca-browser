@@ -1,6 +1,6 @@
 import { app, webContents } from 'electron'
 import { ORCA_BROWSER_GUEST_WEB_PREFERENCES } from '../../shared/browser-guest-web-preferences'
-import { normalizeBrowserNavigationUrl } from '../../shared/browser-url'
+import { isFileUrl, normalizeBrowserNavigationUrl } from '../../shared/browser-url'
 import { isAllowedBrowserPartition } from '../browser/browser-partition-allowlist'
 import { browserManager } from '../browser/browser-manager'
 
@@ -35,9 +35,11 @@ export function installWebviewSecurity(
       const src = typeof params.src === 'string' ? params.src : ''
       const partition = typeof webPreferences.partition === 'string' ? webPreferences.partition : ''
       // Why: fail closed — deny any src or partition not in the allowlist so a renderer bug can't smuggle preload/Node into an unprivileged guest.
+      const normalizedSrc = normalizeBrowserNavigationUrl(src)
       if (
         !isMainWindowContents(contents) ||
-        !normalizeBrowserNavigationUrl(src) ||
+        !normalizedSrc ||
+        isFileUrl(normalizedSrc) ||
         !isAllowedBrowserPartition(partition)
       ) {
         event.preventDefault()

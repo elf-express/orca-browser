@@ -170,6 +170,17 @@ describe('main window webview security', () => {
     expect(preventDefault).toHaveBeenCalledTimes(1)
   })
 
+  it('denies a file: webview src', () => {
+    const contents = makeContents(1)
+    mocks.getAllWebContents.mockReturnValue([contents])
+    installWebviewSecurity(() => makeWindow(contents))
+
+    for (const src of ['file:///etc/passwd', '/etc/passwd']) {
+      const preventDefault = attach(contents, { partition: 'persist:orca-browser' }, { src })
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+    }
+  })
+
   it('strips any guest preload', () => {
     const contents = makeContents(1)
     mocks.getAllWebContents.mockReturnValue([contents])

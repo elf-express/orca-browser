@@ -46,8 +46,14 @@ describe('resolveBrowserAddressBarSubmission', () => {
     'file:///etc/passwd',
     String.raw`\\host\share`
   ])('never turns %s into a file: navigation from the address bar', (input) => {
-    const result = resolveBrowserAddressBarSubmission(input)
-    expect(result.status === 'navigate' ? result.url.startsWith('file:') : false).toBe(false)
+    expect(resolveBrowserAddressBarSubmission(input)).toMatchObject({
+      status: 'invalid',
+      loadError: {
+        code: 0,
+        description:
+          'This browser tab cannot open local files. Use "Open Preview to the Side" on the file instead.'
+      }
+    })
   })
 
   it('explains the refusal instead of blanking the tab when a client-hosted page gets a file URL', () => {

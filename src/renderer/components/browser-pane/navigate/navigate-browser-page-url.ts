@@ -1,4 +1,5 @@
 import {
+  isFileUrl,
   normalizeBrowserNavigationUrl,
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
@@ -44,7 +45,7 @@ export function navigateBrowserPageToUrl({
 }: NavigateBrowserPageToUrlArgs): void {
   const navigateBrowserUrl = (targetUrl: string): void => {
     // Why: the in-app browser must not read local files, even from a suggestion or history row.
-    if (targetUrl.trim().toLowerCase().startsWith('file:')) {
+    if (isFileUrl(targetUrl)) {
       return
     }
     const browserModelUrl = redactKagiSessionToken(targetUrl)

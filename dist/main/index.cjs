@@ -210,6 +210,9 @@ function normalizeExternalBrowserUrl(rawUrl) {
   }
   return normalized;
 }
+function isFileUrl(url) {
+  return url.trim().toLowerCase().startsWith("file:");
+}
 
 // src/main/browser/browser-guest-renderer-target.ts
 var import_electron = require("electron");
@@ -2193,7 +2196,8 @@ function installWebviewSecurity(getMainWindow) {
     const onWillAttach = (event, webPreferences, params) => {
       const src = typeof params.src === "string" ? params.src : "";
       const partition = typeof webPreferences.partition === "string" ? webPreferences.partition : "";
-      if (!isMainWindowContents(contents) || !normalizeBrowserNavigationUrl(src) || !isAllowedBrowserPartition(partition)) {
+      const normalizedSrc = normalizeBrowserNavigationUrl(src);
+      if (!isMainWindowContents(contents) || !normalizedSrc || isFileUrl(normalizedSrc) || !isAllowedBrowserPartition(partition)) {
         event.preventDefault();
         return;
       }

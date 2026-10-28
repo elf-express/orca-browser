@@ -1,4 +1,4 @@
-import { normalizeBrowserNavigationUrl } from '../../../../shared/browser-url'
+import { isFileUrl, normalizeBrowserNavigationUrl } from '../../../../shared/browser-url'
 import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
 import { parkBrowserPageViewport } from './browser-page-viewport'
 import { subscribeBrowserSystemResume } from './browser-system-resume'
@@ -10,6 +10,12 @@ import type { AttachBrowserPageWebviewArgs } from './attach-browser-page-webview
 import { createBrowserPageWebviewGuestSession } from './browser-page-webview-guest-session'
 import { createBrowserPageWebviewLoadingHandlers } from './browser-page-webview-loading-handlers'
 import { createBrowserPageWebviewNavigationHandlers } from './browser-page-webview-navigation-handlers'
+
+/** The first src a guest gets: the page URL, or the blank page when it is unusable or a file: URL. */
+export function resolveInitialWebviewUrl(rawUrl: string): string {
+  const normalized = normalizeBrowserNavigationUrl(rawUrl)
+  return normalized && !isFileUrl(normalized) ? normalized : ORCA_BROWSER_BLANK_URL
+}
 
 export function bindBrowserPageWebviewListeners({
   container,
@@ -150,8 +156,7 @@ export function bindBrowserPageWebviewListeners({
 
   if (needsInitialNavigation) {
     // Why: set src only after listeners attach so a fast localhost failure isn't missed; only non-blank tabs show the loading indicator.
-    const initialUrl =
-      normalizeBrowserNavigationUrl(initialBrowserUrlRef.current) ?? ORCA_BROWSER_BLANK_URL
+    const initialUrl = resolveInitialWebviewUrl(initialBrowserUrlRef.current)
     trackNextLoadingEventRef.current = initialUrl !== ORCA_BROWSER_BLANK_URL
     lastKnownWebviewUrlRef.current = initialUrl
     webview.src = initialUrl

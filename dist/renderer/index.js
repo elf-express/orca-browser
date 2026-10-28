@@ -217,6 +217,9 @@ function normalizeExternalBrowserUrl(rawUrl) {
   }
   return normalized;
 }
+function isFileUrl(url) {
+  return url.trim().toLowerCase().startsWith("file:");
+}
 
 // src/shared/workspace-session-browser-history.ts
 var MAX_BROWSER_HISTORY_ENTRIES = 200;
@@ -1412,7 +1415,7 @@ function retryBrowserTabLoad(webview, browserTab, onUpdatePageState) {
   const retryUrl = normalizeBrowserNavigationUrl(
     browserTab.loadError?.validatedUrl ?? browserTab.url
   );
-  if (!retryUrl) {
+  if (!retryUrl || isFileUrl(retryUrl)) {
     return;
   }
   onUpdatePageState(browserTab.id, {
@@ -1438,7 +1441,7 @@ function navigateBrowserPageToUrl({
   focusWebviewNow
 }) {
   const navigateBrowserUrl = (targetUrl) => {
-    if (targetUrl.trim().toLowerCase().startsWith("file:")) {
+    if (isFileUrl(targetUrl)) {
       return;
     }
     const browserModelUrl = redactKagiSessionToken(targetUrl);
@@ -1801,7 +1804,7 @@ function useBrowserPageWebviewUrlSync({
       return;
     }
     const normalizedUrl = normalizeBrowserNavigationUrl(browserTabUrl);
-    if (!normalizedUrl || normalizedUrl.toLowerCase().startsWith("file:")) {
+    if (!normalizedUrl || isFileUrl(normalizedUrl)) {
       return;
     }
     if (lastKnownWebviewUrlRef.current === normalizedUrl) {
@@ -4658,6 +4661,10 @@ function createBrowserPageWebviewNavigationHandlers({
 }
 
 // src/renderer/components/browser-pane/host-guest/bind-browser-page-webview-listeners.ts
+function resolveInitialWebviewUrl(rawUrl) {
+  const normalized = normalizeBrowserNavigationUrl(rawUrl);
+  return normalized && !isFileUrl(normalized) ? normalized : ORCA_BROWSER_BLANK_URL;
+}
 function bindBrowserPageWebviewListeners({
   container,
   webview,
@@ -4778,7 +4785,7 @@ function bindBrowserPageWebviewListeners({
   webview.addEventListener("page-favicon-updated", handleFaviconUpdate);
   webview.addEventListener("did-fail-load", handleFailLoad);
   if (needsInitialNavigation) {
-    const initialUrl = normalizeBrowserNavigationUrl(initialBrowserUrlRef.current) ?? ORCA_BROWSER_BLANK_URL;
+    const initialUrl = resolveInitialWebviewUrl(initialBrowserUrlRef.current);
     trackNextLoadingEventRef.current = initialUrl !== ORCA_BROWSER_BLANK_URL;
     lastKnownWebviewUrlRef.current = initialUrl;
     webview.src = initialUrl;

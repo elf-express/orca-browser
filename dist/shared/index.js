@@ -446,6 +446,9 @@ function normalizeExternalBrowserUrl(rawUrl) {
   }
   return normalized;
 }
+function isFileUrl(url) {
+  return url.trim().toLowerCase().startsWith("file:");
+}
 
 // src/shared/browser-grab-types.ts
 var GRAB_BUDGET = {
@@ -546,6 +549,7 @@ export {
   isAbsoluteFilesystemPathInput,
   isAriaAttribute,
   isEligibleLocalCertificateHost,
+  isFileUrl,
   looksLikeSearchQuery,
   matchBrowserShortcut,
   nextBrowserPageZoomLevel,

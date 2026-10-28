@@ -48,6 +48,7 @@ __export(shared_exports, {
   isAbsoluteFilesystemPathInput: () => isAbsoluteFilesystemPathInput,
   isAriaAttribute: () => isAriaAttribute,
   isEligibleLocalCertificateHost: () => isEligibleLocalCertificateHost,
+  isFileUrl: () => isFileUrl,
   looksLikeSearchQuery: () => looksLikeSearchQuery,
   matchBrowserShortcut: () => matchBrowserShortcut,
   nextBrowserPageZoomLevel: () => nextBrowserPageZoomLevel,
@@ -511,6 +512,9 @@ function normalizeExternalBrowserUrl(rawUrl) {
   }
   return normalized;
 }
+function isFileUrl(url) {
+  return url.trim().toLowerCase().startsWith("file:");
+}
 
 // src/shared/browser-grab-types.ts
 var GRAB_BUDGET = {
@@ -612,6 +616,7 @@ function normalizeBrowserHistoryUrl(url) {
   isAbsoluteFilesystemPathInput,
   isAriaAttribute,
   isEligibleLocalCertificateHost,
+  isFileUrl,
   looksLikeSearchQuery,
   matchBrowserShortcut,
   nextBrowserPageZoomLevel,

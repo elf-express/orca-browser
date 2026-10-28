@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, type MutableRefObject, type RefObject } from 'react'
 import { translate } from '../../../i18n'
 import {
+  isFileUrl,
   normalizeBrowserNavigationUrl,
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
@@ -101,7 +102,7 @@ export function useBrowserPageWebviewUrlSync({
     }
     const normalizedUrl = normalizeBrowserNavigationUrl(browserTabUrl)
     // Why: the in-app browser must not read local files; leave the webview where it is.
-    if (!normalizedUrl || normalizedUrl.toLowerCase().startsWith('file:')) {
+    if (!normalizedUrl || isFileUrl(normalizedUrl)) {
       return
     }
     // Why: navigation events set both the store URL and this ref; a match means the change came from navigation, so skip to avoid a redirect infinite loop.

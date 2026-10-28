@@ -51,6 +51,22 @@ describe('browser page URL display', () => {
     expect(webview.src).toBe('https://example.com/app')
   })
 
+  it('never assigns a file: URL when retrying a refused address-bar entry', () => {
+    const webview = { src: 'chrome-error://chromewebdata/' }
+    const onUpdatePageState = vi.fn()
+    retryBrowserTabLoad(
+      webview as Electron.WebviewTag,
+      {
+        id: 'page-1',
+        url: 'https://example.com/app',
+        loadError: { code: 0, description: 'refused', validatedUrl: '/etc/passwd' }
+      } as BrowserPageState,
+      onUpdatePageState
+    )
+    expect(webview.src).toBe('chrome-error://chromewebdata/')
+    expect(onUpdatePageState).not.toHaveBeenCalled()
+  })
+
   it('does nothing when there is no webview', () => {
     const onUpdatePageState = vi.fn()
     retryBrowserTabLoad(

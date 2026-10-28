@@ -363,3 +363,8 @@ export function normalizeExternalBrowserUrl(rawUrl: string): string | null {
   }
   return normalized
 }
+
+/** Whether the URL points at the local file system; the in-app browser never loads such pages. */
+export function isFileUrl(url: string): boolean {
+  return url.trim().toLowerCase().startsWith('file:')
+}

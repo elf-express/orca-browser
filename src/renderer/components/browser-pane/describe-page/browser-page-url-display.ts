@@ -2,6 +2,7 @@ import type { BrowserPage as BrowserPageState } from '../../../../shared/browser
 import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
 import {
   normalizeBrowserNavigationUrl,
+  isFileUrl,
   normalizeExternalBrowserUrl,
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
@@ -44,7 +45,8 @@ export function retryBrowserTabLoad(
   const retryUrl = normalizeBrowserNavigationUrl(
     browserTab.loadError?.validatedUrl ?? browserTab.url
   )
-  if (!retryUrl) {
+  // Why: a refused address-bar entry like /etc/passwd normalizes to file://; stay on the error page.
+  if (!retryUrl || isFileUrl(retryUrl)) {
     return
   }
 
