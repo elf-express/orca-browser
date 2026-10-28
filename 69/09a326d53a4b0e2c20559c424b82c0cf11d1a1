@@ -1,0 +1,71 @@
+dist/main/index.cjs
+  s_aa47a447e01641::t_7c277a29464cb1 352-359,369-378,380-386,2497,2529-2546,2548
+dist/preload/index.cjs
+  s_aa47a447e01641::t_0e6a8acf6414d5 60,153-157
+dist/renderer/index.js
+  s_aa47a447e01641::t_99c692ac3fab9a 479-498,1110,1241,6303-6344,6364,6480,6640-6644,6928,6960,7170,7192,7199,7201,7208,7211,7214,7217,7240,7263,7292,7310,7325,7350,7434,7441,7449,7466,7485,7501,7523,7536,7866,7930,7938,7964,8124,8132,8150,8161,8185-8209,8238,8244,8315,8382,8389,8583,8585,8598,8612,8643,8649
+dist/shared/index.cjs
+  s_aa47a447e01641::t_78492feb53f957 32,119,136,728
+dist/shared/index.js
+  s_aa47a447e01641::t_13c379089d23d9 45,62,653
+src/main/browser/browser-guest-wheel-zoom-scroll.test.ts
+  s_aa47a447e01641::t_174bd2a88af267 41-54,66-94
+src/main/browser/browser-guest-wheel-zoom.ts
+  s_aa47a447e01641::t_5ef1439eeab434 75-82,93,95-115
+src/main/ipc/browser-guest-view-ipc.ts
+  s_aa47a447e01641::t_af6485a5caaa8c 9,59-88,90
+src/preload/api/browser-bridge-guest-registration-and-downloads.ts
+  s_aa47a447e01641::t_c4fb10f55f4681 11-12
+src/preload/api/ui-bridge-tab-and-browser-commands.ts
+  s_aa47a447e01641::t_59af957adf2054 45-52
+src/preload/browser-api.test.ts
+  s_aa47a447e01641::t_fc8d37075ffddf 5,11-16,42-43,61-70
+src/renderer/BrowserPane.keep-alive.test.tsx
+  s_aa47a447e01641::t_9478062c8c5b00 27,42
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_df78c0a7c4a4fa 18-24,69-93,205
+src/renderer/components/browser-pane/host-guest/attach-browser-page-webview.ts
+  s_aa47a447e01641::t_d14689e54c504d 6-9,42
+src/renderer/components/browser-pane/host-guest/bind-browser-page-webview-listeners.ts
+  s_aa47a447e01641::t_1e938743779923 51,85
+src/renderer/components/browser-pane/host-guest/browser-page-registration-ownership.test.ts
+  s_aa47a447e01641::t_0ba93fa8d0fb8e 88,127-128
+src/renderer/components/browser-pane/host-guest/browser-page-webview-guest-session.test.ts
+  s_aa47a447e01641::t_22b20ae78a39fd 1-69
+src/renderer/components/browser-pane/host-guest/browser-page-webview-guest-session.ts
+  s_aa47a447e01641::t_9264c0a8ab2b18 3-10,43,72,258-264
+src/renderer/components/browser-pane/host-guest/use-browser-page-viewport-scroll-reporting.test.tsx
+  s_aa47a447e01641::t_792fcd7c430761 1-68
+src/renderer/components/browser-pane/host-guest/use-browser-page-viewport-scroll-reporting.ts
+  s_aa47a447e01641::t_79ad160925197c 1-50
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
+  s_aa47a447e01641::t_8f8f1e97f0d1a2 14-17,53,91,112-113,121,123,196
+src/shared/browser-api-types.ts
+  s_aa47a447e01641::t_92fd369d610698 23-24,68-71,90-92
+src/shared/browser-ipc-channels.ts
+  s_aa47a447e01641::t_6b50b5714b79a5 26,44-46
+dist/main/index.d.cts
+  s_aa47a447e01641::t_c534f912e12af7 105-110,199-202,219-223
+dist/renderer/index.d.ts
+  s_aa47a447e01641::t_054ccf38188791 122-127,216-219,236-240
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_9384ef47e800cf 276-279,296-300,371,373,643
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_0cfc034ecf7ee8 276-279,296-300,371,373,643
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6909a326d53a4b0e2c20559c424b82c0cf11d1a1",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
