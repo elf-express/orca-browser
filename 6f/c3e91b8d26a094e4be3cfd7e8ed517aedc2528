@@ -1,0 +1,113 @@
+dist/main/index.cjs
+  s_26479e7c9fdb64::t_063ac558dca557 853-859,876-881,886-900,2209-2214,2305-6487
+dist/shared/index.cjs
+  s_26479e7c9fdb64::t_4177610d0bc4ec 25,31,75-86,114-125,619,625
+dist/shared/index.d.cts
+  s_26479e7c9fdb64::t_b0b5e082a20c11 223,250,515
+dist/shared/index.d.ts
+  s_26479e7c9fdb64::t_54cbdd3dd849d6 223,250,515
+dist/shared/index.js
+  s_26479e7c9fdb64::t_91903e82bacc45 7-18,46-57,550,556
+src/main/browser-profiles-installer.test.ts
+  s_aa47a447e01641::t_f2a261222eb489 1-182
+src/main/browser-profiles-installer.ts
+  s_aa47a447e01641::t_ea77dcb6f1a91a 1-37
+src/main/browser/browser-cookie-chromium-finalize.ts
+  s_aa47a447e01641::t_773ae9a4ddd1d2 1-166
+src/main/browser/browser-cookie-chromium-import.ts
+  s_aa47a447e01641::t_60f2247b9dd649 1-83
+src/main/browser/browser-cookie-chromium-prepare.ts
+  s_aa47a447e01641::t_4771b747f8ec03 1-339
+src/main/browser/browser-cookie-chromium-scan.ts
+  s_aa47a447e01641::t_00e333ebe85d1a 1-190
+src/main/browser/browser-cookie-chromium-types.ts
+  s_aa47a447e01641::t_452d15658d421f 1-83
+src/main/browser/browser-cookie-clear-preserve.test.ts
+  s_aa47a447e01641::t_3a0ee648e1b73f 1-163
+src/main/browser/browser-cookie-clear-store-lifecycle.test.ts
+  s_aa47a447e01641::t_b620470492d30b 1-101
+src/main/browser/browser-cookie-clear-store.test.ts
+  s_aa47a447e01641::t_39fb69716a4b2a 1-183
+src/main/browser/browser-cookie-clear-store.ts
+  s_aa47a447e01641::t_7b358f4ccf6877 1-325
+src/main/browser/browser-cookie-firefox-import.ts
+  s_aa47a447e01641::t_0c60b1c77982c7 1-138
+src/main/browser/browser-cookie-identity-restore.ts
+  s_aa47a447e01641::t_03721565a4aa0b 1-18
+src/main/browser/browser-cookie-import-clear-atomicity.test.ts
+  s_aa47a447e01641::t_1875bb4d6a3256 1-281
+src/main/browser/browser-cookie-import-concurrency.test.ts
+  s_aa47a447e01641::t_2ac17dcda5ee4f 1-523
+src/main/browser/browser-cookie-import-google-exclusion.test.ts
+  s_aa47a447e01641::t_59059ec571da1c 1-369
+src/main/browser/browser-cookie-import-partition-fidelity.test.ts
+  s_aa47a447e01641::t_7df442c0179275 1-645
+src/main/browser/browser-cookie-import-pipeline.ts
+  s_aa47a447e01641::t_04be46b7b999da 1-300
+src/main/browser/browser-cookie-import-plan-writes.test.ts
+  s_aa47a447e01641::t_32e380a1b3e13c 1-108
+src/main/browser/browser-cookie-import-replacement.test.ts
+  s_aa47a447e01641::t_ff2e244bfb8400 1-353
+src/main/browser/browser-cookie-import-scope.test.ts
+  s_aa47a447e01641::t_add4754824f198 1-290
+src/main/browser/browser-cookie-import-snapshot-ownership.test.ts
+  s_aa47a447e01641::t_0708669aed3ece 1-281
+src/main/browser/browser-cookie-import-undecryptable.test.ts
+  s_aa47a447e01641::t_98b3c12904e20d 1-348
+src/main/browser/browser-cookie-import-write.test.ts
+  s_aa47a447e01641::t_64bc9c076340c9 1-199
+src/main/browser/browser-cookie-import.comet.test.ts
+  s_aa47a447e01641::t_fc7ce364ae95d3 1-289
+src/main/browser/browser-cookie-import.helium.test.ts
+  s_aa47a447e01641::t_8661b9036bc2a5 1-164
+src/main/browser/browser-cookie-import.test.ts
+  s_aa47a447e01641::t_fc076df6627cc1 1-918
+src/main/browser/browser-cookie-import.ts
+  s_aa47a447e01641::t_167e2b7e0808fa 1-67
+src/main/browser/browser-cookie-safari-import.ts
+  s_aa47a447e01641::t_061d882a2c67eb 1-61
+src/main/browser/browser-error.ts
+  s_aa47a447e01641::t_1c477dac264d79 1-16
+src/main/browser/browser-session-cookie-staging.scoped.test.ts
+  s_aa47a447e01641::t_8ba97909262e48 1-270
+src/main/browser/browser-session-cookie-staging.test.ts
+  s_aa47a447e01641::t_e137a7cfefa72a 1-60
+src/main/browser/electron-debugger-lease.ts
+  s_aa47a447e01641::t_77ddd5b5a4e75b 1-57
+src/main/index.test.ts
+  s_aa47a447e01641::t_09bf635a3e2b97 4
+src/main/ipc/browser-session-profile-ipc.test.ts
+  s_aa47a447e01641::t_ea4cc53cfd1b73 1-266
+src/main/ipc/browser-session-profile-ipc.ts
+  s_aa47a447e01641::t_9f1f7d21b337cf 1-217
+src/main/plugin-installers.ts
+  s_aa47a447e01641::t_8cc4962d0f44c0 2,10-13
+src/shared/browser-ipc-channels.ts
+  s_aa47a447e01641::t_f6f3b8e74af4ba 27-39
+src/shared/constants.ts
+  s_aa47a447e01641::t_d79d13d8800e27 7-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6fc3e91b8d26a094e4be3cfd7e8ed517aedc2528",
+  "prompts": {},
+  "sessions": {
+    "s_26479e7c9fdb64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b230b5dd-eb1a-4c22-bdea-256b7dcf35e0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
