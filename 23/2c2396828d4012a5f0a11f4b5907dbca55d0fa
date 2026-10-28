@@ -1,0 +1,23 @@
+src/main/index.test.ts
+  s_aa47a447e01641::t_0aa759d983d77f 93,99-116
+src/main/index.ts
+  s_aa47a447e01641::t_9a1bf387afe4bc 24-25,34-51
+dist/main/index.cjs
+  s_aa47a447e01641::t_a443a1d3ac1b19 62-63,72-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "232c2396828d4012a5f0a11f4b5907dbca55d0fa",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
