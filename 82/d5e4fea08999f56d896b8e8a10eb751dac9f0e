@@ -1,0 +1,19 @@
+docs/superpowers/state/E-459.yaml
+  s_dfa8ae79d68519::t_d2f2f61c642d80 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82d5e4fea08999f56d896b8e8a10eb751dac9f0e",
+  "prompts": {},
+  "sessions": {
+    "s_dfa8ae79d68519": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5e52400-efe4-471c-bcfd-07f9822397b4",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
