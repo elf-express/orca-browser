@@ -25,7 +25,12 @@ function createFakeSession(): Record<string, ReturnType<typeof vi.fn>> {
 }
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/user-data') },
+  app: {
+    getPath: vi.fn(() => '/user-data'),
+    isReady: vi.fn(() => true),
+    userAgentFallback:
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Orca/1.0.0 Chrome/150.0.0.0 Electron/43.0.0 Safari/537.36'
+  },
   ipcMain: { handle: mocks.handle, removeHandler: mocks.removeHandler },
   session: {
     fromPartition: (partition: string) => {
@@ -53,6 +58,7 @@ vi.mock('./browser/browser-manager', () => ({
   }
 }))
 
+import { app } from 'electron'
 import { BROWSER_PROFILE_INVOKE_CHANNELS } from '../shared/browser-ipc-channels'
 import { ORCA_BROWSER_PARTITION } from '../shared/constants'
 import type { ResolvedBrowserPluginOptions } from './plugin-options'
@@ -178,5 +184,38 @@ describe('installBrowserProfiles', () => {
       dispose = m.installBrowserProfiles(makeOptions(tmp))
     }).not.toThrow()
     expect(mocks.handle).toHaveBeenCalledTimes(BROWSER_PROFILE_INVOKE_CHANNELS.length)
+  })
+
+  it('initializes the process user agent identity so request header policies can run', async () => {
+    const m = await loadFresh()
+    dispose = m.installBrowserProfiles(makeOptions(tmp))
+
+    const defaultSession = mocks.sessions.get(ORCA_BROWSER_PARTITION)!
+    const webRequest = defaultSession.webRequest as unknown as {
+      onBeforeSendHeaders: ReturnType<typeof vi.fn>
+    }
+    const listener = webRequest.onBeforeSendHeaders.mock.calls.find(
+      ([filter]) => filter !== null
+    )![1] as (details: unknown, callback: (response: unknown) => void) => void
+    const callback = vi.fn()
+
+    listener(
+      {
+        url: 'https://example.com/',
+        requestHeaders: { 'User-Agent': 'x' },
+        resourceType: 'mainFrame'
+      },
+      callback
+    )
+
+    expect(callback).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not assign app.userAgentFallback', async () => {
+    const before = app.userAgentFallback
+    const m = await loadFresh()
+    dispose = m.installBrowserProfiles(makeOptions(tmp))
+
+    expect(app.userAgentFallback).toBe(before)
   })
 })

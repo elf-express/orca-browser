@@ -1,5 +1,9 @@
 import { app } from 'electron'
 import type { BrowserUserAgentMode } from '../../shared/browser-user-agent-mode'
+import {
+  getBrowserIdentityModeSnapshot,
+  isBrowserIdentityModeStoreInitialized
+} from './browser-identity-mode-store'
 
 export type BrowserProcessUserAgentIdentity = Readonly<{
   mode: BrowserUserAgentMode
@@ -51,11 +55,36 @@ export function initializeBrowserProcessUserAgent(
   return identity
 }
 
-export function getBrowserProcessUserAgentIdentity(): BrowserProcessUserAgentIdentity {
+/**
+ * Freezes the identity this plugin presents without assigning `app.userAgentFallback`.
+ *
+ * The host owns the application-wide fallback, so a clean identity is derived from it and kept
+ * here for the request-header and navigation policies. Calling it again returns the first value.
+ */
+export function ensureBrowserProcessUserAgentIdentity(
+  mode: BrowserUserAgentMode
+): BrowserProcessUserAgentIdentity {
   if (!identity) {
-    throw new Error('Browser process user agent is not initialized')
+    const fallback = app.userAgentFallback
+    identity = Object.freeze({
+      mode,
+      userAgent: mode === 'clean' ? cleanElectronUserAgent(fallback) : fallback
+    })
   }
   return identity
+}
+
+// Core can be installed without the profiles feature; then no identity store exists and the
+// engine default (native) is what the process presents.
+export function getBrowserProcessUserAgentIdentity(): BrowserProcessUserAgentIdentity {
+  return (
+    identity ??
+    ensureBrowserProcessUserAgentIdentity(
+      isBrowserIdentityModeStoreInitialized()
+        ? getBrowserIdentityModeSnapshot().appliedMode
+        : 'native'
+    )
+  )
 }
 
 export function resetBrowserProcessUserAgentForTests(): void {

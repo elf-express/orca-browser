@@ -63,3 +63,19 @@ describe('cleanElectronUserAgent', () => {
     expect(cleanElectronUserAgent(raw)).toBe(raw)
   })
 })
+
+describe('getBrowserProcessUserAgentIdentity without an installer', () => {
+  it('defaults to the native identity and leaves app.userAgentFallback alone', async () => {
+    vi.resetModules()
+    const { app } = await import('electron')
+    app.userAgentFallback =
+      'Mozilla/5.0 (X11) (KHTML, like Gecko) Orca/1 Chrome/150.0.0.0 Electron/43 Safari/537.36'
+    const before = app.userAgentFallback
+    const mod = await import('./browser-process-user-agent')
+
+    const identity = mod.getBrowserProcessUserAgentIdentity()
+
+    expect(identity).toEqual({ mode: 'native', userAgent: before })
+    expect(app.userAgentFallback).toBe(before)
+  })
+})

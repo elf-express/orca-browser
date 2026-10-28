@@ -849,6 +849,319 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
 
 // src/main/browser/browser-process-user-agent.ts
 var import_electron4 = require("electron");
+
+// src/main/browser/browser-identity-mode-store.ts
+var import_node_crypto = require("node:crypto");
+var import_node_fs4 = require("node:fs");
+var import_node_path3 = require("node:path");
+
+// src/main/durable-file-write.ts
+var import_node_fs2 = require("node:fs");
+var import_node_path = require("node:path");
+
+// src/main/fs-utils.ts
+var import_node_fs = require("node:fs");
+function renameFileWithWindowsRetry(source, target) {
+  runFileOperationWithWindowsRetry(() => (0, import_node_fs.renameSync)(source, target));
+}
+function copyFileWithWindowsRetry(source, target) {
+  runFileOperationWithWindowsRetry(() => (0, import_node_fs.copyFileSync)(source, target));
+}
+function runFileOperationWithWindowsRetry(operation) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      operation();
+      return;
+    } catch (error) {
+      if (shouldRetryFileOperation(error, attempt)) {
+        sleepSync(attempt * 50);
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+function shouldRetryFileOperation(error, attempt) {
+  return process.platform === "win32" && attempt < 6 && error instanceof Error && "code" in error && (error.code === "EPERM" || error.code === "EACCES" || error.code === "EBUSY");
+}
+var sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
+function sleepSync(ms) {
+  Atomics.wait(sleepBuffer, 0, 0, ms);
+}
+
+// src/main/durable-file-write.ts
+function syncDirectoryDurablySync(directory) {
+  let fd = null;
+  try {
+    fd = (0, import_node_fs2.openSync)(directory, "r");
+    (0, import_node_fs2.fsyncSync)(fd);
+  } catch {
+  } finally {
+    if (fd !== null) {
+      try {
+        (0, import_node_fs2.closeSync)(fd);
+      } catch {
+      }
+    }
+  }
+}
+function renameDurableSync(tmpPath, finalPath) {
+  renameFileWithWindowsRetry(tmpPath, finalPath);
+  syncDirectoryDurablySync((0, import_node_path.dirname)(finalPath));
+}
+function durableWriteTempPath(finalPath, owner) {
+  const ownerSuffix = owner === void 0 ? "" : `.owner-${owner}`;
+  return `${finalPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}${ownerSuffix}.tmp`;
+}
+function writeFileDurableSync(tmpPath, finalPath, payload, mode) {
+  let renamed = false;
+  try {
+    (0, import_node_fs2.writeFileSync)(tmpPath, payload, mode === void 0 ? void 0 : { mode });
+    const fd = (0, import_node_fs2.openSync)(tmpPath, "r+");
+    try {
+      (0, import_node_fs2.fsyncSync)(fd);
+    } finally {
+      (0, import_node_fs2.closeSync)(fd);
+    }
+    renameDurableSync(tmpPath, finalPath);
+    renamed = true;
+  } finally {
+    if (!renamed) {
+      (0, import_node_fs2.rmSync)(tmpPath, { force: true });
+    }
+  }
+}
+
+// src/main/browser/browser-identity-mode-record.ts
+var import_node_fs3 = require("node:fs");
+var import_node_path2 = require("node:path");
+var BROWSER_IDENTITY_MODE_FILE = "browser-identity-mode.json";
+var BROWSER_IDENTITY_MODE_VERSION = 1;
+function browserIdentityModeRecordPath(userDataPath) {
+  return (0, import_node_path2.join)(userDataPath, BROWSER_IDENTITY_MODE_FILE);
+}
+function unhealthyResult(state) {
+  return {
+    state,
+    appliedMode: "clean",
+    configuredMode: null,
+    explicitSelection: null,
+    migrationNoticePending: null
+  };
+}
+function parseRecord(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return unhealthyResult("corrupt");
+  }
+  if (!isBrowserIdentityModeFileInput(parsed)) {
+    return unhealthyResult("corrupt");
+  }
+  const { version, mode, explicitSelection, migrationNoticePending } = parsed;
+  if (typeof version === "number" && version > BROWSER_IDENTITY_MODE_VERSION) {
+    return unhealthyResult("future");
+  }
+  if (version !== BROWSER_IDENTITY_MODE_VERSION || mode !== "clean" && mode !== "native" || typeof explicitSelection !== "boolean" || typeof migrationNoticePending !== "boolean") {
+    return unhealthyResult("corrupt");
+  }
+  return {
+    state: "valid",
+    appliedMode: mode,
+    configuredMode: mode,
+    explicitSelection,
+    migrationNoticePending
+  };
+}
+function readBrowserIdentityModeRecord(userDataPath) {
+  try {
+    return parseRecord((0, import_node_fs3.readFileSync)(browserIdentityModeRecordPath(userDataPath), "utf-8"));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {
+        state: "missing",
+        appliedMode: "clean",
+        configuredMode: "clean",
+        explicitSelection: false,
+        migrationNoticePending: false
+      };
+    }
+    return unhealthyResult("unreadable");
+  }
+}
+function isBrowserIdentityModeFileInput(value) {
+  return typeof value === "object" && value !== null;
+}
+
+// src/main/browser/browser-identity-mode-store.ts
+var modeStore = null;
+var snapshotListeners = /* @__PURE__ */ new Set();
+var migrationNoticeDegraded = false;
+var launchMigrationNoticePending = false;
+function snapshotForRead(result) {
+  return { ...result, restartRequired: false };
+}
+function writeRecord(userDataPath, record) {
+  const filePath = browserIdentityModeRecordPath(userDataPath);
+  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(filePath), { recursive: true });
+  writeFileDurableSync(
+    durableWriteTempPath(filePath),
+    filePath,
+    `${JSON.stringify(record, null, 2)}
+`
+  );
+}
+function backupUnhealthyRecord(userDataPath) {
+  const filePath = browserIdentityModeRecordPath(userDataPath);
+  const bytes = (0, import_node_fs4.readFileSync)(filePath);
+  const backupPath = `${filePath}.${Date.now()}.${(0, import_node_crypto.randomUUID)().slice(0, 8)}.bak`;
+  if ((0, import_node_fs4.existsSync)(backupPath)) {
+    throw new Error(`Browser identity backup ${backupPath} already exists`);
+  }
+  writeFileDurableSync(durableWriteTempPath(backupPath), backupPath, bytes);
+  return backupPath;
+}
+function isBrowserIdentityModeStoreInitialized() {
+  return modeStore !== null;
+}
+function initializeBrowserIdentityModeStore(userDataPath) {
+  if (modeStore) {
+    throw new Error("Browser identity mode store was already initialized");
+  }
+  const snapshot = snapshotForRead(readBrowserIdentityModeRecord(userDataPath));
+  modeStore = { userDataPath, snapshot };
+  return snapshot;
+}
+function requireModeStore() {
+  if (!modeStore) {
+    throw new Error("Browser identity mode store is not initialized");
+  }
+  return modeStore;
+}
+function getBrowserIdentityModeSnapshot() {
+  return requireModeStore().snapshot;
+}
+function getBrowserIdentityMigrationNotice() {
+  const snapshot = requireModeStore().snapshot;
+  return launchMigrationNoticePending || snapshot.migrationNoticePending === true ? { degraded: migrationNoticeDegraded } : null;
+}
+function getBrowserIdentityModeStatus() {
+  return {
+    identity: getBrowserIdentityModeSnapshot(),
+    migrationNotice: getBrowserIdentityMigrationNotice()
+  };
+}
+function notifySnapshotListeners(snapshot) {
+  for (const listener of snapshotListeners) {
+    try {
+      listener(snapshot);
+    } catch (error) {
+      console.error("[browser-identity] Snapshot listener failed:", error);
+    }
+  }
+}
+async function setBrowserIdentityMode(mode, options = {}) {
+  const store = requireModeStore();
+  const current2 = store.snapshot;
+  if (current2.configuredMode === null) {
+    if (!options.reset) {
+      return {
+        ok: false,
+        error: {
+          code: "browser_identity_reset_required",
+          message: current2.state === "future" ? "Browser identity data was written by a newer Orca; update Orca, or reset it explicitly to overwrite it." : `Browser identity data is ${current2.state}; reset it explicitly to overwrite it.`
+        },
+        identity: current2
+      };
+    }
+    try {
+      backupUnhealthyRecord(store.userDataPath);
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: "browser_identity_backup_failed",
+          message: error instanceof Error ? error.message : String(error)
+        },
+        identity: current2
+      };
+    }
+  }
+  const record = {
+    version: BROWSER_IDENTITY_MODE_VERSION,
+    mode,
+    explicitSelection: true,
+    migrationNoticePending: false
+  };
+  try {
+    writeRecord(store.userDataPath, record);
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        code: "browser_identity_write_failed",
+        message: error instanceof Error ? error.message : String(error)
+      },
+      identity: current2
+    };
+  }
+  const identity2 = {
+    state: "valid",
+    appliedMode: current2.appliedMode,
+    configuredMode: mode,
+    explicitSelection: true,
+    migrationNoticePending: false,
+    restartRequired: mode !== current2.appliedMode
+  };
+  store.snapshot = identity2;
+  launchMigrationNoticePending = false;
+  migrationNoticeDegraded = false;
+  notifySnapshotListeners(identity2);
+  return { ok: true, identity: identity2 };
+}
+async function markBrowserIdentityMigrationNoticePending(userDataPath, degraded) {
+  if (!modeStore) {
+    initializeBrowserIdentityModeStore(userDataPath);
+  }
+  const store = requireModeStore();
+  if (store.userDataPath !== userDataPath) {
+    throw new Error("Browser identity mode store userData path changed");
+  }
+  const current2 = store.snapshot;
+  if (current2.explicitSelection === true) {
+    return false;
+  }
+  launchMigrationNoticePending = true;
+  migrationNoticeDegraded ||= degraded;
+  if (current2.configuredMode === null) {
+    return false;
+  }
+  const record = {
+    version: BROWSER_IDENTITY_MODE_VERSION,
+    mode: current2.configuredMode,
+    explicitSelection: current2.explicitSelection,
+    migrationNoticePending: true
+  };
+  try {
+    writeRecord(userDataPath, record);
+  } catch (error) {
+    console.error("[browser-identity] Could not persist retired profile notice:", error);
+    return false;
+  }
+  store.snapshot = {
+    state: "valid",
+    appliedMode: current2.appliedMode,
+    configuredMode: current2.configuredMode,
+    explicitSelection: current2.explicitSelection,
+    migrationNoticePending: true,
+    restartRequired: current2.restartRequired
+  };
+  notifySnapshotListeners(store.snapshot);
+  return true;
+}
+
+// src/main/browser/browser-process-user-agent.ts
 var identity = null;
 var CHROMIUM_ENGINE_COMMENT = "(KHTML, like Gecko)";
 function cleanElectronUserAgent(userAgent) {
@@ -857,11 +1170,20 @@ function cleanElectronUserAgent(userAgent) {
   }
   return userAgent.replace(/\s+Electron\/\S+/, "").replace(/(\)\s+)(?:[^)\s]+\s+)*?(Chrome\/)/, "$1$2");
 }
-function getBrowserProcessUserAgentIdentity() {
+function ensureBrowserProcessUserAgentIdentity(mode) {
   if (!identity) {
-    throw new Error("Browser process user agent is not initialized");
+    const fallback = import_electron4.app.userAgentFallback;
+    identity = Object.freeze({
+      mode,
+      userAgent: mode === "clean" ? cleanElectronUserAgent(fallback) : fallback
+    });
   }
   return identity;
+}
+function getBrowserProcessUserAgentIdentity() {
+  return identity ?? ensureBrowserProcessUserAgentIdentity(
+    isBrowserIdentityModeStoreInitialized() ? getBrowserIdentityModeSnapshot().appliedMode : "native"
+  );
 }
 
 // src/main/browser/browser-google-auth-ua.ts
@@ -2465,317 +2787,6 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:settings:get",
   "browser:settings:set"
 ];
-
-// src/main/browser/browser-identity-mode-store.ts
-var import_node_crypto = require("node:crypto");
-var import_node_fs4 = require("node:fs");
-var import_node_path3 = require("node:path");
-
-// src/main/durable-file-write.ts
-var import_node_fs2 = require("node:fs");
-var import_node_path = require("node:path");
-
-// src/main/fs-utils.ts
-var import_node_fs = require("node:fs");
-function renameFileWithWindowsRetry(source, target) {
-  runFileOperationWithWindowsRetry(() => (0, import_node_fs.renameSync)(source, target));
-}
-function copyFileWithWindowsRetry(source, target) {
-  runFileOperationWithWindowsRetry(() => (0, import_node_fs.copyFileSync)(source, target));
-}
-function runFileOperationWithWindowsRetry(operation) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      operation();
-      return;
-    } catch (error) {
-      if (shouldRetryFileOperation(error, attempt)) {
-        sleepSync(attempt * 50);
-        continue;
-      }
-      throw error;
-    }
-  }
-}
-function shouldRetryFileOperation(error, attempt) {
-  return process.platform === "win32" && attempt < 6 && error instanceof Error && "code" in error && (error.code === "EPERM" || error.code === "EACCES" || error.code === "EBUSY");
-}
-var sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
-function sleepSync(ms) {
-  Atomics.wait(sleepBuffer, 0, 0, ms);
-}
-
-// src/main/durable-file-write.ts
-function syncDirectoryDurablySync(directory) {
-  let fd = null;
-  try {
-    fd = (0, import_node_fs2.openSync)(directory, "r");
-    (0, import_node_fs2.fsyncSync)(fd);
-  } catch {
-  } finally {
-    if (fd !== null) {
-      try {
-        (0, import_node_fs2.closeSync)(fd);
-      } catch {
-      }
-    }
-  }
-}
-function renameDurableSync(tmpPath, finalPath) {
-  renameFileWithWindowsRetry(tmpPath, finalPath);
-  syncDirectoryDurablySync((0, import_node_path.dirname)(finalPath));
-}
-function durableWriteTempPath(finalPath, owner) {
-  const ownerSuffix = owner === void 0 ? "" : `.owner-${owner}`;
-  return `${finalPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}${ownerSuffix}.tmp`;
-}
-function writeFileDurableSync(tmpPath, finalPath, payload, mode) {
-  let renamed = false;
-  try {
-    (0, import_node_fs2.writeFileSync)(tmpPath, payload, mode === void 0 ? void 0 : { mode });
-    const fd = (0, import_node_fs2.openSync)(tmpPath, "r+");
-    try {
-      (0, import_node_fs2.fsyncSync)(fd);
-    } finally {
-      (0, import_node_fs2.closeSync)(fd);
-    }
-    renameDurableSync(tmpPath, finalPath);
-    renamed = true;
-  } finally {
-    if (!renamed) {
-      (0, import_node_fs2.rmSync)(tmpPath, { force: true });
-    }
-  }
-}
-
-// src/main/browser/browser-identity-mode-record.ts
-var import_node_fs3 = require("node:fs");
-var import_node_path2 = require("node:path");
-var BROWSER_IDENTITY_MODE_FILE = "browser-identity-mode.json";
-var BROWSER_IDENTITY_MODE_VERSION = 1;
-function browserIdentityModeRecordPath(userDataPath) {
-  return (0, import_node_path2.join)(userDataPath, BROWSER_IDENTITY_MODE_FILE);
-}
-function unhealthyResult(state) {
-  return {
-    state,
-    appliedMode: "clean",
-    configuredMode: null,
-    explicitSelection: null,
-    migrationNoticePending: null
-  };
-}
-function parseRecord(raw) {
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return unhealthyResult("corrupt");
-  }
-  if (!isBrowserIdentityModeFileInput(parsed)) {
-    return unhealthyResult("corrupt");
-  }
-  const { version, mode, explicitSelection, migrationNoticePending } = parsed;
-  if (typeof version === "number" && version > BROWSER_IDENTITY_MODE_VERSION) {
-    return unhealthyResult("future");
-  }
-  if (version !== BROWSER_IDENTITY_MODE_VERSION || mode !== "clean" && mode !== "native" || typeof explicitSelection !== "boolean" || typeof migrationNoticePending !== "boolean") {
-    return unhealthyResult("corrupt");
-  }
-  return {
-    state: "valid",
-    appliedMode: mode,
-    configuredMode: mode,
-    explicitSelection,
-    migrationNoticePending
-  };
-}
-function readBrowserIdentityModeRecord(userDataPath) {
-  try {
-    return parseRecord((0, import_node_fs3.readFileSync)(browserIdentityModeRecordPath(userDataPath), "utf-8"));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return {
-        state: "missing",
-        appliedMode: "clean",
-        configuredMode: "clean",
-        explicitSelection: false,
-        migrationNoticePending: false
-      };
-    }
-    return unhealthyResult("unreadable");
-  }
-}
-function isBrowserIdentityModeFileInput(value) {
-  return typeof value === "object" && value !== null;
-}
-
-// src/main/browser/browser-identity-mode-store.ts
-var modeStore = null;
-var snapshotListeners = /* @__PURE__ */ new Set();
-var migrationNoticeDegraded = false;
-var launchMigrationNoticePending = false;
-function snapshotForRead(result) {
-  return { ...result, restartRequired: false };
-}
-function writeRecord(userDataPath, record) {
-  const filePath = browserIdentityModeRecordPath(userDataPath);
-  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(filePath), { recursive: true });
-  writeFileDurableSync(
-    durableWriteTempPath(filePath),
-    filePath,
-    `${JSON.stringify(record, null, 2)}
-`
-  );
-}
-function backupUnhealthyRecord(userDataPath) {
-  const filePath = browserIdentityModeRecordPath(userDataPath);
-  const bytes = (0, import_node_fs4.readFileSync)(filePath);
-  const backupPath = `${filePath}.${Date.now()}.${(0, import_node_crypto.randomUUID)().slice(0, 8)}.bak`;
-  if ((0, import_node_fs4.existsSync)(backupPath)) {
-    throw new Error(`Browser identity backup ${backupPath} already exists`);
-  }
-  writeFileDurableSync(durableWriteTempPath(backupPath), backupPath, bytes);
-  return backupPath;
-}
-function isBrowserIdentityModeStoreInitialized() {
-  return modeStore !== null;
-}
-function initializeBrowserIdentityModeStore(userDataPath) {
-  if (modeStore) {
-    throw new Error("Browser identity mode store was already initialized");
-  }
-  const snapshot = snapshotForRead(readBrowserIdentityModeRecord(userDataPath));
-  modeStore = { userDataPath, snapshot };
-  return snapshot;
-}
-function requireModeStore() {
-  if (!modeStore) {
-    throw new Error("Browser identity mode store is not initialized");
-  }
-  return modeStore;
-}
-function getBrowserIdentityModeSnapshot() {
-  return requireModeStore().snapshot;
-}
-function getBrowserIdentityMigrationNotice() {
-  const snapshot = requireModeStore().snapshot;
-  return launchMigrationNoticePending || snapshot.migrationNoticePending === true ? { degraded: migrationNoticeDegraded } : null;
-}
-function getBrowserIdentityModeStatus() {
-  return {
-    identity: getBrowserIdentityModeSnapshot(),
-    migrationNotice: getBrowserIdentityMigrationNotice()
-  };
-}
-function notifySnapshotListeners(snapshot) {
-  for (const listener of snapshotListeners) {
-    try {
-      listener(snapshot);
-    } catch (error) {
-      console.error("[browser-identity] Snapshot listener failed:", error);
-    }
-  }
-}
-async function setBrowserIdentityMode(mode, options = {}) {
-  const store = requireModeStore();
-  const current2 = store.snapshot;
-  if (current2.configuredMode === null) {
-    if (!options.reset) {
-      return {
-        ok: false,
-        error: {
-          code: "browser_identity_reset_required",
-          message: current2.state === "future" ? "Browser identity data was written by a newer Orca; update Orca, or reset it explicitly to overwrite it." : `Browser identity data is ${current2.state}; reset it explicitly to overwrite it.`
-        },
-        identity: current2
-      };
-    }
-    try {
-      backupUnhealthyRecord(store.userDataPath);
-    } catch (error) {
-      return {
-        ok: false,
-        error: {
-          code: "browser_identity_backup_failed",
-          message: error instanceof Error ? error.message : String(error)
-        },
-        identity: current2
-      };
-    }
-  }
-  const record = {
-    version: BROWSER_IDENTITY_MODE_VERSION,
-    mode,
-    explicitSelection: true,
-    migrationNoticePending: false
-  };
-  try {
-    writeRecord(store.userDataPath, record);
-  } catch (error) {
-    return {
-      ok: false,
-      error: {
-        code: "browser_identity_write_failed",
-        message: error instanceof Error ? error.message : String(error)
-      },
-      identity: current2
-    };
-  }
-  const identity2 = {
-    state: "valid",
-    appliedMode: current2.appliedMode,
-    configuredMode: mode,
-    explicitSelection: true,
-    migrationNoticePending: false,
-    restartRequired: mode !== current2.appliedMode
-  };
-  store.snapshot = identity2;
-  launchMigrationNoticePending = false;
-  migrationNoticeDegraded = false;
-  notifySnapshotListeners(identity2);
-  return { ok: true, identity: identity2 };
-}
-async function markBrowserIdentityMigrationNoticePending(userDataPath, degraded) {
-  if (!modeStore) {
-    initializeBrowserIdentityModeStore(userDataPath);
-  }
-  const store = requireModeStore();
-  if (store.userDataPath !== userDataPath) {
-    throw new Error("Browser identity mode store userData path changed");
-  }
-  const current2 = store.snapshot;
-  if (current2.explicitSelection === true) {
-    return false;
-  }
-  launchMigrationNoticePending = true;
-  migrationNoticeDegraded ||= degraded;
-  if (current2.configuredMode === null) {
-    return false;
-  }
-  const record = {
-    version: BROWSER_IDENTITY_MODE_VERSION,
-    mode: current2.configuredMode,
-    explicitSelection: current2.explicitSelection,
-    migrationNoticePending: true
-  };
-  try {
-    writeRecord(userDataPath, record);
-  } catch (error) {
-    console.error("[browser-identity] Could not persist retired profile notice:", error);
-    return false;
-  }
-  store.snapshot = {
-    state: "valid",
-    appliedMode: current2.appliedMode,
-    configuredMode: current2.configuredMode,
-    explicitSelection: current2.explicitSelection,
-    migrationNoticePending: true,
-    restartRequired: current2.restartRequired
-  };
-  notifySnapshotListeners(store.snapshot);
-  return true;
-}
 
 // src/main/browser/browser-session-registry.ts
 var import_electron18 = require("electron");
@@ -6685,6 +6696,7 @@ var installBrowserProfiles = (options) => {
   if (!isBrowserIdentityModeStoreInitialized()) {
     initializeBrowserIdentityModeStore((0, import_node_path17.join)(userDataDir, "orca-browser"));
   }
+  ensureBrowserProcessUserAgentIdentity(getBrowserIdentityModeSnapshot().appliedMode);
   browserSessionRegistry.configure({ userDataDir });
   initializeBrowserSessionsForApp({ userDataDir });
   const unregisterPartitionSource = registerAllowedBrowserPartitionSource(

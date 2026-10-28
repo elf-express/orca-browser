@@ -1,9 +1,11 @@
 import { join } from 'node:path'
 import { BROWSER_PROFILE_INVOKE_CHANNELS } from '../shared/browser-ipc-channels'
 import {
+  getBrowserIdentityModeSnapshot,
   initializeBrowserIdentityModeStore,
   isBrowserIdentityModeStoreInitialized
 } from './browser/browser-identity-mode-store'
+import { ensureBrowserProcessUserAgentIdentity } from './browser/browser-process-user-agent'
 import { registerAllowedBrowserPartitionSource } from './browser/browser-partition-allowlist'
 import { browserSessionRegistry } from './browser/browser-session-registry'
 import { initializeBrowserSessionsForApp } from './browser/browser-session-startup'
@@ -22,6 +24,7 @@ export const installBrowserProfiles: BrowserPluginInstaller = (options) => {
   if (!isBrowserIdentityModeStoreInitialized()) {
     initializeBrowserIdentityModeStore(join(userDataDir, 'orca-browser'))
   }
+  ensureBrowserProcessUserAgentIdentity(getBrowserIdentityModeSnapshot().appliedMode)
   browserSessionRegistry.configure({ userDataDir })
   initializeBrowserSessionsForApp({ userDataDir })
   const unregisterPartitionSource = registerAllowedBrowserPartitionSource((partition) =>
