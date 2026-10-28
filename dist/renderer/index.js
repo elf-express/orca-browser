@@ -1320,7 +1320,7 @@ function BrowserPane(props) {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { useEffect as useEffect29 } from "react";
+import { useEffect as useEffect30 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
 import { memo, useCallback as useCallback23, useMemo as useMemo10 } from "react";
@@ -1451,7 +1451,7 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback22, useEffect as useEffect27, useLayoutEffect as useLayoutEffect10, useRef as useRef21, useState as useState23 } from "react";
+import { useCallback as useCallback22, useEffect as useEffect28, useLayoutEffect as useLayoutEffect10, useRef as useRef21, useState as useState23 } from "react";
 import { createPortal as createPortal3 } from "react-dom";
 
 // src/renderer/store/browser-session-store.ts
@@ -2353,8 +2353,8 @@ function useBrowserPageWebviewUrlSync({
   ]);
 }
 
-// src/renderer/components/browser-pane/host-guest/use-browser-page-webview-shortcuts.ts
-import { useEffect as useEffect3 } from "react";
+// src/renderer/components/browser-pane/host-guest/use-browser-page-keyboard-shortcuts.ts
+import { useEffect as useEffect4 } from "react";
 
 // src/renderer/components/browser-pane/host-guest/browser-keyboard.ts
 function isEditableKeyboardTarget(target) {
@@ -2395,6 +2395,7 @@ function matchBrowserShortcutEvent(event) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-shortcuts.ts
+import { useEffect as useEffect3 } from "react";
 function useBrowserPageWebviewShortcuts({
   browserTabId,
   workspaceId,
@@ -2547,7 +2548,9 @@ function useBrowserPageKeyboardShortcuts({
   paneZoomLevelRef,
   setBrowserDefaultZoomLevel,
   showBrowserZoomFeedback,
-  reloadWebviewOrRecoverGuest
+  reloadWebviewOrRecoverGuest,
+  grabIsInteractive = false,
+  handleGrabActionShortcut
 }) {
   useBrowserPageWebviewShortcuts({
     browserTabId,
@@ -2561,6 +2564,38 @@ function useBrowserPageKeyboardShortcuts({
     showBrowserZoomFeedback,
     reloadWebviewOrRecoverGuest
   });
+  useEffect4(() => {
+    if (!isActive || !grabIsInteractive || !handleGrabActionShortcut) {
+      return;
+    }
+    const handleKeyDown = (e) => {
+      if (isEditableKeyboardTarget(e.target)) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key !== "c" && key !== "s") {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      handleGrabActionShortcut(key);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [grabIsInteractive, handleGrabActionShortcut, isActive]);
+  useEffect4(() => {
+    if (!isActive || !grabIsInteractive || !handleGrabActionShortcut) {
+      return;
+    }
+    return window.browserAPI.onGrabActionShortcut(({ browserPageId, key }) => {
+      if (browserPageId === browserTabId) {
+        handleGrabActionShortcut(key);
+      }
+    });
+  }, [browserTabId, grabIsInteractive, handleGrabActionShortcut, isActive]);
 }
 
 // src/renderer/ui/tooltip.tsx
@@ -2621,7 +2656,7 @@ function TooltipContent({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserAddressBar.tsx
-import { useCallback as useCallback5, useEffect as useEffect6, useLayoutEffect as useLayoutEffect2, useMemo as useMemo3, useRef as useRef4, useState as useState2 } from "react";
+import { useCallback as useCallback5, useEffect as useEffect7, useLayoutEffect as useLayoutEffect2, useMemo as useMemo3, useRef as useRef4, useState as useState2 } from "react";
 import { Globe as Globe2 } from "lucide-react";
 
 // src/renderer/ui/input.tsx
@@ -3153,9 +3188,9 @@ function useBrowserAddressBarClickSelect() {
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-address-bar-dismissal.ts
-import { useEffect as useEffect4 } from "react";
+import { useEffect as useEffect5 } from "react";
 function useBrowserAddressBarDismissal(open, dismissSuggestions) {
-  useEffect4(() => {
+  useEffect5(() => {
     if (!open) {
       return;
     }
@@ -3375,7 +3410,7 @@ function BrowserAddressBar({
   const closingResetTimerRef = useRef4(null);
   const slotRef = useRef4(null);
   const [inlineWidth, setInlineWidth] = useState2(null);
-  useEffect6(() => {
+  useEffect7(() => {
     const slot = slotRef.current;
     if (!slot || typeof ResizeObserver === "undefined") {
       return;
@@ -3602,7 +3637,7 @@ function BrowserAddressBar({
     ]
   );
   useBrowserAddressBarDismissal(open, dismissSuggestions);
-  useEffect6(() => {
+  useEffect7(() => {
     if (!dismissSuggestionsRef) {
       return;
     }
@@ -4247,7 +4282,7 @@ function BrowserChromeElementToolButtons({
 }
 
 // src/renderer/components/browser-pane/annotate/MarkupDrawButton.tsx
-import { useEffect as useEffect7 } from "react";
+import { useEffect as useEffect8 } from "react";
 import { PenTool } from "lucide-react";
 
 // src/renderer/ui/badge.tsx
@@ -4352,7 +4387,7 @@ function MarkupDrawButton({
   const label = translate("auto.components.browser-pane.markup.drawButton", "Draw on screenshot");
   const { hintOpen, dismissHint } = useMarkupDrawHint(surfaceActive && !disabled && !active);
   const showHint = hintOpen && surfaceActive;
-  useEffect7(() => {
+  useEffect8(() => {
     if (!showHint) {
       return;
     }
@@ -4674,7 +4709,7 @@ function BrowserReloadControl({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
-import { useCallback as useCallback7, useEffect as useEffect10, useMemo as useMemo4, useState as useState8 } from "react";
+import { useCallback as useCallback7, useEffect as useEffect11, useMemo as useMemo4, useState as useState8 } from "react";
 import { Import as Import2 } from "lucide-react";
 import { toast as toast4 } from "sonner";
 
@@ -4963,17 +4998,17 @@ function DialogDescription({
 }
 
 // src/renderer/components/settings/BrowserSettingsPanel.tsx
-import { useEffect as useEffect9, useState as useState7 } from "react";
+import { useEffect as useEffect10, useState as useState7 } from "react";
 
 // src/renderer/components/settings/BrowserNewProfileDialog.tsx
 import { useState as useState4 } from "react";
 import { toast as toast2 } from "sonner";
 
 // src/renderer/hooks/useMountedRef.ts
-import { useEffect as useEffect8, useRef as useRef8 } from "react";
+import { useEffect as useEffect9, useRef as useRef8 } from "react";
 function useMountedRef() {
   const mountedRef = useRef8(true);
-  useEffect8(() => {
+  useEffect9(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -5598,7 +5633,7 @@ function BrowserSettingsPanel(props) {
     const activePage = s.pagesByScope[scopeId]?.find((page) => page.id === activePageId);
     return activePage ? activePage.sessionProfileId ?? "default" : void 0;
   });
-  useEffect9(() => {
+  useEffect10(() => {
     const state = useBrowserSessionStore.getState();
     if (!state.settingsLoaded) {
       void state.loadSettings();
@@ -5808,7 +5843,7 @@ function BrowserImportHintButton({
     void updateSettings({ importHintHidden: true });
     setOpen(false);
   }, [updateSettings]);
-  useEffect10(() => {
+  useEffect11(() => {
     if (!open) {
       return;
     }
@@ -6672,7 +6707,7 @@ function BrowserPageChromeHeader({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-chrome-focus.ts
-import { useCallback as useCallback8, useEffect as useEffect11, useRef as useRef9 } from "react";
+import { useCallback as useCallback8, useEffect as useEffect12, useRef as useRef9 } from "react";
 
 // src/renderer/components/browser-pane/host-guest/browser-focus.ts
 var ORCA_BROWSER_FOCUS_REQUEST_EVENT = "orca:browser-focus-request";
@@ -6781,7 +6816,7 @@ function useBrowserPageChromeFocus({
     },
     [addressBarInputRef, cancelAddressBarFocusGrab, focusAddressBarNow]
   );
-  useEffect11(() => {
+  useEffect12(() => {
     if (!isActive) {
       return;
     }
@@ -6790,7 +6825,7 @@ function useBrowserPageChromeFocus({
     }
     return startAddressBarFocusGrab();
   }, [browserTabId, consumeAddressBarFocusRequest, isActive, startAddressBarFocusGrab]);
-  useEffect11(() => {
+  useEffect12(() => {
     if (!isActive) {
       return;
     }
@@ -6800,7 +6835,7 @@ function useBrowserPageChromeFocus({
       }
     });
   }, [browserTabId, focusAddressBarNow, isActive]);
-  useEffect11(() => {
+  useEffect12(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -6818,7 +6853,7 @@ function useBrowserPageChromeFocus({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, focusAddressBarNow, workspaceId]);
-  useEffect11(() => {
+  useEffect12(() => {
     if (!isActive) {
       return;
     }
@@ -6848,7 +6883,7 @@ function useBrowserPageChromeFocus({
       window.cancelAnimationFrame(frameId);
     };
   }, [browserTabId, cancelAddressBarFocusGrab, focusGuestNow, isActive, startAddressBarFocusGrab]);
-  useEffect11(() => {
+  useEffect12(() => {
     if (!isActive) {
       return;
     }
@@ -6902,9 +6937,9 @@ function useWebviewGuestFocus(webviewRef) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-viewport-scroll-reporting.ts
-import { useEffect as useEffect12 } from "react";
+import { useEffect as useEffect13 } from "react";
 function useBrowserPageViewportScrollReporting(browserPageId, scroller, viewportPresetId) {
-  useEffect12(() => {
+  useEffect13(() => {
     let reportFrame = null;
     const send = () => {
       reportFrame = null;
@@ -6962,7 +6997,7 @@ function useBrowserPageSlotViewport(workspaceId) {
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
 import {
   useCallback as useCallback10,
-  useEffect as useEffect13,
+  useEffect as useEffect14,
   useLayoutEffect as useLayoutEffect4,
   useRef as useRef10,
   useState as useState10
@@ -8096,16 +8131,16 @@ function useBrowserPageWebviewLifecycle({
       setBrowserPageWebviewInputLock(webview, inputLocked);
     }
   }, [inputLocked, webviewRef]);
-  useEffect13(() => {
+  useEffect14(() => {
     initialBrowserUrlRef.current = browserTabUrl;
   }, [browserTabId, browserTabUrl]);
-  useEffect13(() => {
+  useEffect14(() => {
     browserTabUrlRef.current = browserTabUrl;
   }, [browserTabUrl, browserTabUrlRef]);
-  useEffect13(() => {
+  useEffect14(() => {
     activeLoadFailureRef.current = browserTabLoadError;
   }, [activeLoadFailureRef, browserTabLoadError]);
-  useEffect13(() => {
+  useEffect14(() => {
     onUpdatePageStateRef.current = onUpdatePageState;
     onSetUrlRef.current = onSetUrl;
     addBrowserHistoryEntryRef.current = addBrowserHistoryEntry;
@@ -8152,7 +8187,7 @@ function useBrowserPageWebviewLifecycle({
   useLayoutEffect4(() => {
     invalidateBrowserAnnotationDocumentRef.current = invalidateBrowserAnnotationDocument;
   }, [invalidateBrowserAnnotationDocument]);
-  useEffect13(() => {
+  useEffect14(() => {
     return attachBrowserPageWebview({
       browserTabId,
       browserTabUrl,
@@ -8209,14 +8244,14 @@ function useBrowserPageWebviewLifecycle({
     syncNavigationState,
     syncBrowserAnnotationViewportBridge
   ]);
-  useEffect13(() => {
+  useEffect14(() => {
     const becamePaintable = isPaintable && !wasPaintableForGuestValidationRef.current;
     wasPaintableForGuestValidationRef.current = isPaintable;
     if (becamePaintable) {
       validateVisibleGuestRegistrationRef.current();
     }
   }, [isPaintable]);
-  useEffect13(() => {
+  useEffect14(() => {
     syncBrowserAnnotationViewportBridge();
   }, [
     browserAnnotations,
@@ -8241,7 +8276,7 @@ function useBrowserPageWebviewPartition(args) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-zoom-feedback.ts
-import { useCallback as useCallback11, useEffect as useEffect14, useRef as useRef11, useState as useState11 } from "react";
+import { useCallback as useCallback11, useEffect as useEffect15, useRef as useRef11, useState as useState11 } from "react";
 var BROWSER_PAGE_ZOOM_FEEDBACK_MS = 1400;
 var noopSetDefaultZoomLevel = () => {
 };
@@ -8256,7 +8291,7 @@ function useBrowserPageZoomFeedback(browserTabId) {
   );
   const [browserZoomFeedbackVisible, setBrowserZoomFeedbackVisible] = useState11(false);
   const browserZoomFeedbackTimerRef = useRef11(void 0);
-  useEffect14(() => {
+  useEffect15(() => {
     return () => {
       clearTimeout(browserZoomFeedbackTimerRef.current);
     };
@@ -8281,7 +8316,7 @@ function useBrowserPageZoomFeedback(browserTabId) {
 }
 
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
-import { useEffect as useEffect15, useState as useState12 } from "react";
+import { useEffect as useEffect16, useState as useState12 } from "react";
 
 // src/renderer/components/browser-pane/navigate/browser-notices.ts
 function humanizePermission(permission) {
@@ -8365,14 +8400,14 @@ function formatLoadFailureRecoveryHint(meta, loadError) {
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
 function useBrowserPageResourceNotices(browserTabId) {
   const [resourceNotice, setResourceNotice] = useState12(null);
-  useEffect15(() => {
+  useEffect16(() => {
     if (!resourceNotice) {
       return;
     }
     const timer = setTimeout(() => setResourceNotice(null), 1e4);
     return () => clearTimeout(timer);
   }, [resourceNotice]);
-  useEffect15(() => {
+  useEffect16(() => {
     return window.browserAPI.onPermissionDenied((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -8380,7 +8415,7 @@ function useBrowserPageResourceNotices(browserTabId) {
       setResourceNotice(formatPermissionNotice(event));
     });
   }, [browserTabId]);
-  useEffect15(() => {
+  useEffect16(() => {
     return window.browserAPI.onPopup((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -8397,7 +8432,7 @@ function useBrowserPageResourceNotices(browserTabId) {
 // src/renderer/components/browser-pane/annotate/use-browser-page-annotation-send.ts
 import {
   useCallback as useCallback12,
-  useEffect as useEffect16,
+  useEffect as useEffect17,
   useLayoutEffect as useLayoutEffect5,
   useMemo as useMemo6,
   useRef as useRef12,
@@ -8971,7 +9006,7 @@ function useBrowserPageAnnotationSend({
     browserAnnotationsRef.current = browserAnnotations;
     sendToAgentRef.current = sendToAgent;
   }, [browserAnnotations, sendToAgent]);
-  useEffect16(() => {
+  useEffect17(() => {
     return () => {
       clearTimeout(annotationCopyTimerRef.current);
     };
@@ -9050,7 +9085,7 @@ function useBrowserPageAnnotationSend({
 // src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
 import {
   useCallback as useCallback13,
-  useEffect as useEffect18,
+  useEffect as useEffect19,
   useLayoutEffect as useLayoutEffect6,
   useRef as useRef13,
   useState as useState14
@@ -9058,7 +9093,7 @@ import {
 import { toast as toast7 } from "sonner";
 
 // src/renderer/components/browser-pane/annotate/use-browser-page-annotation-viewport-tracking.ts
-import { useEffect as useEffect17 } from "react";
+import { useEffect as useEffect18 } from "react";
 function useBrowserPageAnnotationViewportTracking({
   isActive,
   pendingAnnotation,
@@ -9067,7 +9102,7 @@ function useBrowserPageAnnotationViewportTracking({
   scroller,
   setBrowserOverlayViewport
 }) {
-  useEffect17(() => {
+  useEffect18(() => {
     if (!isActive || !pendingAnnotation && annotationCount === 0) {
       return;
     }
@@ -9251,7 +9286,7 @@ function useBrowserPageGrabAnnotations({
   ]);
   const grabMenuActionTakenRef = useRef13(false);
   const addBrowserPageAnnotation = useBrowserAnnotationStore((s) => s.addBrowserPageAnnotation);
-  useEffect18(() => () => clearTimeout(grabToastTimerRef.current), []);
+  useEffect19(() => () => clearTimeout(grabToastTimerRef.current), []);
   const dismissGrabToast = useCallback13(() => {
     clearTimeout(grabToastTimerRef.current);
     setGrabToast(null);
@@ -9290,7 +9325,7 @@ function useBrowserPageGrabAnnotations({
     },
     [containerRef, dismissGrabToast, mountedRef, webviewRef]
   );
-  useEffect18(() => {
+  useEffect19(() => {
     if (grab.state !== "confirming" || !grab.payload) {
       return;
     }
@@ -9450,7 +9485,7 @@ function useBrowserPageGrabAnnotations({
       setGrabReviewSending(false);
     }
   }, [handleGrabSendToAgent, updateGrabReview]);
-  useEffect18(() => {
+  useEffect19(() => {
     if (grab.state === "idle") {
       updateGrabReview(null);
     }
@@ -9520,7 +9555,7 @@ function useBrowserPageGrabAnnotations({
 }
 
 // src/renderer/components/browser-pane/annotate/useGrabMode.ts
-import { useCallback as useCallback14, useEffect as useEffect19, useLayoutEffect as useLayoutEffect7, useRef as useRef14, useState as useState15 } from "react";
+import { useCallback as useCallback14, useEffect as useEffect20, useLayoutEffect as useLayoutEffect7, useRef as useRef14, useState as useState15 } from "react";
 var opIdCounter = 0;
 function nextOpId() {
   return `grab-${++opIdCounter}-${Date.now()}`;
@@ -9562,7 +9597,7 @@ function useGrabMode(browserPageId) {
   useLayoutEffect7(() => {
     browserTabIdRef.current = browserPageId;
   }, [browserPageId]);
-  useEffect19(() => {
+  useEffect20(() => {
     return () => {
       const grabTabId = grabTabIdRef.current;
       if (grabTabId) {
@@ -9689,7 +9724,7 @@ function useGrabMode(browserPageId) {
     setError(null);
     setContextMenu(false);
   }, []);
-  useEffect19(() => {
+  useEffect20(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && state !== "idle") {
         const element = e.target && typeof e.target === "object" && "closest" in e.target ? e.target : null;
@@ -10321,11 +10356,23 @@ function isAnnotateChord(event, platform) {
   }
   return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyN";
 }
+function isGrabChord(event, platform) {
+  if (event.repeat || event.nativeEvent.isComposing || isEditableKeyboardTarget(event.target)) {
+    return false;
+  }
+  if (event.code !== "KeyC" || event.shiftKey || event.altKey) {
+    return false;
+  }
+  if (window.getSelection()?.isCollapsed === false) {
+    return false;
+  }
+  return platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
 import {
   useCallback as useCallback17,
-  useEffect as useEffect20,
+  useEffect as useEffect21,
   useLayoutEffect as useLayoutEffect9,
   useRef as useRef17,
   useState as useState17
@@ -10344,7 +10391,7 @@ function BrowserPageContextMenu({
   const createBrowserPage = useBrowserStore((s) => s.createBrowserPage);
   const [contextMenu, setContextMenu] = useState17(null);
   const contextMenuRef = useRef17(null);
-  useEffect20(() => {
+  useEffect21(() => {
     return window.browserAPI.onContextMenuRequested((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -10360,7 +10407,7 @@ function BrowserPageContextMenu({
       });
     });
   }, [browserPageId]);
-  useEffect20(() => {
+  useEffect21(() => {
     return window.browserAPI.onContextMenuDismissed((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -10382,7 +10429,7 @@ function BrowserPageContextMenu({
     }
     return [...el.querySelectorAll('[role="menuitem"]:not(:disabled)')];
   }, []);
-  useEffect20(() => {
+  useEffect21(() => {
     if (!contextMenu) {
       return;
     }
@@ -10395,7 +10442,7 @@ function BrowserPageContextMenu({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [closeMenu, contextMenu]);
-  useEffect20(() => {
+  useEffect21(() => {
     if (!contextMenu) {
       return;
     }
@@ -10725,7 +10772,7 @@ function BrowserPageZoomIndicator({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { useCallback as useCallback18, useEffect as useEffect21, useRef as useRef18, useState as useState18 } from "react";
+import { useCallback as useCallback18, useEffect as useEffect22, useRef as useRef18, useState as useState18 } from "react";
 import { ChevronUp, ChevronDown, X as X3 } from "lucide-react";
 
 // src/renderer/lib/find-query-bounds.ts
@@ -10789,7 +10836,7 @@ function BrowserFind({
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  useEffect21(() => {
+  useEffect22(() => {
     if (isOpen) {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -10797,7 +10844,7 @@ function BrowserFind({
       safeStopFindInPage();
     }
   }, [isOpen, safeStopFindInPage]);
-  useEffect21(() => {
+  useEffect22(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
     if (!isOpen) {
@@ -10823,7 +10870,7 @@ function BrowserFind({
     const id = window.setTimeout(runFind, 200);
     return () => window.clearTimeout(id);
   }, [isOpen, requestQuery, safeFindInPage, safeStopFindInPage]);
-  useEffect21(() => {
+  useEffect22(() => {
     const webview = webviewRef.current;
     if (!webview || !isOpen) {
       return;
@@ -10935,7 +10982,7 @@ import { createPortal as createPortal2 } from "react-dom";
 import { Copy as Copy4, Image as Image4, MessageSquarePlus as MessageSquarePlus7 } from "lucide-react";
 
 // src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
-import { useEffect as useEffect22, useState as useState19 } from "react";
+import { useEffect as useEffect23, useState as useState19 } from "react";
 import { CircleCheck, Copy as Copy3, MessageSquarePlus as MessageSquarePlus4, Pencil, Send, Trash2 as Trash22 } from "lucide-react";
 
 // src/renderer/ui/toggle-group.tsx
@@ -11061,7 +11108,7 @@ function BrowserPageAnnotationTray({
   const [editingAnnotationId, setEditingAnnotationId] = useState19(null);
   const [editComment, setEditComment] = useState19("");
   const [editIntent, setEditIntent] = useState19("change");
-  useEffect22(() => {
+  useEffect23(() => {
     if (editingAnnotationId && !browserAnnotations.some((annotation) => annotation.id === editingAnnotationId)) {
       setEditingAnnotationId(null);
     }
@@ -11640,7 +11687,7 @@ function IconButton({
 }
 
 // src/renderer/components/browser-pane/annotate/useMarkupEditor.ts
-import { useCallback as useCallback20, useEffect as useEffect24, useMemo as useMemo8, useRef as useRef19, useState as useState20 } from "react";
+import { useCallback as useCallback20, useEffect as useEffect25, useMemo as useMemo8, useRef as useRef19, useState as useState20 } from "react";
 
 // src/renderer/components/browser-pane/annotate/markup-canvas-render.ts
 function sceneDevicePixels(cssWidth, cssHeight, dpr) {
@@ -11687,7 +11734,7 @@ function blitMarkupScene(canvas, committedLayer, inProgress, cssWidth, cssHeight
 }
 
 // src/renderer/components/browser-pane/annotate/useMarkupKeyboardShortcuts.ts
-import { useEffect as useEffect23 } from "react";
+import { useEffect as useEffect24 } from "react";
 function isTypingTarget(target) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -11697,7 +11744,7 @@ function isTypingTarget(target) {
 }
 function useMarkupKeyboardShortcuts(params) {
   const { pendingText, setPendingText, undo, redo, onCancel } = params;
-  useEffect23(() => {
+  useEffect24(() => {
     const isMac = navigator.userAgent.includes("Mac");
     const onKeyDown = (event) => {
       if (isTypingTarget(event.target)) {
@@ -12057,7 +12104,7 @@ function useMarkupEditor(busy, onCancel) {
   const [width, setWidth] = useState20(DEFAULT_MARKUP_WIDTH);
   const [fontSize, setFontSize] = useState20(DEFAULT_MARKUP_FONT_SIZE);
   const [pendingText, setPendingText] = useState20(null);
-  useEffect24(() => {
+  useEffect25(() => {
     const root = rootRef.current;
     if (!root) {
       return void 0;
@@ -12078,14 +12125,14 @@ function useMarkupEditor(busy, onCancel) {
       window.removeEventListener("resize", measure);
     };
   }, []);
-  useEffect24(() => {
+  useEffect25(() => {
     const layer = committedLayerRef.current;
     if (!layer) {
       return;
     }
     renderCommittedLayer(layer, shapes, size.width, size.height, size.dpr);
   }, [shapes, size]);
-  useEffect24(() => {
+  useEffect25(() => {
     const canvas = canvasRef.current;
     const layer = committedLayerRef.current;
     if (!canvas || !layer) {
@@ -12096,7 +12143,7 @@ function useMarkupEditor(busy, onCancel) {
     });
     return () => cancelAnimationFrame(handle);
   }, [shapes, drawing, size]);
-  useEffect24(() => {
+  useEffect25(() => {
     if (!pendingText) {
       return void 0;
     }
@@ -12308,7 +12355,7 @@ function MarkupOverlay({
 }
 
 // src/renderer/components/browser-pane/annotate/pending-browser-annotation-card.tsx
-import { useEffect as useEffect25, useState as useState22 } from "react";
+import { useEffect as useEffect26, useState as useState22 } from "react";
 import { CornerDownLeft, MessageSquarePlus as MessageSquarePlus6 } from "lucide-react";
 import { jsx as jsx47, jsxs as jsxs38 } from "react/jsx-runtime";
 function PendingBrowserAnnotationCard({
@@ -12320,7 +12367,7 @@ function PendingBrowserAnnotationCard({
 }) {
   const [card, setCard] = useState22(null);
   const [cardHeight, setCardHeight] = useState22(null);
-  useEffect25(() => {
+  useEffect26(() => {
     if (!card || typeof ResizeObserver === "undefined") {
       return;
     }
@@ -12739,7 +12786,7 @@ function BrowserPageViewportOverlays({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
-import { useEffect as useEffect26 } from "react";
+import { useEffect as useEffect27 } from "react";
 function useBrowserPageFindShortcuts({
   browserTabId,
   workspaceId,
@@ -12747,7 +12794,7 @@ function useBrowserPageFindShortcuts({
   chromeShortcutScope,
   setFindOpen
 }) {
-  useEffect26(() => {
+  useEffect27(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -12765,7 +12812,7 @@ function useBrowserPageFindShortcuts({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, setFindOpen, workspaceId]);
-  useEffect26(() => {
+  useEffect27(() => {
     if (!isActive) {
       return;
     }
@@ -12776,7 +12823,7 @@ function useBrowserPageFindShortcuts({
       }
     );
   }, [browserTabId, isActive, setFindOpen, workspaceId]);
-  useEffect26(() => {
+  useEffect27(() => {
     if (!isActive) {
       setFindOpen(false);
     }
@@ -12818,7 +12865,7 @@ function BrowserPagePane({
     pageViewportScroller,
     browserTab.viewportPresetId ?? null
   );
-  useEffect27(() => {
+  useEffect28(() => {
     const subscribe = window.browserAPI?.onScrollPage;
     if (!subscribe || !pageViewportScroller || !browserTab.viewportPresetId) {
       return;
@@ -12863,13 +12910,13 @@ function BrowserPagePane({
   const zoom = useBrowserPageZoomFeedback(browserTab.id);
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
   const [addressBarValue, setAddressBarValue] = useState23(() => toDisplayUrl(browserTab.url));
-  useEffect27(() => {
+  useEffect28(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
     }
     setAddressBarValue(toDisplayUrl(browserTab.url));
   }, [browserTab.url]);
-  useEffect27(() => {
+  useEffect28(() => {
     addressBarValueRef.current = addressBarValue;
   }, [addressBarValue]);
   const guestFocus = useWebviewGuestFocus(webviewRef);
@@ -12905,36 +12952,29 @@ function BrowserPagePane({
     currentUrl: getLiveBrowserUrl(browserTab.id) ?? browserTab.url
   });
   const startGrabIntentRef = useRef21(grabAnnotations.startGrabIntent);
-  const handleGrabActionShortcutRef = useRef21(grabAnnotations.handleGrabActionShortcut);
   useLayoutEffect10(() => {
     startGrabIntentRef.current = grabAnnotations.startGrabIntent;
-    handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut;
-  }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent]);
+  }, [grabAnnotations.startGrabIntent]);
   const markupIsActive = markup.isActive;
   const grabIsInteractive = grab.state !== "idle" && grab.state !== "error";
-  useEffect27(() => {
+  useEffect28(() => {
     return window.browserAPI.onGrabModeToggle((pageId, intent) => {
       if (pageId === browserTab.id && !markupIsActive) {
         startGrabIntentRef.current(intent);
       }
     });
   }, [browserTab.id, markupIsActive]);
-  useEffect27(() => {
-    if (!grabIsInteractive) {
+  const handlePaneKeyDown = (event) => {
+    if (!isActive || chromeShortcutScope === "inactive" || markupIsActive || !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)) {
       return;
     }
-    return window.browserAPI.onGrabActionShortcut(({ browserPageId, key }) => {
-      if (browserPageId === browserTab.id) {
-        handleGrabActionShortcutRef.current(key);
-      }
-    });
-  }, [browserTab.id, grabIsInteractive]);
-  const handlePaneKeyDown = (event) => {
-    if (!isActive || chromeShortcutScope === "inactive" || markupIsActive || !isAnnotateChord(event, getRendererPlatform()) || !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)) {
+    const platform = getRendererPlatform();
+    const intent = isAnnotateChord(event, platform) ? "annotate" : isGrabChord(event, platform) ? "copy" : null;
+    if (intent === null) {
       return;
     }
     event.preventDefault();
-    startGrabIntentRef.current("annotate");
+    startGrabIntentRef.current(intent);
   };
   const navigateToUrl = useCallback22(
     (url) => {
@@ -13049,7 +13089,9 @@ function BrowserPagePane({
     paneZoomLevelRef: zoom.paneZoomLevelRef,
     setBrowserDefaultZoomLevel: zoom.setBrowserDefaultZoomLevel,
     showBrowserZoomFeedback: zoom.showBrowserZoomFeedback,
-    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest
+    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest,
+    grabIsInteractive,
+    handleGrabActionShortcut: grabAnnotations.handleGrabActionShortcut
   });
   const liveBrowserUrl = getLiveBrowserUrl(browserTab.id) ?? browserTab.url;
   const isBlankTab = browserTab.url === "about:blank" || browserTab.url === ORCA_BROWSER_BLANK_URL;
@@ -13061,14 +13103,14 @@ function BrowserPagePane({
     feedbackVisible: zoom.browserZoomFeedbackVisible,
     isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
   });
-  useEffect27(() => {
+  useEffect28(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.pointerEvents = inputLocked ? "none" : "auto";
   }, [inputLocked]);
-  useEffect27(() => {
+  useEffect28(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
@@ -13278,9 +13320,9 @@ var BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer2() {
 });
 
 // src/renderer/ipc/browser-state-ipc-bridge.ts
-import { useEffect as useEffect28 } from "react";
+import { useEffect as useEffect29 } from "react";
 function useBrowserStateIpcBridge() {
-  useEffect28(() => {
+  useEffect29(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -13293,7 +13335,7 @@ function useBrowserStateIpcBridge() {
       useBrowserStore.getState().createBrowserPage(scopeId, url, { activate: activate ?? true });
     });
   }, []);
-  useEffect28(() => {
+  useEffect29(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -13307,7 +13349,7 @@ function useBrowserStateIpcBridge() {
       });
     });
   }, []);
-  useEffect28(() => {
+  useEffect29(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -13338,13 +13380,13 @@ import { jsx as jsx54, jsxs as jsxs44 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
-  useEffect29(() => {
+  useEffect30(() => {
     setBrowserRendererHost(host);
     return () => clearBrowserRendererHost(host);
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  useEffect29(() => {
+  useEffect30(() => {
     if (!hasBrowserApi) {
       return;
     }

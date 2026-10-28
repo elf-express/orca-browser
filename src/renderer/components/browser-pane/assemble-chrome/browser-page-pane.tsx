@@ -36,7 +36,7 @@ import { useGrabMode } from '../annotate/useGrabMode'
 import { useBrowserPageMarkupCapture } from '../annotate/use-browser-page-markup-capture'
 import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 import { getRendererPlatform } from '../../../lib/platform'
-import { isAnnotateChord } from '../annotate/browser-annotate-chord'
+import { isAnnotateChord, isGrabChord } from '../annotate/browser-annotate-chord'
 import { BrowserPageContextMenu } from './browser-page-context-menu'
 import { BrowserPageViewportOverlays } from './browser-page-viewport-overlays'
 import { useBrowserPageFindShortcuts } from './use-browser-page-find-shortcuts'
@@ -183,11 +183,9 @@ export function BrowserPagePane({
     currentUrl: getLiveBrowserUrl(browserTab.id) ?? browserTab.url
   })
   const startGrabIntentRef = useRef(grabAnnotations.startGrabIntent)
-  const handleGrabActionShortcutRef = useRef(grabAnnotations.handleGrabActionShortcut)
   useLayoutEffect(() => {
     startGrabIntentRef.current = grabAnnotations.startGrabIntent
-    handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut
-  }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent])
+  }, [grabAnnotations.startGrabIntent])
   // While the markup overlay is open the picker must not start behind it.
   const markupIsActive = markup.isActive
   const grabIsInteractive = grab.state !== 'idle' && grab.state !== 'error'
@@ -200,31 +198,28 @@ export function BrowserPagePane({
       }
     })
   }, [browserTab.id, markupIsActive])
-  useEffect(() => {
-    if (!grabIsInteractive) {
-      return
-    }
-    return window.browserAPI!.onGrabActionShortcut(({ browserPageId, key }) => {
-      if (browserPageId === browserTab.id) {
-        handleGrabActionShortcutRef.current(key)
-      }
-    })
-  }, [browserTab.id, grabIsInteractive])
-
-  // Annotate chord while the pane itself holds focus; the listener lives on the pane element so
+  // Grab and Annotate chords while the pane itself holds focus; the listener lives on the pane element so
   // it never sees keys typed elsewhere in the host window.
   const handlePaneKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (
       !isActive ||
       chromeShortcutScope === 'inactive' ||
       markupIsActive ||
-      !isAnnotateChord(event, getRendererPlatform()) ||
       !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)
     ) {
       return
     }
+    const platform = getRendererPlatform()
+    const intent = isAnnotateChord(event, platform)
+      ? 'annotate'
+      : isGrabChord(event, platform)
+        ? 'copy'
+        : null
+    if (intent === null) {
+      return
+    }
     event.preventDefault()
-    startGrabIntentRef.current('annotate')
+    startGrabIntentRef.current(intent)
   }
 
   const navigateToUrl = useCallback(
@@ -342,7 +337,9 @@ export function BrowserPagePane({
     paneZoomLevelRef: zoom.paneZoomLevelRef,
     setBrowserDefaultZoomLevel: zoom.setBrowserDefaultZoomLevel,
     showBrowserZoomFeedback: zoom.showBrowserZoomFeedback,
-    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest
+    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest,
+    grabIsInteractive,
+    handleGrabActionShortcut: grabAnnotations.handleGrabActionShortcut
   })
 
   // The live URL is cached by the navigation handlers before their store writes re-render the pane.

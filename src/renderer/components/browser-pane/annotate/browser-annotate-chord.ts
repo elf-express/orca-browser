@@ -24,3 +24,20 @@ export function isAnnotateChord(event: AnnotateChordEvent, platform: RendererPla
   }
   return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyN'
 }
+
+/**
+ * The Grab chord: Cmd+C on macOS, Ctrl+C elsewhere. Native copy keeps priority inside fields and
+ * while text is selected.
+ */
+export function isGrabChord(event: AnnotateChordEvent, platform: RendererPlatform): boolean {
+  if (event.repeat || event.nativeEvent.isComposing || isEditableKeyboardTarget(event.target)) {
+    return false
+  }
+  if (event.code !== 'KeyC' || event.shiftKey || event.altKey) {
+    return false
+  }
+  if (window.getSelection()?.isCollapsed === false) {
+    return false
+  }
+  return platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+}
