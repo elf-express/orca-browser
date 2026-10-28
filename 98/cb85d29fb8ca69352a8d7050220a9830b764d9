@@ -1,0 +1,41 @@
+src/main/browser/__mocks__/browser-session-registry-persistence-fixture.ts
+  s_aa47a447e01641::t_cfb839ea941106 41-42,54-56,63-64,68-72,139-140,143-146,177-179
+src/main/browser/browser-media-access.ts
+  s_aa47a447e01641::t_aa68859eab8119 1-63
+src/main/browser/browser-session-partition-policies.test.ts
+  s_aa47a447e01641::t_14994469a04b30 18-20,36-39,47-51,153-213
+src/main/browser/browser-session-partition-policies.ts
+  s_26479e7c9fdb64::t_e682b55b20da8a 7-8,50-64,75-128,133,136-138
+src/main/browser/browser-session-permission-policy.ts
+  s_aa47a447e01641::t_9eb5e6e6cbb803 1-34
+src/main/browser/browser-session-registry.persistence.test.ts
+  s_aa47a447e01641::t_2dabd7d793caf1 202-409
+src/main/browser/browser-session-registry.test.ts
+  s_aa47a447e01641::t_730ab98d46376c 20-23,37-38,65-67,310-389
+src/main/browser/browser-session-registry.ts
+  s_aa47a447e01641::t_d4af9ccfc731ff 18-22,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98cb85d29fb8ca69352a8d7050220a9830b764d9",
+  "prompts": {},
+  "sessions": {
+    "s_26479e7c9fdb64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b230b5dd-eb1a-4c22-bdea-256b7dcf35e0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
