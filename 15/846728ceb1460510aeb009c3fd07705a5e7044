@@ -1,0 +1,118 @@
+src/renderer/components/settings/BrowserSettingsDialog.tsx
+  s_aa47a447e01641::t_f23d27e20480fa 1-23
+  s_aa47a447e01641::t_64a52088c76d51 24-26
+src/renderer/store/browser-session-store.ts
+  s_aa47a447e01641::t_f0d0c7e8b8c956 1-214
+src/renderer/components/settings/BrowserSettingsPanel.tsx
+  s_aa47a447e01641::t_34c25483d57b73 1-53
+src/renderer/components/settings/BrowserSessionCookiesSection.tsx
+  s_aa47a447e01641::t_75efc3c96c3ece 1-66
+src/renderer/components/settings/BrowserUserAgentSetting.tsx
+  s_aa47a447e01641::t_5d0383c7d88ff1 1-111
+src/renderer/components/settings/BrowserSettingsPanel.test.tsx
+  s_aa47a447e01641::t_e5b4753aa87142 1-190
+  s_aa47a447e01641::t_41c34a104d07c7 191-192
+src/renderer/components/settings/BrowserProfileRow.tsx
+  s_aa47a447e01641::t_9582aad4d7ae9c 1-274
+src/renderer/store/browser-session-store.test.ts
+  s_aa47a447e01641::t_dd7e21981654a2 1-271
+src/renderer/components/browser-pane/assemble-chrome/BrowserToolbarMenu.test.tsx
+  s_aa47a447e01641::t_4d9aa06c131a73 1-224
+  s_aa47a447e01641::t_8c2a19976dc295 225-226
+dist/i18n-keys.json
+  s_aa47a447e01641::t_3bf5e2de5c1592 2-3,13-22,41-50,52-62,64-70,72-92,96-106,118-128
+dist/renderer/index.d.ts
+  s_aa47a447e01641::t_4979164cfd7dfa 280-285
+dist/renderer/index.js
+  s_aa47a447e01641::t_57e72517b8a92a 32-43,873-876,1015-1024,1090,1093,1097,1221,1224-1370,1373-1376,3125,3208,3211,3607-3611,3658-3701,3728-3773,3940,3952,4093-4132,4134-4135,4137-4173,4176-4211,4214-6005,6011-6012,6015-6016,6037-6039,6054,6097-6099,6102,6119,6126,6163,6172,6182,6200,6230,6260,6262,6289,6291,6295,6301-6302,6304-6305,7112-7114,7116-7120,7122-7123,7135,7138,7141,7144,7149,7167,7218,7228-7232,7236,7242,7245-7246,7249-7251,7256,7276,7359-7360,7367,7375,7391-7392,7394-7395,7398,7409-7411,7427,7435,7442,7449,7462,7468,7520-7522,7534-7535,7552,7570,7582,7584-7585,7597,7599,7612,7625,7637-7638,7656,7668-7669,7691,7716-7718,7721-7724,7733-7734,7737,7745,7750,7758,7768,7773,7792,7805,7812-7817,7819,7832,7842,7849,7856,7864,7890,7912,7928,7935,7949,7954-7955,7964,7967,7976,7979-7980,7989,7998,8014-8017,8050,8058,8076,8087,8095,8111-8119,8122-8123,8125-8127,8131,8133,8135,8138-8139,8145,8161,8282,8289,8296,8307,8318,8323,8338,8364-8365,8371,8379,8383,8395,8397-8398,8407,8414,8420-8421,8437,8442,8449,8462,8471-8472,8479,8483,8485,8498,8512,8539,8543,8549-8558,8560,8566
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_1d9a03e12d3b49 163-165
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_2e9ecaec0bcf4d 163-165
+package.json
+  s_aa47a447e01641::t_f20de5d9163dd1 73,84
+pnpm-lock.yaml
+  s_aa47a447e01641::t_49debabda0b7b1 72-74,2161-2170,4323-4329
+src/renderer/BrowserPluginProvider.tsx
+  s_aa47a447e01641::t_61ea060b6baf06 5,27-37
+src/renderer/components/BrowserCookieImportDisclosure.tsx
+  s_aa47a447e01641::t_5d082303262c6e 1-28
+src/renderer/components/browser-pane/assemble-chrome/BrowserAddressBar.tsx
+  s_aa47a447e01641::t_5faf29368d3b02 7,50,154,157
+src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
+  s_aa47a447e01641::t_8a10a180e54d64 1-298
+src/renderer/components/browser-pane/assemble-chrome/BrowserToolbarMenu.tsx
+  s_aa47a447e01641::t_a361393b6d43f0 1-241
+src/renderer/components/browser-pane/assemble-chrome/browser-detected-browsers-summary.test.ts
+  s_aa47a447e01641::t_adf72c8962207a 1-52
+src/renderer/components/browser-pane/assemble-chrome/browser-detected-browsers-summary.ts
+  s_aa47a447e01641::t_fbb432d13e10b4 1-40
+src/renderer/components/browser-pane/assemble-chrome/browser-import-hint-visibility.test.ts
+  s_aa47a447e01641::t_ef210d51eb08bd 1-31
+src/renderer/components/browser-pane/assemble-chrome/browser-import-hint-visibility.ts
+  s_aa47a447e01641::t_22414676581495 1-13
+src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
+  s_aa47a447e01641::t_0c0a3cd9c42fda 10,25,41-42
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_cf47d88d28f096 289
+src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.test.tsx
+  s_aa47a447e01641::t_3d4ace08cde108 26-41
+src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
+  s_aa47a447e01641::t_43abc30766cdd5 9-12,16-17,37-38,59,98-111
+src/renderer/components/browser-pane/assemble-chrome/browser-pane-page-selection.test.ts
+  s_aa47a447e01641::t_19448b9159e17f 16-19
+src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-menu-dropdown.tsx
+  s_aa47a447e01641::t_a93c5da6fd9664 1-241
+src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-profile-dialogs.tsx
+  s_aa47a447e01641::t_13b4195fce266a 1-126
+src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
+  s_aa47a447e01641::t_12279cfbfcc263 56-57
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-partition.ts
+  s_aa47a447e01641::t_48af09506a6d2a 2,4-5,9-15
+src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.test.ts
+  s_aa47a447e01641::t_9d396e1d7b82d1 7,79-91
+src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.ts
+  s_aa47a447e01641::t_fc48743a2be33f 6,24-27
+src/renderer/components/settings/BrowserNewProfileDialog.tsx
+  s_aa47a447e01641::t_4122b71115eabe 1-107
+src/renderer/components/settings/BrowserSearchEngineSetting.tsx
+  s_aa47a447e01641::t_8d7f829aea50e1 1-45
+src/renderer/hooks/useMountedRef.ts
+  s_aa47a447e01641::t_8078be3a1f1475 1-14
+src/renderer/index.ts
+  s_aa47a447e01641::t_2165a52c4d64eb 6
+src/renderer/lib/browser-cookie-import-toast.test.ts
+  s_aa47a447e01641::t_73caf43d153103 1-214
+src/renderer/lib/browser-cookie-import-toast.ts
+  s_aa47a447e01641::t_fc4345cf10603c 1-136
+src/renderer/store/browser-store.test.ts
+  s_aa47a447e01641::t_aedfa64a2e89de 156-182
+src/renderer/store/browser-store.ts
+  s_aa47a447e01641::t_4852d436afa1b7 8-12,48-53,74-77,236-247
+src/renderer/ui/label.tsx
+  s_aa47a447e01641::t_5077f859d05033 1-21
+src/renderer/ui/select.tsx
+  s_aa47a447e01641::t_6d87f41c551b11 1-182
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_22aa198227d347 18-20
+src/shared/handled-wire-discriminant.ts
+  s_aa47a447e01641::t_080aaee3f955c7 1-15
+tsup.config.ts
+  s_aa47a447e01641::t_e9112e494bbbdf 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "15846728ceb1460510aeb009c3fd07705a5e7044",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
