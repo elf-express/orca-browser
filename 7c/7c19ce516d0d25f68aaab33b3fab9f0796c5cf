@@ -1,0 +1,30 @@
+src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.test.ts
+  s_aa47a447e01641::t_76f1e98d46dd1a 43
+  s_aa47a447e01641::t_7cc261370bc25d 44-50
+dist/renderer/index.js
+  s_aa47a447e01641::t_178394086adae2 1149,1441-1443,1804
+src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.ts
+  s_aa47a447e01641::t_a877716fc513be 28
+src/renderer/components/browser-pane/navigate/navigate-browser-page-url.ts
+  s_aa47a447e01641::t_0e03523918d0e6 46-49
+src/renderer/components/browser-pane/navigate/use-browser-page-webview-url-sync.file-url.test.tsx
+  s_aa47a447e01641::t_b3e2f6c5f4341c 1-45
+src/renderer/components/browser-pane/navigate/use-browser-page-webview-url-sync.ts
+  s_aa47a447e01641::t_a548f67b6d5313 103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c7c19ce516d0d25f68aaab33b3fab9f0796c5cf",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
