@@ -1,0 +1,43 @@
+dist/main/index.cjs
+  s_aa47a447e01641::t_5e3fc493a4008f 1116-1117,2020-2021
+dist/renderer/index.js
+  s_aa47a447e01641::t_5d1f1683bb2587 907-908
+dist/shared/index.cjs
+  s_aa47a447e01641::t_4adf791695352a 98-99
+dist/shared/index.js
+  s_aa47a447e01641::t_7a6d610d4a7433 20-21
+src/main/browser/browser-grab-payload.test.ts
+  s_aa47a447e01641::t_c030759505741a 126-144
+src/main/browser/browser-grab-payload.ts
+  s_aa47a447e01641::t_4ca073f2f040bb 77-78
+src/main/browser/grab-guest-foundation-script.ts
+  s_aa47a447e01641::t_c4f8697c9a7c13 81-82
+src/main/browser/grab-guest-script.test.ts
+  s_aa47a447e01641::t_ffda5807751983 10-11,135-149
+src/renderer/components/browser-pane/annotate/browser-agent-send.test.ts
+  s_aa47a447e01641::t_74750722f04ed4 7-8,182-214
+src/shared/agent-payload.test.ts
+  s_aa47a447e01641::t_92a725578b58af 20-25
+src/shared/agent-payload.ts
+  s_aa47a447e01641::t_26974bc69a8beb 17,30-31
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_fc949e088e1da4 18
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_1c37c51c391c75 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c8140fe3dfeb8ca68a3a80c346b9dbb39ea46be9",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
