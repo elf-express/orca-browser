@@ -90,9 +90,28 @@ describe('installBrowserPlugin', () => {
     const handle = install(host)
     await handle.dispose()
     expect(calls).toEqual(['dispose:a'])
+    expect(() => getBrowserHost()).toThrow('orca-browser: plugin is not installed')
     expect(host.logger.error).toHaveBeenCalledWith('orca-browser: dispose failed', {
       error: 'Error: boom'
     })
+  })
+
+  it('rolls back when an installer throws', () => {
+    const calls: string[] = []
+    pluginInstallers.push(
+      () => () => {
+        calls.push('dispose:a')
+      },
+      () => {
+        throw new Error('boom')
+      }
+    )
+    const host = createHost()
+    expect(() => installBrowserPlugin({ host })).toThrow('boom')
+    expect(calls).toEqual(['dispose:a'])
+    expect(() => getBrowserHost()).toThrow('orca-browser: plugin is not installed')
+    pluginInstallers.length = 0
+    expect(() => install(host)).not.toThrow()
   })
 
   it('exposes the host through getBrowserHost while installed', async () => {

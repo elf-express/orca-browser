@@ -21,17 +21,8 @@ export function installBrowserPlugin(opts: BrowserPluginOptions): BrowserPluginH
   setResolvedBrowserPluginOptions(options)
 
   const disposers: (() => void | Promise<void>)[] = []
-  for (const installer of pluginInstallers) {
-    const disposer = installer(options)
-    if (disposer) {
-      disposers.push(disposer)
-    }
-  }
-  logger.info('orca-browser: installed', { mcpPort: options.mcpPort })
-
-  let disposePromise: Promise<void> | null = null
-  const dispose = async (): Promise<void> => {
-    for (const disposer of disposers.reverse()) {
+  const runDisposers = async (): Promise<void> => {
+    for (const disposer of disposers.splice(0).reverse()) {
       try {
         await disposer()
       } catch (err) {
@@ -40,5 +31,22 @@ export function installBrowserPlugin(opts: BrowserPluginOptions): BrowserPluginH
     }
     setResolvedBrowserPluginOptions(null)
   }
-  return { dispose: () => (disposePromise ??= dispose()) }
+
+  try {
+    for (const installer of pluginInstallers) {
+      const disposer = installer(options)
+      if (disposer) {
+        disposers.push(disposer)
+      }
+    }
+    logger.info('orca-browser: installed', { mcpPort: options.mcpPort })
+  } catch (err) {
+    // Roll back so a failed install leaves no state behind and can be retried.
+    setResolvedBrowserPluginOptions(null)
+    void runDisposers()
+    throw err
+  }
+
+  let disposePromise: Promise<void> | null = null
+  return { dispose: () => (disposePromise ??= runDisposers()) }
 }

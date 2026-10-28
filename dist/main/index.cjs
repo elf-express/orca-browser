@@ -59,16 +59,8 @@ function installBrowserPlugin(opts) {
   const { logger } = options.host;
   setResolvedBrowserPluginOptions(options);
   const disposers = [];
-  for (const installer of pluginInstallers) {
-    const disposer = installer(options);
-    if (disposer) {
-      disposers.push(disposer);
-    }
-  }
-  logger.info("orca-browser: installed", { mcpPort: options.mcpPort });
-  let disposePromise = null;
-  const dispose = async () => {
-    for (const disposer of disposers.reverse()) {
+  const runDisposers = async () => {
+    for (const disposer of disposers.splice(0).reverse()) {
       try {
         await disposer();
       } catch (err) {
@@ -77,7 +69,21 @@ function installBrowserPlugin(opts) {
     }
     setResolvedBrowserPluginOptions(null);
   };
-  return { dispose: () => disposePromise ??= dispose() };
+  try {
+    for (const installer of pluginInstallers) {
+      const disposer = installer(options);
+      if (disposer) {
+        disposers.push(disposer);
+      }
+    }
+    logger.info("orca-browser: installed", { mcpPort: options.mcpPort });
+  } catch (err) {
+    setResolvedBrowserPluginOptions(null);
+    void runDisposers();
+    throw err;
+  }
+  let disposePromise = null;
+  return { dispose: () => disposePromise ??= runDisposers() };
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
