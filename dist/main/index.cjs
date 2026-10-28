@@ -3693,7 +3693,12 @@ var BrowserSessionRegistry = class {
   }
   // Why: the host's userData path is only known once the plugin is installed, so persistence stays
   // inert (and the default profile has no source) until this runs.
+  // Why: reinstalling the plugin in one process reconfigures with the same path; startup hydration
+  // runs once per process, so clearing here would drop profiles that were already loaded.
   configure(opts) {
+    if (this.userDataDir === opts.userDataDir) {
+      return;
+    }
     this.userDataDir = opts.userDataDir;
     this.profiles.clear();
     this.resetDefaultProfile();

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -217,5 +217,26 @@ describe('installBrowserProfiles', () => {
     dispose = m.installBrowserProfiles(makeOptions(tmp))
 
     expect(app.userAgentFallback).toBe(before)
+  })
+
+  it('keeps persisted profiles when the plugin is reinstalled in the same process', async () => {
+    const m = await loadFresh()
+    const firstDispose = m.installBrowserProfiles(makeOptions(tmp))
+    const first = await m.browserSessionRegistry.createProfile('isolated', 'Work')
+    await firstDispose?.()
+
+    dispose = m.installBrowserProfiles(makeOptions(tmp))
+    const second = await m.browserSessionRegistry.createProfile('isolated', 'Home')
+
+    const ids = m.browserSessionRegistry.listProfiles().map((profile) => profile.id)
+    expect(ids).toContain(first!.id)
+    expect(ids).toContain(second!.id)
+    expect(m.isAllowedBrowserPartition(first!.partition)).toBe(true)
+    const meta = JSON.parse(
+      readFileSync(join(tmp, 'orca-browser', 'browser-session-meta.json'), 'utf8')
+    ) as { profiles: { id: string }[] }
+    expect(meta.profiles.map((profile) => profile.id).sort()).toEqual(
+      [first!.id, second!.id].sort()
+    )
   })
 })
