@@ -2448,7 +2448,7 @@ var installBrowserCore = (options) => {
 };
 
 // src/main/browser-profiles-installer.ts
-var import_node_path17 = require("path");
+var import_node_path17 = require("node:path");
 
 // src/shared/browser-ipc-channels.ts
 var BROWSER_PROFILE_INVOKE_CHANNELS = [
@@ -2467,16 +2467,16 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
 ];
 
 // src/main/browser/browser-identity-mode-store.ts
-var import_node_crypto = require("crypto");
-var import_node_fs4 = require("fs");
-var import_node_path3 = require("path");
+var import_node_crypto = require("node:crypto");
+var import_node_fs4 = require("node:fs");
+var import_node_path3 = require("node:path");
 
 // src/main/durable-file-write.ts
-var import_node_fs2 = require("fs");
-var import_node_path = require("path");
+var import_node_fs2 = require("node:fs");
+var import_node_path = require("node:path");
 
 // src/main/fs-utils.ts
-var import_node_fs = require("fs");
+var import_node_fs = require("node:fs");
 function renameFileWithWindowsRetry(source, target) {
   runFileOperationWithWindowsRetry(() => (0, import_node_fs.renameSync)(source, target));
 }
@@ -2549,8 +2549,8 @@ function writeFileDurableSync(tmpPath, finalPath, payload, mode) {
 }
 
 // src/main/browser/browser-identity-mode-record.ts
-var import_node_fs3 = require("fs");
-var import_node_path2 = require("path");
+var import_node_fs3 = require("node:fs");
+var import_node_path2 = require("node:path");
 var BROWSER_IDENTITY_MODE_FILE = "browser-identity-mode.json";
 var BROWSER_IDENTITY_MODE_VERSION = 1;
 function browserIdentityModeRecordPath(userDataPath) {
@@ -2779,8 +2779,8 @@ async function markBrowserIdentityMigrationNoticePending(userDataPath, degraded)
 
 // src/main/browser/browser-session-registry.ts
 var import_electron18 = require("electron");
-var import_node_crypto2 = require("crypto");
-var import_node_path7 = require("path");
+var import_node_crypto2 = require("node:crypto");
+var import_node_path7 = require("node:path");
 
 // src/shared/orca-profiles.ts
 var DEFAULT_LOCAL_ORCA_PROFILE_ID = "local-default";
@@ -2808,12 +2808,12 @@ function getOrcaProfileBrowserSessionPartition(profileId, browserSessionProfileI
 
 // src/main/browser/browser-session-cookie-staging.ts
 var import_electron15 = require("electron");
-var import_node_fs7 = require("fs");
-var import_node_path6 = require("path");
+var import_node_fs7 = require("node:fs");
+var import_node_path6 = require("node:path");
 
 // src/main/browser/browser-session-meta-store.ts
-var import_node_fs5 = require("fs");
-var import_node_path4 = require("path");
+var import_node_fs5 = require("node:fs");
+var import_node_path4 = require("node:path");
 var BROWSER_SESSION_META_FILE_NAME = "browser-session-meta.json";
 function loadBrowserSessionMeta(resolveMetadataPath, defaultPartition) {
   try {
@@ -2892,10 +2892,10 @@ function isProfileOwnedSessionPartition(profileId, partition, activeOrcaProfileI
 }
 
 // src/main/browser/browser-cookie-staged-import.ts
-var import_node_sqlite = require("sqlite");
+var import_node_sqlite = require("node:sqlite");
 
 // src/main/browser/browser-cookie-import-policy.ts
-var import_node_net = require("net");
+var import_node_net = require("node:net");
 var import_tldts = require("tldts");
 var GOOGLE_SOURCE_BOUND_COOKIE_NAMES = /* @__PURE__ */ new Set([
   "SIDCC",
@@ -3230,8 +3230,8 @@ function applyScopedStagedCookieImport(liveCookiesPath, stagedCookiesPath) {
 }
 
 // src/main/browser/chromium-cookie-path.ts
-var import_node_fs6 = require("fs");
-var import_node_path5 = require("path");
+var import_node_fs6 = require("node:fs");
+var import_node_path5 = require("node:path");
 function resolveChromiumCookiesPath(profileDir) {
   const networkPath = (0, import_node_path5.join)(profileDir, "Network", "Cookies");
   if ((0, import_node_fs6.existsSync)(networkPath)) {
@@ -3942,8 +3942,8 @@ function normalizeBrowserPluginSettings(raw) {
 }
 
 // src/main/browser/browser-plugin-settings-store.ts
-var import_node_fs8 = require("fs");
-var import_node_path8 = require("path");
+var import_node_fs8 = require("node:fs");
+var import_node_path8 = require("node:path");
 function settingsFilePath(userDataDir) {
   return (0, import_node_path8.join)(userDataDir, "orca-browser", "settings.json");
 }
@@ -3997,12 +3997,12 @@ function registerBrowserPluginSettingsHandlers(userDataDir) {
 var import_electron25 = require("electron");
 
 // src/main/browser/browser-cookie-detection.ts
-var import_node_fs10 = require("fs");
-var import_node_path10 = require("path");
+var import_node_fs10 = require("node:fs");
+var import_node_path10 = require("node:path");
 
 // src/main/browser/browser-cookie-detection-types.ts
-var import_node_fs9 = require("fs");
-var import_node_path9 = require("path");
+var import_node_fs9 = require("node:fs");
+var import_node_path9 = require("node:path");
 var CHROMIUM_BROWSERS = [
   {
     family: "chrome",
@@ -4954,13 +4954,13 @@ async function writeImportedCookies(store, cookies, options) {
 }
 
 // src/main/browser/browser-cookie-import-pipeline.ts
-var import_promises = require("fs/promises");
+var import_promises = require("node:fs/promises");
 
 // src/main/browser/browser-cookie-import-diagnostics.ts
 var import_electron21 = require("electron");
-var import_node_fs11 = require("fs");
-var import_node_os = require("os");
-var import_node_path11 = require("path");
+var import_node_fs11 = require("node:fs");
+var import_node_os = require("node:os");
+var import_node_path11 = require("node:path");
 var _diagLog = null;
 function getDiagLogPath() {
   if (!_diagLog) {
@@ -5269,19 +5269,19 @@ async function importCookiesFromFile(filePath, targetPartition) {
 
 // src/main/browser/browser-cookie-chromium-import.ts
 var import_electron24 = require("electron");
-var import_node_fs15 = require("fs");
+var import_node_fs15 = require("node:fs");
 
 // src/main/browser/browser-cookie-chromium-prepare.ts
 var import_electron23 = require("electron");
-var import_node_crypto4 = require("crypto");
-var import_node_fs14 = require("fs");
-var import_node_sqlite2 = require("sqlite");
-var import_node_path15 = require("path");
+var import_node_crypto4 = require("node:crypto");
+var import_node_fs14 = require("node:fs");
+var import_node_sqlite2 = require("node:sqlite");
+var import_node_path15 = require("node:path");
 
 // src/main/browser/chromium-cookie-snapshot.ts
-var import_node_fs12 = require("fs");
-var import_node_os2 = require("os");
-var import_node_path12 = require("path");
+var import_node_fs12 = require("node:fs");
+var import_node_os2 = require("node:os");
+var import_node_path12 = require("node:path");
 var SNAPSHOT_ATTEMPTS = 5;
 function removeSnapshotDirectory(path) {
   (0, import_node_fs12.rmSync)(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
@@ -5371,13 +5371,13 @@ function createChromiumCookieSnapshot(sourcePath, options = {}) {
 }
 
 // src/main/browser/browser-cookie-key.ts
-var import_node_crypto3 = require("crypto");
-var import_node_fs13 = require("fs");
-var import_node_path14 = require("path");
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs13 = require("node:fs");
+var import_node_path14 = require("node:path");
 
 // src/main/process-sync.ts
-var import_node_child_process = require("child_process");
-var import_node_path13 = require("path");
+var import_node_child_process = require("node:child_process");
+var import_node_path13 = require("node:path");
 function runProcessSync(spec) {
   const result = (0, import_node_child_process.spawnSync)(spec.program, [...spec.args], {
     encoding: "utf8",
@@ -5865,7 +5865,7 @@ function buildChromiumCookieInsertParams(targetColumns, sourceRow, decryptedValu
 }
 
 // src/main/browser/browser-cookie-decryption.ts
-var import_node_crypto5 = require("crypto");
+var import_node_crypto5 = require("node:crypto");
 var CHROMIUM_COOKIE_HMAC_LEN = 32;
 function hasHmacPrefix(buf) {
   if (buf.length <= CHROMIUM_COOKIE_HMAC_LEN) {
@@ -6252,10 +6252,10 @@ async function importChromiumCookies(browser, targetPartition, options = {}) {
 }
 
 // src/main/browser/browser-cookie-firefox-import.ts
-var import_node_sqlite3 = require("sqlite");
-var import_node_fs16 = require("fs");
-var import_node_os3 = require("os");
-var import_node_path16 = require("path");
+var import_node_sqlite3 = require("node:sqlite");
+var import_node_fs16 = require("node:fs");
+var import_node_os3 = require("node:os");
+var import_node_path16 = require("node:path");
 async function importCookiesFromFirefox(browser, targetPartition, options) {
   diag(`importCookiesFromFirefox: partition="${targetPartition}"`);
   const tmpDir = (0, import_node_fs16.mkdtempSync)((0, import_node_path16.join)((0, import_node_os3.tmpdir)(), "orca-cookie-import-"));
@@ -6345,7 +6345,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
 }
 
 // src/main/browser/browser-cookie-safari-import.ts
-var import_node_fs17 = require("fs");
+var import_node_fs17 = require("node:fs");
 
 // src/main/browser/browser-cookie-safari-parser.ts
 var MAC_EPOCH_DELTA = 978307200;

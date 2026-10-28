@@ -8,7 +8,8 @@ export default defineConfig([
     outDir: 'dist',
     target: 'node22',
     clean: false,
-    sourcemap: false
+    sourcemap: false,
+    removeNodeProtocol: false
   },
   {
     entry: { 'main/index': 'src/main/index.ts' },
@@ -18,7 +19,8 @@ export default defineConfig([
     outDir: 'dist',
     target: 'node22',
     clean: false,
-    sourcemap: false
+    sourcemap: false,
+    removeNodeProtocol: false
   },
   {
     entry: { 'preload/index': 'src/preload/index.ts' },
@@ -28,7 +30,8 @@ export default defineConfig([
     outDir: 'dist',
     target: 'node22',
     clean: false,
-    sourcemap: false
+    sourcemap: false,
+    removeNodeProtocol: false
   },
   {
     entry: { 'renderer/index': 'src/renderer/index.ts' },
@@ -39,6 +42,7 @@ export default defineConfig([
     target: 'es2022',
     platform: 'browser',
     clean: false,
-    sourcemap: false
+    sourcemap: false,
+    removeNodeProtocol: false
   }
 ])
