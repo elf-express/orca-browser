@@ -43,7 +43,16 @@ var BROWSER_EVENT_CHANNELS = [
   "browser:historyNavigate",
   "browser:zoomPage",
   "browser:scrollPage",
-  "browser:systemResumed"
+  "browser:systemResumed",
+  "browser:grabModeToggle",
+  "browser:grabActionShortcut"
+];
+var BROWSER_GRAB_INVOKE_CHANNELS = [
+  "browser:setGrabMode",
+  "browser:awaitGrabSelection",
+  "browser:cancelGrab",
+  "browser:captureSelectionScreenshot",
+  "browser:extractHoverPayload"
 ];
 var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:session:listProfiles",
@@ -644,6 +653,7 @@ export {
   BROWSER_API_GLOBAL_KEY,
   BROWSER_EVENT_CHANNELS,
   BROWSER_FAMILY_LABELS,
+  BROWSER_GRAB_INVOKE_CHANNELS,
   BROWSER_INVOKE_CHANNELS,
   BROWSER_PAGE_ZOOM_LEVELS,
   BROWSER_PAGE_ZOOM_MAX,

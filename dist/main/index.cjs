@@ -228,6 +228,76 @@ function resolveRendererWebContents(rendererWebContentsIdByTabId, browserTabId) 
   return renderer;
 }
 
+// src/main/browser/browser-guest-grab-shortcuts.ts
+function matchesGrabElementChord(input, platform) {
+  if (!(input.key.toLowerCase() === "c" || input.code === "KeyC")) {
+    return false;
+  }
+  if (input.alt || input.shift) {
+    return false;
+  }
+  return platform === "darwin" ? input.meta && !input.control : input.control && !input.meta;
+}
+function setupGrabShortcutForwarding(args) {
+  const { browserTabId, guest, resolveRenderer, hasActiveGrabOp } = args;
+  const handler = (event, input) => {
+    if (input.type !== "keyDown") {
+      return;
+    }
+    const bareKey = input.key.toLowerCase();
+    if (!input.meta && !input.control && !input.alt && !input.shift && (bareKey === "c" || bareKey === "s") && hasActiveGrabOp(browserTabId)) {
+      const renderer = resolveRenderer(browserTabId);
+      if (!renderer) {
+        return;
+      }
+      event.preventDefault();
+      renderer.send("browser:grabActionShortcut", { browserPageId: browserTabId, key: bareKey });
+      return;
+    }
+    if (
+      // Why: the renderer toggles the picker per message, so a held chord would flicker it.
+      input.isAutoRepeat || !matchesGrabElementChord(input, process.platform)
+    ) {
+      return;
+    }
+    void guest.executeJavaScript(`(() => {
+        const active = document.activeElement
+        const tag = active?.tagName
+        const isEditable =
+          active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement ||
+          active?.isContentEditable === true ||
+          tag === 'SELECT' ||
+          tag === 'IFRAME'
+        if (isEditable) {
+          return false
+        }
+        const selection = window.getSelection()
+        return Boolean(selection && selection.type === 'Range' && selection.toString().trim().length > 0)
+          ? false
+          : true
+      })()`).then((shouldToggle) => {
+      if (!shouldToggle) {
+        return;
+      }
+      event.preventDefault();
+      const renderer = resolveRenderer(browserTabId);
+      if (!renderer) {
+        return;
+      }
+      renderer.send("browser:grabModeToggle", browserTabId, "copy");
+    }).catch(() => {
+    });
+  };
+  guest.on("before-input-event", handler);
+  return () => {
+    try {
+      guest.off("before-input-event", handler);
+    } catch {
+    }
+  };
+}
+
 // src/main/browser/browser-guest-context-menu.ts
 var import_electron2 = require("electron");
 
@@ -556,6 +626,1316 @@ function setupGuestShortcutForwarding(args) {
 
 // src/main/browser/browser-manager-grab.ts
 var import_electron8 = require("electron");
+
+// src/main/browser/grab-guest-content-script.ts
+var GRAB_GUEST_CONTENT_SCRIPT = `  function getSelectedText() {
+    try {
+      var selection = window.getSelection ? window.getSelection() : null;
+      if (!selection || selection.rangeCount === 0) return '';
+      var acc = createTextAccumulator();
+      var inspected = 0;
+      for (
+        var i = 0;
+        i < selection.rangeCount && acc.text.length < BUDGET.selectedTextMaxLength + 20;
+        i++
+      ) {
+        var range = selection.getRangeAt(i);
+        var walkerRoot = range.commonAncestorContainer;
+        var walker = document.createTreeWalker(
+          walkerRoot,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode: function(node) {
+              if (range.intersectsNode && !range.intersectsNode(node)) {
+                return NodeFilter.FILTER_REJECT;
+              }
+              return NodeFilter.FILTER_ACCEPT;
+            }
+          }
+        );
+        var node = walkerRoot.nodeType === Node.TEXT_NODE ? walkerRoot : walker.nextNode();
+        while (
+          node &&
+          acc.text.length < BUDGET.selectedTextMaxLength + 20 &&
+          inspected < TEXT_NODE_SCAN_LIMIT
+        ) {
+          inspected++;
+          var textNode = node;
+          var value = textNode.nodeValue || '';
+          appendTextSeparator(acc);
+          var remaining =
+            BUDGET.selectedTextMaxLength + 20 - acc.text.length - (acc.pendingSpace ? 1 : 0);
+          if (remaining <= 0) break;
+          if (value) {
+            var start = textNode === range.startContainer ? range.startOffset : 0;
+            var end = textNode === range.endContainer ? range.endOffset : value.length;
+            if (end > start + remaining) {
+              end = start + remaining;
+            }
+            if (textNode === range.startContainer) {
+              start = Math.min(start, value.length);
+            }
+            value = value.slice(start, end);
+            appendNormalizedText(acc, value, BUDGET.selectedTextMaxLength);
+          }
+          node = walker.nextNode();
+        }
+      }
+      return finishAccumulatedText(acc, BUDGET.selectedTextMaxLength);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function getHtmlSnippet(el) {
+    var clone = el.cloneNode(true);
+    // Strip script tags for safety
+    var scripts = clone.querySelectorAll('script');
+    for (var i = 0; i < scripts.length; i++) {
+      scripts[i].remove();
+    }
+    var html = clone.outerHTML || '';
+    return clampStr(html, BUDGET.htmlSnippetMaxLength);
+  }
+
+  function getSafeAttributes(el) {
+    var attrs = {};
+    for (var i = 0; i < el.attributes.length; i++) {
+      var attr = el.attributes[i];
+      var name = attr.name.toLowerCase();
+      var isAria = name.indexOf('aria-') === 0;
+      if (!SAFE_ATTRS.has(name) && !isAria) continue;
+      var value = attr.value;
+      // Redact secret-looking values
+      if (containsSecret(value)) {
+        attrs[name] = '[redacted]';
+      } else if ((name === 'href' || name === 'src' || name === 'action') && value) {
+        // Strip query strings and fragments from URL-bearing attributes
+        attrs[name] = sanitizeUrl(value);
+      } else if (name === 'class') {
+        // Cap class list length
+        attrs[name] = clampStr(value, 200);
+      } else {
+        attrs[name] = value;
+      }
+    }
+    return attrs;
+  }
+
+  // Why: guest pages control aria-labelledby; avoid regex splitting huge
+  // attributes while extracting grab payload accessibility metadata.
+  function getAriaLabelledByIds(value) {
+    var ids = [];
+    var tokenStart = -1;
+    for (var index = 0; index <= value.length; index++) {
+      var isEnd = index === value.length;
+      if (!isEnd && !isAriaLabelledBySeparator(value.charCodeAt(index))) {
+        if (tokenStart === -1) tokenStart = index;
+        continue;
+      }
+      if (tokenStart !== -1) {
+        ids.push(value.slice(tokenStart, index));
+        tokenStart = -1;
+        if (ids.length >= 32) break;
+      }
+    }
+    return ids;
+  }
+
+  function isAriaLabelledBySeparator(code) {
+    return code === 32 ||
+      (code >= 9 && code <= 13) ||
+      code === 160 ||
+      code === 5760 ||
+      (code >= 8192 && code <= 8202) ||
+      code === 8232 ||
+      code === 8233 ||
+      code === 8239 ||
+      code === 8287 ||
+      code === 12288 ||
+      code === 65279;
+  }
+
+  function getAccessibility(el) {
+    var role = el.getAttribute('role') || el.tagName.toLowerCase();
+    var ariaLabel = el.getAttribute('aria-label') || null;
+    var ariaLabelledBy = el.getAttribute('aria-labelledby') || null;
+    var accessibleName = null;
+    // Attempt to derive accessible name
+    if (ariaLabel) {
+      accessibleName = ariaLabel;
+    } else if (ariaLabelledBy) {
+      var parts = getAriaLabelledByIds(ariaLabelledBy);
+      var names = [];
+      for (var i = 0; i < parts.length; i++) {
+        var ref = document.getElementById(parts[i]);
+        if (ref) names.push(getBoundedText(ref, 100));
+      }
+      if (names.length) accessibleName = names.join(' ');
+    } else {
+      // Fall back to text content for buttons/links
+      var tag = el.tagName.toLowerCase();
+      if (tag === 'button' || tag === 'a' || tag === 'label') {
+        accessibleName = getBoundedText(el, 100);
+      } else if (el.getAttribute('title')) {
+        accessibleName = el.getAttribute('title');
+      } else if (el.getAttribute('alt')) {
+        accessibleName = el.getAttribute('alt');
+      }
+    }
+    return {
+      role: role,
+      accessibleName: accessibleName,
+      ariaLabel: ariaLabel,
+      ariaLabelledBy: ariaLabelledBy
+    };
+  }
+
+`;
+
+// src/main/browser/grab-guest-element-context-script.ts
+var GRAB_GUEST_ELEMENT_CONTEXT_SCRIPT = `  function getComputedStyleSubset(el) {
+    var cs = window.getComputedStyle(el);
+    var result = {};
+    for (var i = 0; i < STYLE_PROPS.length; i++) {
+      result[STYLE_PROPS[i]] = cs.getPropertyValue(
+        STYLE_PROPS[i].replace(/[A-Z]/g, function(m) { return '-' + m.toLowerCase(); })
+      ) || '';
+    }
+    return result;
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
+    }
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, function(ch) {
+      return '\\\\' + ch;
+    });
+  }
+
+  function looksHashy(value) {
+    return /^[A-Za-z0-9_-]{12,}$/.test(value) && /\\d/.test(value) && /[A-Z]/.test(value);
+  }
+
+  function getStableClasses(el, maxCount) {
+    if (!el.classList) return [];
+    var result = [];
+    for (var i = 0; i < el.classList.length && result.length < maxCount; i++) {
+      var cls = el.classList[i];
+      if (!cls || cls.length > 60 || containsSecret(cls)) continue;
+      if (/^css-[a-z0-9]+$/i.test(cls) || looksHashy(cls)) continue;
+      result.push(cls);
+    }
+    return result;
+  }
+
+  function buildSelectorPart(el) {
+    var tag = el.tagName.toLowerCase();
+    var id = el.id;
+    if (id && !containsSecret(id)) {
+      return tag + '#' + cssEscape(id);
+    }
+    var classes = getStableClasses(el, 2);
+    if (classes.length > 0) {
+      return tag + classes.map(function(cls) { return '.' + cssEscape(cls); }).join('');
+    }
+    return tag;
+  }
+
+  function isUniqueSelector(selector) {
+    try {
+      return document.querySelectorAll(selector).length === 1;
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getNthOfTypeSuffix(current) {
+    var tag = current.tagName;
+    var index = 1;
+    var sibling = current.previousElementSibling;
+    while (sibling) {
+      if (sibling.tagName === tag) index++;
+      sibling = sibling.previousElementSibling;
+    }
+    if (index > 1) return ':nth-of-type(' + index + ')';
+
+    sibling = current.nextElementSibling;
+    while (sibling) {
+      if (sibling.tagName === tag) return ':nth-of-type(1)';
+      sibling = sibling.nextElementSibling;
+    }
+    return '';
+  }
+
+  function buildSelector(el) {
+    var parts = [];
+    var current = el;
+    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body && parts.length < 10) {
+      var part = buildSelectorPart(current);
+      var parent = current.parentElement;
+      if (parent && !isUniqueSelector(parts.concat([part]).reverse().join(' > '))) {
+        part += getNthOfTypeSuffix(current);
+      }
+      parts.unshift(part);
+      var selector = parts.join(' > ');
+      if (isUniqueSelector(selector)) {
+        return clampStr(selector, BUDGET.selectorMaxLength);
+      }
+      current = parent;
+    }
+    return clampStr(parts.join(' > ') || el.tagName.toLowerCase(), BUDGET.selectorMaxLength);
+  }
+
+  function buildReadablePath(el) {
+    var parts = [];
+    var current = el;
+    while (current && current !== document.documentElement && parts.length < 6) {
+      var tag = current.tagName.toLowerCase();
+      if (tag === 'html' || tag === 'body') break;
+      var label = tag;
+      var aria = current.getAttribute('aria-label');
+      var role = current.getAttribute('role');
+      var stableClasses = getStableClasses(current, 1);
+      if (current.id && !containsSecret(current.id)) {
+        label = '#' + cssEscape(current.id);
+      } else if (aria && !containsSecret(aria)) {
+        label = tag + '[aria-label="' + clampStr(aria, 40).replace(/"/g, '\\\\"') + '"]';
+      } else if (role && !containsSecret(role)) {
+        label = tag + '[role="' + clampStr(role, 30).replace(/"/g, '\\\\"') + '"]';
+      } else if (stableClasses.length > 0) {
+        label = '.' + cssEscape(stableClasses[0]);
+      }
+      parts.unshift(label);
+      current = current.parentElement;
+    }
+    return clampStr(parts.join(' > '), BUDGET.pathMaxLength);
+  }
+
+  function buildFullPath(el) {
+    var parts = [];
+    var current = el;
+    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.documentElement && parts.length < 20) {
+      parts.unshift(buildSelectorPart(current));
+      current = current.parentElement;
+    }
+    return clampStr(parts.join(' > '), BUDGET.pathMaxLength);
+  }
+
+  function getNearbyText(el) {
+    var results = [];
+    var parent = el.parentElement;
+    if (!parent) return results;
+
+    function addSiblingText(sibling) {
+      if (!sibling) return;
+      var text = getBoundedText(sibling, BUDGET.nearbyTextEntryMaxLength);
+      if (text) {
+        results.push(clampStr(text, BUDGET.nearbyTextEntryMaxLength));
+      }
+    }
+
+    var inspected = 0;
+    var previous = el.previousElementSibling;
+    var next = el.nextElementSibling;
+    while (
+      results.length < BUDGET.nearbyTextMaxEntries &&
+      inspected < NEARBY_ELEMENT_SCAN_LIMIT &&
+      (previous || next)
+    ) {
+      if (previous) {
+        var previousSibling = previous;
+        previous = previous.previousElementSibling;
+        inspected++;
+        addSiblingText(previousSibling);
+      }
+      if (
+        next &&
+        results.length < BUDGET.nearbyTextMaxEntries &&
+        inspected < NEARBY_ELEMENT_SCAN_LIMIT
+      ) {
+        var nextSibling = next;
+        next = next.nextElementSibling;
+        inspected++;
+        addSiblingText(nextSibling);
+      }
+    }
+    return results;
+  }
+
+  function getAncestorPath(el) {
+    var path = [];
+    var current = el.parentElement;
+    while (current && current !== document.documentElement && path.length < BUDGET.ancestorPathMaxEntries) {
+      var tag = current.tagName.toLowerCase();
+      var role = current.getAttribute('role');
+      path.push(role ? tag + '[role=' + role + ']' : tag);
+      current = current.parentElement;
+    }
+    return path;
+  }
+
+  function getNearbyElements(el) {
+    var parent = el.parentElement;
+    if (!parent) return [];
+    var result = [];
+
+    function addSibling(sibling) {
+      if (!sibling) return;
+      if (sibling === el) return;
+      var rect = sibling.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+      var label = sibling.tagName.toLowerCase();
+      var stableClasses = getStableClasses(sibling, 1);
+      if (stableClasses.length > 0) label += '.' + stableClasses[0];
+      var text = getBoundedText(sibling, 50);
+      if (text) label += ' "' + clampStr(text, 50) + '"';
+      result.push(clampStr(label, BUDGET.nearbyElementMaxLength));
+    }
+    var inspected = 0;
+    var previous = el.previousElementSibling;
+    var next = el.nextElementSibling;
+    while (
+      result.length < BUDGET.nearbyElementsMaxEntries &&
+      inspected < NEARBY_ELEMENT_SCAN_LIMIT &&
+      (previous || next)
+    ) {
+      if (previous) {
+        var previousSibling = previous;
+        previous = previous.previousElementSibling;
+        inspected++;
+        addSibling(previousSibling);
+      }
+      if (
+        next &&
+        result.length < BUDGET.nearbyElementsMaxEntries &&
+        inspected < NEARBY_ELEMENT_SCAN_LIMIT
+      ) {
+        var nextSibling = next;
+        next = next.nextElementSibling;
+        inspected++;
+        addSibling(nextSibling);
+      }
+    }
+    return result;
+  }
+
+`;
+
+// src/main/browser/grab-guest-foundation-script.ts
+var GRAB_GUEST_FOUNDATION_SCRIPT = `(function() {
+  'use strict';
+
+  // Why: always tear down any pre-existing state before arming. A malicious
+  // guest page could predefine window.__orcaGrab with a fake extractPayload
+  // function. By tearing down unconditionally we ensure our freshly installed
+  // extraction logic is the only code that runs.
+  if (window.__orcaGrab) {
+    try {
+      if (typeof window.__orcaGrab.cleanup === 'function') {
+        window.__orcaGrab.cleanup();
+      }
+    } catch(e) {}
+    delete window.__orcaGrab;
+  }
+
+  // --- Budget constants (mirrored from shared types) ---
+  var BUDGET = {
+    textSnippetMaxLength: 200,
+    nearbyTextEntryMaxLength: 200,
+    nearbyTextMaxEntries: 10,
+    htmlSnippetMaxLength: 4096,
+    ancestorPathMaxEntries: 10,
+    nearbyElementsMaxEntries: 6,
+    nearbyElementMaxLength: 160,
+    selectorMaxLength: 700,
+    pathMaxLength: 900,
+    cssClassesMaxLength: 500,
+    selectedTextMaxLength: 500,
+    sourceFileMaxLength: 500,
+    reactComponentsMaxLength: 500
+  };
+  var TEXT_NODE_SCAN_LIMIT = 80;
+  var NEARBY_ELEMENT_SCAN_LIMIT = 80;
+
+  // --- Safe attribute names ---
+  var SAFE_ATTRS = new Set([
+    'id', 'class', 'name', 'type', 'role', 'href', 'src', 'alt',
+    'title', 'placeholder', 'for', 'action', 'method'
+  ]);
+
+  var SECRET_PATTERNS = [
+    'access_token', 'auth_token', 'api_key', 'apikey', 'client_secret',
+    'oauth_state', 'x-amz-', 'session_id', 'sessionid', 'csrf',
+    'secret', 'password', 'passwd'
+  ];
+
+  var SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:']);
+
+  var STYLE_PROPS = [
+    'display', 'position', 'width', 'height', 'margin', 'padding',
+    'color', 'backgroundColor', 'border', 'borderRadius', 'fontFamily',
+    'fontSize', 'fontWeight', 'lineHeight', 'textAlign', 'zIndex'
+  ];
+
+  // --- Helpers ---
+  function clampStr(s, max) {
+    if (!s || typeof s !== 'string') return '';
+    if (s.length <= max) return s;
+    return s.slice(0, max) + ' (truncated)';
+  }
+
+  function containsSecret(value) {
+    if (!value) return false;
+    var lower = value.toLowerCase();
+    for (var i = 0; i < SECRET_PATTERNS.length; i++) {
+      if (lower.indexOf(SECRET_PATTERNS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function sanitizeUrl(url) {
+    try {
+      var u = new URL(url);
+      if (u.protocol === 'about:') {
+        return u.toString() === 'about:blank' ? 'about:blank' : '';
+      }
+      if (!SAFE_URL_PROTOCOLS.has(u.protocol)) {
+        return '';
+      }
+      u.search = '';
+      u.hash = '';
+      return u.toString();
+    } catch (e) {
+      // Why: returning the raw URL on parse failure could preserve javascript:
+      // URIs or other non-http schemes. Return empty string instead.
+      return '';
+    }
+  }
+
+  function createTextAccumulator() {
+    return { text: '', pendingSpace: false };
+  }
+
+  function isWhitespaceCode(code) {
+    return code === 32 || (code >= 9 && code <= 13) || code === 160 ||
+      code === 5760 || (code >= 8192 && code <= 8202) || code === 8232 ||
+      code === 8233 || code === 8239 || code === 8287 || code === 12288 ||
+      code === 65279;
+  }
+
+  function appendTextSeparator(acc) {
+    if (acc.text.length > 0) acc.pendingSpace = true;
+  }
+
+  function appendNormalizedText(acc, text, max) {
+    var limit = max + 20;
+    var value = String(text || '');
+    for (var i = 0; i < value.length && acc.text.length < limit; i++) {
+      var code = value.charCodeAt(i);
+      if (isWhitespaceCode(code)) {
+        if (acc.text.length > 0) acc.pendingSpace = true;
+        continue;
+      }
+      if (acc.pendingSpace) {
+        acc.text += ' ';
+        acc.pendingSpace = false;
+        if (acc.text.length >= limit) break;
+      }
+      acc.text += value.charAt(i);
+    }
+  }
+
+  function finishAccumulatedText(acc, max) {
+    return clampStr(acc.text, max);
+  }
+
+  function getBoundedText(el, max) {
+    try {
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      var acc = createTextAccumulator();
+      var inspected = 0;
+      var node = walker.nextNode();
+      while (node && acc.text.length < max + 20 && inspected < TEXT_NODE_SCAN_LIMIT) {
+        inspected++;
+        appendTextSeparator(acc);
+        var remaining = max + 20 - acc.text.length - (acc.pendingSpace ? 1 : 0);
+        if (remaining <= 0) break;
+        appendNormalizedText(acc, (node.nodeValue || '').slice(0, remaining), max);
+        node = walker.nextNode();
+      }
+      return finishAccumulatedText(acc, max);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function getTextSnippet(el) {
+    return getBoundedText(el, BUDGET.textSnippetMaxLength);
+  }
+
+`;
+
+// src/shared/browser-annotation-viewport-bridge.ts
+var BROWSER_GRAB_SELECTED_ATTRIBUTE = "data-orca-grab-selected";
+
+// src/main/browser/grab-guest-overlay-script.ts
+var GRAB_GUEST_OVERLAY_SCRIPT = `  var host = document.createElement('div');
+  host.id = '__orca-grab-host';
+  host.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:2147483647;pointer-events:all;cursor:crosshair;';
+  document.documentElement.appendChild(host);
+
+  var shadow = host.attachShadow({ mode: 'closed' });
+
+  // Visual container for highlight/label \u2014 pointer-events:none so clicks go to host
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647;';
+  shadow.appendChild(overlay);
+
+  // Why: the highlight uses a white border with a dark outer shadow so it
+  // reads well on both light and dark page backgrounds.
+  var highlightBox = document.createElement('div');
+  highlightBox.style.cssText = 'position:fixed;border:2px solid rgba(255,255,255,0.9);border-radius:3px;pointer-events:none;transition:all 0.05s ease-out;display:none;background:rgba(255,255,255,0.08);box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 2px 8px rgba(0,0,0,0.15);';
+  overlay.appendChild(highlightBox);
+
+  // Hover label \u2014 dark neutral pill
+  var hoverLabel = document.createElement('div');
+  hoverLabel.style.cssText = 'position:fixed;padding:3px 8px;background:rgba(30,30,30,0.92);color:#e5e5e5;font:11px/1.4 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;border-radius:4px;pointer-events:none;white-space:nowrap;display:none;max-width:300px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+  overlay.appendChild(hoverLabel);
+
+  var currentEl = null;
+
+  function updateHighlight(el) {
+    if (!el || el === document.documentElement || el === document.body) {
+      highlightBox.style.display = 'none';
+      hoverLabel.style.display = 'none';
+      currentEl = null;
+      return;
+    }
+    currentEl = el;
+    var rect = el.getBoundingClientRect();
+    highlightBox.style.left = rect.x + 'px';
+    highlightBox.style.top = rect.y + 'px';
+    highlightBox.style.width = rect.width + 'px';
+    highlightBox.style.height = rect.height + 'px';
+    highlightBox.style.display = 'block';
+
+    // Build label text
+    var tag = el.tagName.toLowerCase();
+    var role = el.getAttribute('role');
+    var text = getBoundedText(el, 40);
+    if (text.length > 40) text = text.slice(0, 37) + '...';
+    var w = Math.round(rect.width);
+    var h = Math.round(rect.height);
+    var parts = [tag];
+    if (role) parts.push('role=' + role);
+    if (text) parts.push('"' + text + '"');
+    parts.push(w + 'x' + h);
+    hoverLabel.textContent = parts.join('  ');
+
+    // Position label below the element, or above if near bottom
+    var labelY = rect.bottom + 6;
+    if (labelY + 28 > window.innerHeight) {
+      labelY = rect.top - 28;
+    }
+    hoverLabel.style.left = Math.max(4, rect.x) + 'px';
+    hoverLabel.style.top = labelY + 'px';
+    hoverLabel.style.display = 'block';
+  }
+
+  function onPointerMove(e) {
+    // Temporarily hide the overlay to hit-test the element underneath
+    host.style.pointerEvents = 'none';
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    host.style.pointerEvents = 'all';
+    if (el) {
+      requestAnimationFrame(function() { updateHighlight(el); });
+    }
+  }
+
+  // Why: mousemove on the host (not document) because the host is the
+  // full-viewport click catcher that receives all pointer events.
+  host.addEventListener('mousemove', onPointerMove);
+
+  var selectedAttribute = ${JSON.stringify(BROWSER_GRAB_SELECTED_ATTRIBUTE)};
+  var selectedEl = null;
+  var selectedValue = null;
+  var previousSelectedValue = null;
+  var frozenFrame = 0;
+  var frozenResizeObserver = null;
+
+  function refreshFrozenHighlight() {
+    frozenFrame = 0;
+    if (selectedEl && selectedEl.isConnected) {
+      updateHighlight(selectedEl);
+    } else {
+      highlightBox.style.display = 'none';
+      hoverLabel.style.display = 'none';
+    }
+  }
+
+  function scheduleFrozenHighlight() {
+    if (!frozenFrame) frozenFrame = requestAnimationFrame(refreshFrozenHighlight);
+  }
+
+  function stopTrackingSelection() {
+    window.removeEventListener('scroll', scheduleFrozenHighlight, true);
+    window.removeEventListener('resize', scheduleFrozenHighlight, true);
+    if (frozenResizeObserver) frozenResizeObserver.disconnect();
+    frozenResizeObserver = null;
+    if (frozenFrame) cancelAnimationFrame(frozenFrame);
+    frozenFrame = 0;
+    if (selectedEl && selectedEl.getAttribute(selectedAttribute) === selectedValue) {
+      try {
+        if (previousSelectedValue === null) selectedEl.removeAttribute(selectedAttribute);
+        else selectedEl.setAttribute(selectedAttribute, previousSelectedValue);
+      } catch(e) {}
+    }
+    selectedEl = null;
+    selectedValue = null;
+    previousSelectedValue = null;
+  }
+
+  // Store state for awaitClick/finalize/teardown access
+  window.__orcaGrab = {
+    host: host,
+    extractPayload: extractPayload,
+    getCurrentElement: function() { return currentEl; },
+    // Why: freeze the highlight so the selected element stays outlined while
+    // the renderer shows the copy menu. Disabling pointer-events on the host
+    // lets the cursor return to normal and prevents the crosshair from showing
+    // over the dropdown menu's area in the webview.
+    freezeHighlight: function(selectionId) {
+      host.removeEventListener('mousemove', onPointerMove);
+      host.style.pointerEvents = 'none';
+      host.style.cursor = 'default';
+      // Why: the outline must follow the element after the click \u2014 page and inner-box
+      // scroll (capture), resize/zoom and the element's own size changes.
+      selectedEl = currentEl;
+      if (!selectedEl) return;
+      // Why: the isolated-world viewport bridge finds the selection by this marker; it
+      // cannot see this world's objects, and the page must not see the bridge's token.
+      previousSelectedValue = selectedEl.getAttribute(selectedAttribute);
+      selectedValue = selectionId;
+      selectedEl.setAttribute(selectedAttribute, selectionId);
+      highlightBox.style.transition = 'none';
+      window.addEventListener('scroll', scheduleFrozenHighlight, true);
+      window.addEventListener('resize', scheduleFrozenHighlight, true);
+      if (typeof ResizeObserver === 'function') {
+        frozenResizeObserver = new ResizeObserver(scheduleFrozenHighlight);
+        frozenResizeObserver.observe(selectedEl, { box: 'border-box' });
+        // A scrollbar appearing narrows the page without a window resize.
+        if (selectedEl !== document.documentElement) {
+          frozenResizeObserver.observe(document.documentElement);
+        }
+      }
+    },
+    cleanup: function() {
+      host.removeEventListener('mousemove', onPointerMove);
+      stopTrackingSelection();
+      try { host.remove(); } catch(e) {}
+      delete window.__orcaGrab;
+    }
+  };
+
+  return true;
+})()`;
+
+// src/main/browser/grab-guest-react-script.ts
+var GRAB_GUEST_REACT_SCRIPT = `  function isElementFixed(el) {
+    var current = el;
+    while (current && current !== document.body) {
+      var position = window.getComputedStyle(current).position;
+      if (position === 'fixed' || position === 'sticky') return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  function getFiberFromElement(el) {
+    var keys = Object.keys(el);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf('__reactFiber$') === 0 || keys[i].indexOf('__reactInternalInstance$') === 0) {
+        try {
+          return el[keys[i]] || null;
+        } catch (e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  function getComponentNameFromFiber(fiber) {
+    if (!fiber) return null;
+    var type = fiber.type || fiber.elementType;
+    if (!type || typeof type === 'string') return null;
+    if (type.displayName || type.name) return type.displayName || type.name;
+    if (type.render && (type.render.displayName || type.render.name)) {
+      return type.render.displayName || type.render.name;
+    }
+    if (type.type && (type.type.displayName || type.type.name)) {
+      return type.type.displayName || type.type.name;
+    }
+    return null;
+  }
+
+  function shouldSkipReactName(name) {
+    if (!name || name.length <= 2) return true;
+    return /^(Fragment|Root|Routes|Route|Outlet|Provider|Consumer|Profiler|Suspense)$/.test(name) ||
+      /(?:Boundary|BoundaryHandler|Router|Provider|Consumer|Context|Wrapper)$/.test(name) ||
+      /^(Inner|Outer|Client|Server|RSC|Dev|React|Hot)/.test(name);
+  }
+
+  function cleanSourcePath(path) {
+    if (!path) return '';
+    return String(path)
+      .replace(/[?#].*$/, '')
+      .replace(/^turbopack:\\/\\/\\/\\[project\\]\\//, '')
+      .replace(/^webpack-internal:\\/\\/\\/\\.\\//, '')
+      .replace(/^webpack-internal:\\/\\/\\//, '')
+      .replace(/^webpack:\\/\\/\\/\\.\\//, '')
+      .replace(/^webpack:\\/\\/\\//, '')
+      .replace(/^turbopack:\\/\\/\\//, '')
+      .replace(/^https?:\\/\\/[^/]+\\//, '')
+      .replace(/^file:\\/\\/\\//, '/')
+      .replace(/^\\([^)]+\\)\\/\\.\\//, '')
+      .replace(/^\\.\\//, '');
+  }
+
+  function getReactMetadata(el) {
+    try {
+      var fiber = getFiberFromElement(el);
+      var components = [];
+      var sourceFile = null;
+      var depth = 0;
+      while (fiber && depth < 35) {
+        var name = getComponentNameFromFiber(fiber);
+        if (name && !shouldSkipReactName(name) && components.indexOf(name) === -1 && components.length < 6) {
+          components.push(name);
+        }
+        var source = fiber._debugSource || (fiber._debugOwner && fiber._debugOwner._debugSource);
+        if (!sourceFile && source && source.fileName && source.lineNumber) {
+          sourceFile = cleanSourcePath(source.fileName) + ':' + source.lineNumber +
+            (source.columnNumber !== undefined ? ':' + source.columnNumber : '');
+          if (containsSecret(sourceFile)) {
+            sourceFile = null;
+          }
+        }
+        fiber = fiber.return;
+        depth++;
+      }
+      return {
+        reactComponents: components.length > 0
+          ? clampStr(components.slice().reverse().map(function(c) { return '<' + c + '>'; }).join(' '), BUDGET.reactComponentsMaxLength)
+          : null,
+        sourceFile: sourceFile ? clampStr(sourceFile, BUDGET.sourceFileMaxLength) : null
+      };
+    } catch (e) {
+      return { reactComponents: null, sourceFile: null };
+    }
+  }
+
+  // --- Build full payload for an element ---
+  function extractPayload(el) {
+    var rect = el.getBoundingClientRect();
+    var react = getReactMetadata(el);
+    return {
+      page: {
+        sanitizedUrl: sanitizeUrl(window.location.href),
+        title: document.title || '',
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        devicePixelRatio: window.devicePixelRatio || 1,
+        capturedAt: new Date().toISOString()
+      },
+      target: {
+        tagName: el.tagName.toLowerCase(),
+        selector: buildSelector(el),
+        elementPath: buildReadablePath(el),
+        fullPath: buildFullPath(el),
+        cssClasses: containsSecret(el.getAttribute('class') || '')
+          ? '[redacted]'
+          : clampStr(el.getAttribute('class') || '', BUDGET.cssClassesMaxLength),
+        nearbyElements: getNearbyElements(el),
+        selectedText: getSelectedText() || null,
+        isFixed: isElementFixed(el),
+        reactComponents: react.reactComponents,
+        sourceFile: react.sourceFile,
+        textSnippet: getTextSnippet(el),
+        htmlSnippet: getHtmlSnippet(el),
+        attributes: getSafeAttributes(el),
+        accessibility: getAccessibility(el),
+        rectViewport: {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height
+        },
+        rectPage: {
+          x: rect.x + window.scrollX,
+          y: rect.y + window.scrollY,
+          width: rect.width,
+          height: rect.height
+        },
+        computedStyles: getComputedStyleSubset(el)
+      },
+      nearbyText: getNearbyText(el),
+      ancestorPath: getAncestorPath(el),
+      screenshot: null
+    };
+  }
+
+  // --- Overlay UI ---
+  // Why: the host element is a full-viewport overlay with pointer-events:all
+  // so it acts as a click catcher. This prevents the page from receiving the
+  // selection click. The overlay uses elementFromPoint (with itself temporarily
+  // hidden) to identify the element underneath the pointer.
+`;
+
+// src/main/browser/grab-guest-selection-scripts.ts
+var AWAIT_CLICK_SCRIPT = `(async function() {
+  // Why: hand the click result to executeJavaScript through a native (intrinsic)
+  // Promise. On pages that replace the global Promise with a non-native thenable
+  // \u2014 e.g. Angular Zone.js's ZoneAwarePromise \u2014 a bare \`new Promise(...)\` is not
+  // recognized as a promise by Electron, so its raw wrapper object (exposing
+  // __zone_symbol__state/__value instead of { page, target }) crosses the boundary
+  // and main rejects it as an invalid payload structure. An async function's
+  // promise comes from the engine intrinsic that page code cannot reassign, so
+  // Electron always unwraps it to the resolved payload.
+  return await new Promise(function(resolve, reject) {
+    'use strict';
+    var grab = window.__orcaGrab;
+    if (!grab) {
+      reject(new Error('Grab not armed'));
+      return;
+    }
+
+    function extractSelectedPayload(el) {
+      try {
+        return grab.extractPayload(el);
+      } catch (error) {
+        grab.cleanup();
+        reject(error instanceof Error ? error : new Error('Failed to extract element context'));
+        return null;
+      }
+    }
+
+    function onClick(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      grab.host.removeEventListener('click', onClick, true);
+      grab.host.removeEventListener('contextmenu', onContext, true);
+      var el = grab.getCurrentElement();
+      if (!el) {
+        grab.cleanup();
+        reject(new Error('cancelled'));
+        return;
+      }
+      var payload = extractSelectedPayload(el);
+      if (!payload) return;
+      // Why: freeze the highlight instead of removing it so the user sees
+      // which element was selected while the copy menu is shown. Teardown
+      // happens later when the renderer calls setGrabMode(false) or re-arms.
+      grab.freezeHighlight(payload.page.capturedAt);
+      resolve(payload);
+    }
+
+    function onContext(e) {
+      // Why: right-click resolves with the payload wrapped in a context-menu
+      // marker so the renderer can show the full action dropdown instead of
+      // auto-copying. This gives users a deliberate path to screenshot and
+      // other secondary actions while keeping left-click as the fast copy path.
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      grab.host.removeEventListener('click', onClick, true);
+      grab.host.removeEventListener('contextmenu', onContext, true);
+      var el = grab.getCurrentElement();
+      if (!el) {
+        grab.cleanup();
+        reject(new Error('cancelled'));
+        return;
+      }
+      var payload = extractSelectedPayload(el);
+      if (!payload) return;
+      grab.freezeHighlight(payload.page.capturedAt);
+      resolve({ __orcaContextMenu: true, payload: payload });
+    }
+
+    grab.host.addEventListener('click', onClick, true);
+    grab.host.addEventListener('contextmenu', onContext, true);
+
+    // Store cancel hook so teardown can settle the Promise
+    grab.cancelAwait = function() {
+      grab.host.removeEventListener('click', onClick, true);
+      grab.host.removeEventListener('contextmenu', onContext, true);
+      grab.cleanup();
+      // Why: teardown cancellation is a normal user flow; resolving a marker
+      // avoids a noisy guest-console Error while main still treats it as cancel.
+      resolve({ __orcaCancelled: true });
+    };
+  });
+})()`;
+var FINALIZE_SCRIPT = `(function() {
+  'use strict';
+  var grab = window.__orcaGrab;
+  if (!grab) return null;
+  var el = grab.getCurrentElement();
+  if (!el) return null;
+  var payload = null;
+  try {
+    payload = grab.extractPayload(el);
+  } catch (e) {
+    grab.cleanup();
+    return null;
+  }
+  grab.cleanup();
+  return payload;
+})()`;
+var EXTRACT_HOVER_SCRIPT = `(function() {
+  'use strict';
+  var grab = window.__orcaGrab;
+  if (!grab) return null;
+  var el = grab.getCurrentElement();
+  if (!el) return null;
+  try {
+    return grab.extractPayload(el);
+  } catch (e) {
+    return null;
+  }
+})()`;
+var TEARDOWN_SCRIPT = `(function() {
+  'use strict';
+  var grab = window.__orcaGrab;
+  if (!grab) return true;
+  // If there's an active awaitClick Promise, cancel it: cancelAwait resolves
+  // it with the __orcaCancelled marker so the executeJavaScript call in main
+  // settles the grab op as a cancellation.
+  if (grab.cancelAwait) {
+    grab.cancelAwait();
+  } else {
+    grab.cleanup();
+  }
+  return true;
+})()`;
+
+// src/main/browser/grab-guest-script.ts
+function buildGuestOverlayScript(action) {
+  switch (action) {
+    case "arm":
+      return ARM_SCRIPT;
+    case "awaitClick":
+      return AWAIT_CLICK_SCRIPT;
+    case "finalize":
+      return FINALIZE_SCRIPT;
+    case "extractHover":
+      return EXTRACT_HOVER_SCRIPT;
+    case "teardown":
+      return TEARDOWN_SCRIPT;
+  }
+}
+var ARM_SCRIPT = [
+  GRAB_GUEST_FOUNDATION_SCRIPT,
+  GRAB_GUEST_CONTENT_SCRIPT,
+  GRAB_GUEST_ELEMENT_CONTEXT_SCRIPT,
+  GRAB_GUEST_REACT_SCRIPT,
+  GRAB_GUEST_OVERLAY_SCRIPT
+].join("");
+
+// src/shared/browser-grab-types.ts
+var GRAB_BUDGET = {
+  textSnippetMaxLength: 200,
+  nearbyTextEntryMaxLength: 200,
+  nearbyTextMaxEntries: 10,
+  htmlSnippetMaxLength: 4096,
+  ancestorPathMaxEntries: 10,
+  nearbyElementsMaxEntries: 6,
+  nearbyElementMaxLength: 160,
+  selectorMaxLength: 700,
+  pathMaxLength: 900,
+  cssClassesMaxLength: 500,
+  selectedTextMaxLength: 500,
+  sourceFileMaxLength: 500,
+  reactComponentsMaxLength: 500,
+  annotationCommentMaxLength: 2e3,
+  annotationsMaxPerPage: 20,
+  /** Hard byte budget for screenshot PNG data URL before we omit the screenshot. */
+  screenshotMaxBytes: 2 * 1024 * 1024
+};
+var GRAB_SAFE_ATTRIBUTE_NAMES = /* @__PURE__ */ new Set([
+  "id",
+  "class",
+  "name",
+  "type",
+  "role",
+  "href",
+  "src",
+  "alt",
+  "title",
+  "placeholder",
+  "for",
+  "action",
+  "method"
+]);
+var GRAB_SECRET_PATTERNS = [
+  "access_token",
+  "auth_token",
+  "api_key",
+  "apikey",
+  "client_secret",
+  "oauth_state",
+  "x-amz-",
+  "session_id",
+  "sessionid",
+  "csrf",
+  "secret",
+  "password",
+  "passwd"
+];
+
+// src/main/browser/browser-grab-payload.ts
+var SAFE_GRAB_URL_PROTOCOLS = /* @__PURE__ */ new Set(["http:", "https:", "file:"]);
+function clampGrabPayload(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw;
+  if (!obj.page || typeof obj.page !== "object") {
+    return null;
+  }
+  if (!obj.target || typeof obj.target !== "object") {
+    return null;
+  }
+  const page = obj.page;
+  const target = obj.target;
+  const clampStr = (s, max) => {
+    const str = typeof s === "string" ? s : "";
+    if (str.length <= max) {
+      return str;
+    }
+    return `${str.slice(0, max)} (truncated)`;
+  };
+  const clampArray = (arr, maxEntries, maxEntryLength) => {
+    const items = Array.isArray(arr) ? arr : [];
+    return items.slice(0, maxEntries).map((item) => clampStr(item, maxEntryLength));
+  };
+  const safeStr = (s, max = 500) => clampStr(s, max);
+  const safeNum = (n, fallback = 0) => typeof n === "number" && Number.isFinite(n) ? n : fallback;
+  const containsSecret = (val) => {
+    const lower = val.toLowerCase();
+    return GRAB_SECRET_PATTERNS.some((p) => lower.includes(p));
+  };
+  const sanitizeUrl = (rawUrl) => {
+    const str = typeof rawUrl === "string" ? rawUrl : "";
+    if (!str) {
+      return "";
+    }
+    try {
+      const url = new URL(str);
+      if (url.protocol === "about:") {
+        return url.toString() === "about:blank" ? "about:blank" : "";
+      }
+      if (!SAFE_GRAB_URL_PROTOCOLS.has(url.protocol)) {
+        return "";
+      }
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    } catch {
+      return "";
+    }
+  };
+  const safeAttributes = (attrs) => {
+    if (!attrs || typeof attrs !== "object") {
+      return {};
+    }
+    const filtered = {};
+    for (const [key, value] of Object.entries(attrs)) {
+      const name = key.toLowerCase();
+      const isAria = name.startsWith("aria-");
+      const isSafe = GRAB_SAFE_ATTRIBUTE_NAMES.has(name);
+      if (!isAria && !isSafe) {
+        continue;
+      }
+      const strValue = safeStr(value, 2e3);
+      if (containsSecret(strValue)) {
+        filtered[name] = "[redacted]";
+      } else if ((name === "href" || name === "src" || name === "action") && strValue) {
+        filtered[name] = sanitizeUrl(strValue);
+      } else if (name === "class") {
+        filtered[name] = safeStr(value, 200);
+      } else {
+        filtered[name] = safeStr(value, 500);
+      }
+    }
+    return filtered;
+  };
+  const safeMetadataStr = (value, max) => {
+    const strValue = safeStr(value, max);
+    return strValue && containsSecret(strValue) ? "[redacted]" : strValue;
+  };
+  const safeNullableMetadataStr = (value, max) => safeMetadataStr(value, max) || null;
+  const safeMetadataArray = (arr, maxEntries, maxEntryLength) => {
+    const items = Array.isArray(arr) ? arr : [];
+    return items.slice(0, maxEntries).map((item) => safeMetadataStr(item, maxEntryLength)).filter(Boolean);
+  };
+  const safeRect = (r) => {
+    if (!r || typeof r !== "object") {
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+    const rect = r;
+    return {
+      x: safeNum(rect.x),
+      y: safeNum(rect.y),
+      width: safeNum(rect.width),
+      height: safeNum(rect.height)
+    };
+  };
+  const accessibility = target.accessibility;
+  const computedStyles = target.computedStyles;
+  return {
+    page: {
+      // Why: re-sanitize the URL main-side so a compromised guest cannot
+      // pass through query strings containing tokens or secrets.
+      sanitizedUrl: sanitizeUrl(page.sanitizedUrl),
+      title: safeStr(page.title, 500),
+      viewportWidth: safeNum(page.viewportWidth),
+      viewportHeight: safeNum(page.viewportHeight),
+      scrollX: safeNum(page.scrollX),
+      scrollY: safeNum(page.scrollY),
+      devicePixelRatio: safeNum(page.devicePixelRatio, 1),
+      capturedAt: safeStr(page.capturedAt, 100)
+    },
+    target: {
+      tagName: safeStr(target.tagName, 50),
+      selector: safeStr(target.selector, GRAB_BUDGET.selectorMaxLength),
+      elementPath: safeMetadataStr(target.elementPath, GRAB_BUDGET.pathMaxLength),
+      fullPath: safeMetadataStr(target.fullPath, GRAB_BUDGET.pathMaxLength),
+      cssClasses: safeMetadataStr(target.cssClasses, GRAB_BUDGET.cssClassesMaxLength),
+      nearbyElements: safeMetadataArray(
+        target.nearbyElements,
+        GRAB_BUDGET.nearbyElementsMaxEntries,
+        GRAB_BUDGET.nearbyElementMaxLength
+      ),
+      selectedText: safeMetadataStr(target.selectedText, GRAB_BUDGET.selectedTextMaxLength) || null,
+      isFixed: target.isFixed === true,
+      reactComponents: safeNullableMetadataStr(
+        target.reactComponents,
+        GRAB_BUDGET.reactComponentsMaxLength
+      ),
+      sourceFile: safeNullableMetadataStr(target.sourceFile, GRAB_BUDGET.sourceFileMaxLength),
+      textSnippet: clampStr(target.textSnippet, GRAB_BUDGET.textSnippetMaxLength),
+      htmlSnippet: clampStr(target.htmlSnippet, GRAB_BUDGET.htmlSnippetMaxLength),
+      attributes: safeAttributes(target.attributes),
+      accessibility: {
+        role: safeNullableMetadataStr(accessibility?.role, 500),
+        accessibleName: safeNullableMetadataStr(accessibility?.accessibleName, 500),
+        ariaLabel: safeNullableMetadataStr(accessibility?.ariaLabel, 500),
+        ariaLabelledBy: safeNullableMetadataStr(accessibility?.ariaLabelledBy, 500)
+      },
+      rectViewport: safeRect(target.rectViewport),
+      rectPage: safeRect(target.rectPage),
+      computedStyles: {
+        display: safeStr(computedStyles?.display),
+        position: safeStr(computedStyles?.position),
+        width: safeStr(computedStyles?.width),
+        height: safeStr(computedStyles?.height),
+        margin: safeStr(computedStyles?.margin),
+        padding: safeStr(computedStyles?.padding),
+        color: safeStr(computedStyles?.color),
+        backgroundColor: safeStr(computedStyles?.backgroundColor),
+        border: safeStr(computedStyles?.border),
+        borderRadius: safeStr(computedStyles?.borderRadius),
+        fontFamily: safeStr(computedStyles?.fontFamily),
+        fontSize: safeStr(computedStyles?.fontSize),
+        fontWeight: safeStr(computedStyles?.fontWeight),
+        lineHeight: safeStr(computedStyles?.lineHeight),
+        textAlign: safeStr(computedStyles?.textAlign),
+        zIndex: safeStr(computedStyles?.zIndex)
+      }
+    },
+    nearbyText: clampArray(
+      obj.nearbyText,
+      GRAB_BUDGET.nearbyTextMaxEntries,
+      GRAB_BUDGET.nearbyTextEntryMaxLength
+    ),
+    ancestorPath: clampArray(obj.ancestorPath, GRAB_BUDGET.ancestorPathMaxEntries, 200),
+    screenshot: null
+  };
+}
+
+// src/main/browser/browser-grab-screenshot.ts
+var HIDE_BROWSER_GRAB_OVERLAY_SCRIPT = `(function(){
+  var g = window.__orcaGrab;
+  if (g && g.host) g.host.style.display = 'none';
+  document.querySelectorAll('[data-orca-browser-annotation-overlay]').forEach(function(el) {
+    el.setAttribute('data-orca-previous-display', el.style.display || '');
+    el.style.display = 'none';
+  });
+})()`;
+var RESTORE_BROWSER_GRAB_OVERLAY_SCRIPT = `(function(){
+  var g = window.__orcaGrab;
+  if (g && g.host) g.host.style.display = '';
+  document.querySelectorAll('[data-orca-browser-annotation-overlay]').forEach(function(el) {
+    el.style.display = el.getAttribute('data-orca-previous-display') || '';
+    el.removeAttribute('data-orca-previous-display');
+  });
+})()`;
+async function captureSelectionScreenshot(rect, guest) {
+  try {
+    const safeN = (n, fallback = 0) => typeof n === "number" && Number.isFinite(n) ? n : fallback;
+    const safeRect = {
+      x: safeN(rect.x),
+      y: safeN(rect.y),
+      width: safeN(rect.width),
+      height: safeN(rect.height)
+    };
+    await guest.executeJavaScript(HIDE_BROWSER_GRAB_OVERLAY_SCRIPT).catch(() => {
+    });
+    let image;
+    try {
+      image = await guest.capturePage();
+    } finally {
+      await guest.executeJavaScript(RESTORE_BROWSER_GRAB_OVERLAY_SCRIPT).catch(() => {
+      });
+    }
+    if (image.isEmpty()) {
+      return null;
+    }
+    const bitmapSize = image.getSize();
+    const viewportCSSWidth = await guest.executeJavaScript("window.innerWidth");
+    if (!viewportCSSWidth || viewportCSSWidth <= 0) {
+      return null;
+    }
+    const scaleFactor = bitmapSize.width / viewportCSSWidth;
+    const cropX = Math.max(0, Math.round(safeRect.x * scaleFactor));
+    const cropY = Math.max(0, Math.round(safeRect.y * scaleFactor));
+    const cropW = Math.min(bitmapSize.width - cropX, Math.round(safeRect.width * scaleFactor));
+    const cropH = Math.min(bitmapSize.height - cropY, Math.round(safeRect.height * scaleFactor));
+    if (cropW <= 0 || cropH <= 0) {
+      return null;
+    }
+    const cropped = image.crop({ x: cropX, y: cropY, width: cropW, height: cropH });
+    const pngBuffer = cropped.toPNG();
+    if (pngBuffer.byteLength > GRAB_BUDGET.screenshotMaxBytes) {
+      return null;
+    }
+    const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+    return {
+      mimeType: "image/png",
+      dataUrl,
+      width: Math.round(cropW / scaleFactor),
+      height: Math.round(cropH / scaleFactor)
+    };
+  } catch {
+    return null;
+  }
+}
 
 // src/main/browser/browser-manager-viewport.ts
 var import_electron7 = require("electron");
@@ -1342,6 +2722,160 @@ function createPageInitiatedTabBudget(maxPerWindow = MAX_PAGE_INITIATED_TABS_PER
   };
 }
 
+// src/main/browser/browser-grab-session-controller.ts
+var GRAB_OP_TIMEOUT_MS = 12e4;
+function isGuestCancellationPayload(rawPayload) {
+  if (!rawPayload || typeof rawPayload !== "object") {
+    return false;
+  }
+  const payload = rawPayload;
+  if (payload.__orcaCancelled === true) {
+    return true;
+  }
+  if (payload.message !== "cancelled") {
+    return false;
+  }
+  return !("page" in payload) && !("target" in payload) && !("payload" in payload);
+}
+function getGuestErrorMessage(err) {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (err && typeof err === "object") {
+    const message = err.message;
+    if (typeof message === "string") {
+      return message;
+    }
+  }
+  return "Selection failed";
+}
+var BrowserGrabSessionController = class {
+  activeGrabOps = /* @__PURE__ */ new Map();
+  hasActiveGrabOp(browserTabId) {
+    return this.activeGrabOps.has(browserTabId);
+  }
+  cancelGrabOp(browserTabId, reason) {
+    const op = this.activeGrabOps.get(browserTabId);
+    if (!op) {
+      return;
+    }
+    op.resolve({ opId: op.opId, kind: "cancelled", reason });
+  }
+  cancelAll(reason) {
+    for (const browserTabId of this.activeGrabOps.keys()) {
+      this.cancelGrabOp(browserTabId, reason);
+    }
+  }
+  /**
+   * Await a single grab selection on the given tab. Returns a Promise that
+   * resolves exactly once when the user clicks, cancels, or an error occurs.
+   *
+   * Why the click is handled in-guest rather than via main-side interception:
+   * Electron's `before-input-event` only fires for keyboard events, not mouse
+   * events on guest webContents. The design doc anticipated a main-owned
+   * interceptor, but the spike showed this API gap. The fallback (documented
+   * in the design doc) is to let the guest overlay's full-viewport hit-catcher
+   * consume the click. The overlay calls `stopPropagation()` and
+   * `preventDefault()` so the page underneath does not receive the event.
+   * This is not a perfect guarantee (capture-phase listeners on window may
+   * still fire), but it covers the vast majority of sites.
+   */
+  awaitGrabSelection(browserTabId, opId, guest) {
+    const existing = this.activeGrabOps.get(browserTabId);
+    if (existing) {
+      existing.skipTeardown = true;
+      existing.resolve({ opId: existing.opId, kind: "cancelled", reason: "user" });
+    }
+    return new Promise((resolve) => {
+      const guestWebContentsId = guest.id;
+      let settled = false;
+      const settleOnce = (result) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        op.cleanup(result.kind === "selected" || result.kind === "context-selected");
+        this.activeGrabOps.delete(browserTabId);
+        resolve(result);
+      };
+      const awaitGuestClick = async () => {
+        try {
+          const rawPayload = await guest.executeJavaScript(buildGuestOverlayScript("awaitClick"));
+          if (!rawPayload || typeof rawPayload !== "object") {
+            settleOnce({ opId, kind: "cancelled", reason: "user" });
+            return;
+          }
+          if (isGuestCancellationPayload(rawPayload)) {
+            settleOnce({ opId, kind: "cancelled", reason: "user" });
+            return;
+          }
+          const isContextMenu = "__orcaContextMenu" in rawPayload && rawPayload.__orcaContextMenu === true;
+          const payloadSource = isContextMenu ? rawPayload.payload : rawPayload;
+          const payload = clampGrabPayload(payloadSource);
+          if (!payload) {
+            settleOnce({ opId, kind: "error", reason: "Guest returned invalid payload structure" });
+            return;
+          }
+          settleOnce({
+            opId,
+            kind: isContextMenu ? "context-selected" : "selected",
+            payload
+          });
+        } catch (err) {
+          const message = getGuestErrorMessage(err);
+          if (message.includes("cancelled")) {
+            settleOnce({ opId, kind: "cancelled", reason: "user" });
+          } else {
+            settleOnce({ opId, kind: "error", reason: message });
+          }
+        }
+      };
+      const handleNavigation = (_event, _url, _isInPlace, isMainFrame) => {
+        if (isMainFrame) {
+          settleOnce({ opId, kind: "cancelled", reason: "navigation" });
+        }
+      };
+      const handleDestroyed = () => {
+        settleOnce({ opId, kind: "cancelled", reason: "evicted" });
+      };
+      const timeoutId = setTimeout(() => {
+        settleOnce({ opId, kind: "cancelled", reason: "timeout" });
+      }, GRAB_OP_TIMEOUT_MS);
+      if (typeof timeoutId.unref === "function") {
+        timeoutId.unref();
+      }
+      guest.on("did-start-navigation", handleNavigation);
+      guest.on("destroyed", handleDestroyed);
+      const cleanup = (preserveOverlay) => {
+        try {
+          guest.off("did-start-navigation", handleNavigation);
+          guest.off("destroyed", handleDestroyed);
+        } catch {
+        }
+        if (op.skipTeardown || preserveOverlay) {
+          return;
+        }
+        try {
+          if (!guest.isDestroyed()) {
+            void guest.executeJavaScript(buildGuestOverlayScript("teardown"));
+          }
+        } catch {
+        }
+      };
+      const op = {
+        opId,
+        browserTabId,
+        guestWebContentsId,
+        resolve: settleOnce,
+        cleanup
+      };
+      this.activeGrabOps.set(browserTabId, op);
+      void awaitGuestClick();
+    });
+  }
+};
+
 // src/main/browser/browser-manager-viewport-scroll-state.ts
 var import_electron5 = require("electron");
 var BrowserManagerViewportScrollState = class {
@@ -1428,6 +2962,7 @@ var BrowserManagerState = class extends BrowserManagerViewportScrollState {
   pendingNavigationByGuestId = /* @__PURE__ */ new Map();
   contextMenuCleanupByTabId = /* @__PURE__ */ new Map();
   grabShortcutCleanupByTabId = /* @__PURE__ */ new Map();
+  grabSessionController = new BrowserGrabSessionController();
   shortcutForwardingCleanupByTabId = /* @__PURE__ */ new Map();
   mouseWheelZoomCleanupByTabId = /* @__PURE__ */ new Map();
   annotationViewportBridgeOpsByTabId = /* @__PURE__ */ new Map();
@@ -2043,6 +3578,7 @@ var BrowserManagerRegistration = class extends BrowserManagerGuestPolicy {
     this.annotationViewportBridgeOpsByTabId.delete(browserTabId);
   }
   unregisterAll() {
+    this.grabSessionController.cancelAll("evicted");
     for (const browserTabId of this.webContentsIdByTabId.keys()) {
       this.unregisterGuest(browserTabId);
     }
@@ -2264,6 +3800,7 @@ var BrowserManagerViewport = class extends BrowserManagerQueries {
 
 // src/main/browser/browser-manager-grab.ts
 var BrowserManagerGrab = class extends BrowserManagerViewport {
+  // --- Browser Context Grab — main-owned operations ---
   /** Validate that the sender owns browserTabId; returns the guest WebContents or null. */
   getAuthorizedGuest(browserTabId, senderWebContentsId) {
     const registeredRenderer = this.rendererWebContentsIdByTabId.get(browserTabId);
@@ -2281,13 +3818,59 @@ var BrowserManagerGrab = class extends BrowserManagerViewport {
     }
     return guest;
   }
-  // Grab is not part of this phase; these keep the base-class contract with no behavior.
-  setupGrabShortcut(_browserTabId, _guest) {
+  /** Returns true if a grab operation is currently active for this tab. */
+  hasActiveGrabOp(browserTabId) {
+    return this.grabSessionController.hasActiveGrabOp(browserTabId);
   }
-  hasActiveGrabOp(_browserTabId) {
-    return false;
+  /** Enable/disable grab mode for a tab: on enable inject the overlay runtime, on disable cancel any active grab op. */
+  async setGrabMode(browserTabId, enabled, guest) {
+    if (!enabled) {
+      const hadActiveGrabOp = this.hasActiveGrabOp(browserTabId);
+      this.cancelGrabOp(browserTabId, "user");
+      if (hadActiveGrabOp) {
+        return true;
+      }
+      try {
+        await guest.executeJavaScript(buildGuestOverlayScript("teardown"));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    try {
+      await guest.executeJavaScript(buildGuestOverlayScript("arm"));
+      return true;
+    } catch {
+      return false;
+    }
   }
-  cancelGrabOp(_browserTabId, _reason) {
+  /**
+   * Await a single grab selection on the given tab; resolves once on click, cancel, or error.
+   *
+   * Why in-guest: before-input-event fires only for keyboard (not mouse) on guests, so the overlay hit-catcher consumes the click.
+   */
+  awaitGrabSelection(browserTabId, opId, guest) {
+    return this.grabSessionController.awaitGrabSelection(browserTabId, opId, guest);
+  }
+  /** Cancel an active grab operation for the given tab. */
+  cancelGrabOp(browserTabId, reason) {
+    this.grabSessionController.cancelGrabOp(browserTabId, reason);
+  }
+  /** Capture a screenshot of the guest surface, optionally cropped to the given CSS-pixel rect. */
+  async captureSelectionScreenshot(_browserTabId, rect, guest) {
+    return captureSelectionScreenshot(rect, guest);
+  }
+  /** Extract the hovered element's payload without disrupting the active grab overlay/awaitClick listener. */
+  async extractHoverPayload(_browserTabId, guest) {
+    try {
+      const rawPayload = await guest.executeJavaScript(buildGuestOverlayScript("extractHover"));
+      if (!rawPayload || typeof rawPayload !== "object") {
+        return null;
+      }
+      return clampGrabPayload(rawPayload);
+    } catch {
+      return null;
+    }
   }
 };
 
@@ -2300,6 +3883,23 @@ var BrowserManagerBindings = class extends BrowserManagerGrab {
         browserTabId,
         guest,
         resolveRenderer: (tabId) => this.resolveRendererForBrowserTab(tabId)
+      })
+    );
+  }
+  // Why: forward grab's Cmd/Ctrl+C from a focused guest only when no edit field/selection is active, so native copy still works.
+  setupGrabShortcut(browserTabId, guest) {
+    const previousCleanup = this.grabShortcutCleanupByTabId.get(browserTabId);
+    if (previousCleanup) {
+      previousCleanup();
+      this.grabShortcutCleanupByTabId.delete(browserTabId);
+    }
+    this.grabShortcutCleanupByTabId.set(
+      browserTabId,
+      setupGrabShortcutForwarding({
+        browserTabId,
+        guest,
+        resolveRenderer: (tabId) => resolveRendererWebContents(this.rendererWebContentsIdByTabId, tabId),
+        hasActiveGrabOp: (tabId) => this.hasActiveGrabOp(tabId)
       })
     );
   }
@@ -2593,6 +4193,22 @@ var import_electron12 = require("electron");
 var pendingTabRegistrations = /* @__PURE__ */ new Map();
 var pendingScopeTabRegistrations = /* @__PURE__ */ new Map();
 var pendingAnyTabRegistrations = /* @__PURE__ */ new Set();
+function waitForRegistrationSet(registrationResolvers, timeoutMs, onEmpty) {
+  return new Promise((resolve, reject) => {
+    const resolveRegistration = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      registrationResolvers.delete(resolveRegistration);
+      if (registrationResolvers.size === 0) {
+        onEmpty();
+      }
+      reject(new Error("Tab registration timed out"));
+    }, timeoutMs);
+    registrationResolvers.add(resolveRegistration);
+  });
+}
 function resolvePendingRegistrations(registrationResolvers) {
   if (!registrationResolvers) {
     return;
@@ -2607,6 +4223,16 @@ function isLiveBrowserWebContentsId(webContentsId) {
   }
   const guest = import_electron12.webContents.fromId(webContentsId);
   return Boolean(guest && !guest.isDestroyed());
+}
+function waitForNextTabRegistration(browserPageId, timeoutMs) {
+  let registrationResolvers = pendingTabRegistrations.get(browserPageId);
+  if (!registrationResolvers) {
+    registrationResolvers = /* @__PURE__ */ new Set();
+    pendingTabRegistrations.set(browserPageId, registrationResolvers);
+  }
+  return waitForRegistrationSet(registrationResolvers, timeoutMs, () => {
+    pendingTabRegistrations.delete(browserPageId);
+  });
 }
 function resolveTabRegistrationWaiters(browserPageId, scopeId) {
   const pendingResolves = pendingTabRegistrations.get(browserPageId);
@@ -2813,10 +4439,17 @@ var installBrowserCore = (options) => {
   };
 };
 
-// src/main/browser-profiles-installer.ts
-var import_node_path17 = require("node:path");
+// src/main/browser-grab-installer.ts
+var import_electron16 = require("electron");
 
 // src/shared/browser-ipc-channels.ts
+var BROWSER_GRAB_INVOKE_CHANNELS = [
+  "browser:setGrabMode",
+  "browser:awaitGrabSelection",
+  "browser:cancelGrab",
+  "browser:captureSelectionScreenshot",
+  "browser:extractHoverPayload"
+];
 var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:session:listProfiles",
   "browser:session:createProfile",
@@ -2832,8 +4465,162 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:settings:set"
 ];
 
+// src/main/ipc/browser-grab-ipc.ts
+var import_electron15 = require("electron");
+var grabModeIntentByPageId = /* @__PURE__ */ new Map();
+var grabModeOperationByPageId = /* @__PURE__ */ new Map();
+var GRAB_REGISTRATION_WAIT_MS = 1e3;
+function queueGrabModeOperation(browserPageId, operation) {
+  const previous = grabModeOperationByPageId.get(browserPageId) ?? Promise.resolve();
+  const result = previous.then(operation);
+  const completion = result.then(
+    () => {
+    },
+    () => {
+    }
+  );
+  grabModeOperationByPageId.set(browserPageId, completion);
+  return result.finally(() => {
+    if (grabModeOperationByPageId.get(browserPageId) === completion) {
+      grabModeOperationByPageId.delete(browserPageId);
+    }
+  });
+}
+function resetGrabModeState() {
+  grabModeIntentByPageId.clear();
+  grabModeOperationByPageId.clear();
+}
+function registerBrowserGrabHandlers() {
+  import_electron15.ipcMain.removeHandler("browser:setGrabMode");
+  import_electron15.ipcMain.removeHandler("browser:awaitGrabSelection");
+  import_electron15.ipcMain.removeHandler("browser:cancelGrab");
+  import_electron15.ipcMain.removeHandler("browser:captureSelectionScreenshot");
+  import_electron15.ipcMain.removeHandler("browser:extractHoverPayload");
+  import_electron15.ipcMain.handle(
+    "browser:setGrabMode",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { ok: false, reason: "not-authorized" };
+      }
+      const intent = {
+        generation: (grabModeIntentByPageId.get(args.browserPageId)?.generation ?? 0) + 1,
+        enabled: args.enabled
+      };
+      grabModeIntentByPageId.set(args.browserPageId, intent);
+      const isCurrentIntent = () => grabModeIntentByPageId.get(args.browserPageId) === intent;
+      let guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest && args.enabled) {
+        await waitForNextTabRegistration(args.browserPageId, GRAB_REGISTRATION_WAIT_MS).catch(
+          () => {
+          }
+        );
+        if (!isCurrentIntent()) {
+          return { ok: true };
+        }
+        guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      }
+      if (!guest) {
+        if (!args.enabled) {
+          return { ok: true };
+        }
+        return { ok: false, reason: "not-ready" };
+      }
+      return queueGrabModeOperation(args.browserPageId, async () => {
+        if (!isCurrentIntent()) {
+          return { ok: true };
+        }
+        guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+        if (!guest) {
+          return args.enabled ? { ok: false, reason: "not-ready" } : { ok: true };
+        }
+        const success = await browserManager.setGrabMode(args.browserPageId, args.enabled, guest);
+        if (!isCurrentIntent()) {
+          return { ok: true };
+        }
+        return success ? { ok: true } : { ok: false, reason: "injection-failed" };
+      });
+    }
+  );
+  import_electron15.ipcMain.handle(
+    "browser:awaitGrabSelection",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { opId: args.opId, kind: "error", reason: "Not authorized" };
+      }
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest) {
+        return { opId: args.opId, kind: "error", reason: "Guest not ready" };
+      }
+      return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest);
+    }
+  );
+  import_electron15.ipcMain.handle("browser:cancelGrab", (event, args) => {
+    if (!isTrustedBrowserRenderer(event.sender)) {
+      return false;
+    }
+    const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+    if (!guest) {
+      return false;
+    }
+    browserManager.cancelGrabOp(args.browserPageId, "user");
+    return true;
+  });
+  import_electron15.ipcMain.handle(
+    "browser:captureSelectionScreenshot",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { ok: false, reason: "Not authorized" };
+      }
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest) {
+        return { ok: false, reason: "Guest not ready" };
+      }
+      const screenshot = await browserManager.captureSelectionScreenshot(
+        args.browserPageId,
+        args.rect,
+        guest
+      );
+      if (!screenshot) {
+        return { ok: false, reason: "Screenshot capture failed" };
+      }
+      return { ok: true, screenshot };
+    }
+  );
+  import_electron15.ipcMain.handle(
+    "browser:extractHoverPayload",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { ok: false, reason: "Not authorized" };
+      }
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest) {
+        return { ok: false, reason: "Guest not ready" };
+      }
+      const payload = await browserManager.extractHoverPayload(args.browserPageId, guest);
+      if (!payload) {
+        return { ok: false, reason: "No element hovered" };
+      }
+      return { ok: true, payload };
+    }
+  );
+}
+
+// src/main/browser-grab-installer.ts
+var installBrowserGrab = () => {
+  registerBrowserGrabHandlers();
+  return () => {
+    for (const channel of BROWSER_GRAB_INVOKE_CHANNELS) {
+      import_electron16.ipcMain.removeHandler(channel);
+    }
+    resetGrabModeState();
+  };
+};
+
+// src/main/browser-profiles-installer.ts
+var import_node_path17 = require("node:path");
+
 // src/main/browser/browser-session-registry.ts
-var import_electron18 = require("electron");
+var import_electron20 = require("electron");
 var import_node_crypto2 = require("node:crypto");
 var import_node_path7 = require("node:path");
 
@@ -2862,7 +4649,7 @@ function getOrcaProfileBrowserSessionPartition(profileId, browserSessionProfileI
 }
 
 // src/main/browser/browser-session-cookie-staging.ts
-var import_electron15 = require("electron");
+var import_electron17 = require("electron");
 var import_node_fs7 = require("node:fs");
 var import_node_path6 = require("node:path");
 
@@ -3316,7 +5103,7 @@ function scopedPendingPath(entry) {
 }
 function partitionCookiesPath(partition) {
   const partitionName = partition.replace("persist:", "");
-  const partitionDir = (0, import_node_path6.join)(import_electron15.app.getPath("userData"), "Partitions", partitionName);
+  const partitionDir = (0, import_node_path6.join)(import_electron17.app.getPath("userData"), "Partitions", partitionName);
   return resolveChromiumCookiesPath(partitionDir) ?? (0, import_node_path6.join)(partitionDir, "Cookies");
 }
 function consumeStagedCookieImport(stagedPath) {
@@ -3452,10 +5239,10 @@ function clearPendingBrowserCookieImport({
 }
 
 // src/main/browser/browser-session-partition-policies.ts
-var import_electron17 = require("electron");
+var import_electron19 = require("electron");
 
 // src/main/browser/browser-media-access.ts
-var import_electron16 = require("electron");
+var import_electron18 = require("electron");
 function requestedMediaTypes(details) {
   return new Set(details?.mediaTypes ?? []);
 }
@@ -3464,10 +5251,10 @@ function hasSystemMediaAccess(mediaType) {
     return true;
   }
   if (mediaType === "audio") {
-    return import_electron16.systemPreferences.getMediaAccessStatus("microphone") === "granted";
+    return import_electron18.systemPreferences.getMediaAccessStatus("microphone") === "granted";
   }
   if (mediaType === "video") {
-    return import_electron16.systemPreferences.getMediaAccessStatus("camera") === "granted";
+    return import_electron18.systemPreferences.getMediaAccessStatus("camera") === "granted";
   }
   return false;
 }
@@ -3480,13 +5267,13 @@ async function requestSystemMediaAccess(details) {
     return false;
   }
   if (mediaTypes.has("audio")) {
-    const granted = await import_electron16.systemPreferences.askForMediaAccess("microphone");
+    const granted = await import_electron18.systemPreferences.askForMediaAccess("microphone");
     if (!granted) {
       return false;
     }
   }
   if (mediaTypes.has("video")) {
-    const granted = await import_electron16.systemPreferences.askForMediaAccess("camera");
+    const granted = await import_electron18.systemPreferences.askForMediaAccess("camera");
     if (!granted) {
       return false;
     }
@@ -3654,7 +5441,7 @@ function resolvePermissionNoticeUrl(webContents10, details) {
 }
 async function installBrowserSessionPartitionPolicies(profile, options = {}) {
   const { partition } = profile;
-  const sess = import_electron17.session.fromPartition(partition);
+  const sess = import_electron19.session.fromPartition(partition);
   configureBrowserSessionUserAgentPolicy(sess, options.userAgentExceptions !== false);
   if (configuredPartitions.has(partition)) {
     return;
@@ -3882,7 +5669,7 @@ var BrowserSessionRegistry = class {
     try {
       await installBrowserSessionPartitionPolicies(profile);
     } catch (error) {
-      await retireFailedBrowserSessionProfile(partition, import_electron18.session.fromPartition(partition));
+      await retireFailedBrowserSessionProfile(partition, import_electron20.session.fromPartition(partition));
       throw error;
     }
     this.profiles.set(id, profile);
@@ -3919,7 +5706,7 @@ var BrowserSessionRegistry = class {
       pendingCookieDbPath: typeof defaultPendingImport === "string" ? defaultPendingImport : null
     });
     try {
-      const sess = import_electron18.session.fromPartition(profile.partition);
+      const sess = import_electron20.session.fromPartition(profile.partition);
       forgetBrowserSessionPartitionConfiguration(profile.partition);
       retireBrowserSessionUserAgentPolicy(sess);
       await sess.clearStorageData();
@@ -3943,7 +5730,7 @@ var BrowserSessionRegistry = class {
         pendingCookieDbPath: null,
         pendingCookieImports
       });
-      const sess = import_electron18.session.fromPartition(this.defaultPartition);
+      const sess = import_electron20.session.fromPartition(this.defaultPartition);
       await sess.clearStorageData({ storages: ["cookies"] });
       return true;
     } catch {
@@ -3982,7 +5769,7 @@ function initializeBrowserSessionsForApp(opts) {
 }
 
 // src/main/ipc/browser-plugin-settings-ipc.ts
-var import_electron19 = require("electron");
+var import_electron21 = require("electron");
 
 // src/shared/browser-plugin-settings.ts
 var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
@@ -4034,15 +5821,15 @@ function saveBrowserPluginSettings(userDataDir, patch) {
 
 // src/main/ipc/browser-plugin-settings-ipc.ts
 function registerBrowserPluginSettingsHandlers(userDataDir) {
-  import_electron19.ipcMain.removeHandler("browser:settings:get");
-  import_electron19.ipcMain.removeHandler("browser:settings:set");
-  import_electron19.ipcMain.handle("browser:settings:get", (event) => {
+  import_electron21.ipcMain.removeHandler("browser:settings:get");
+  import_electron21.ipcMain.removeHandler("browser:settings:set");
+  import_electron21.ipcMain.handle("browser:settings:get", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return normalizeBrowserPluginSettings(null);
     }
     return loadBrowserPluginSettings(userDataDir);
   });
-  import_electron19.ipcMain.handle(
+  import_electron21.ipcMain.handle(
     "browser:settings:set",
     (event, patch) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4054,7 +5841,7 @@ function registerBrowserPluginSettingsHandlers(userDataDir) {
 }
 
 // src/main/ipc/browser-session-profile-ipc.ts
-var import_electron25 = require("electron");
+var import_electron27 = require("electron");
 
 // src/main/browser/browser-cookie-detection.ts
 var import_node_fs10 = require("node:fs");
@@ -4338,7 +6125,7 @@ function selectBrowserProfile(browser, profileDirectory) {
 }
 
 // src/main/browser/browser-cookie-import-pipeline.ts
-var import_electron22 = require("electron");
+var import_electron24 = require("electron");
 
 // src/shared/map-with-concurrency.ts
 function mapWithConcurrency(items, limit, fn) {
@@ -4487,7 +6274,7 @@ async function removeTransplantableCookies(targetSession, preserveFamilies, impo
 }
 
 // src/main/browser/browser-cookie-clear-store.ts
-var import_electron20 = require("electron");
+var import_electron22 = require("electron");
 
 // src/main/browser/electron-debugger-lease.ts
 var debuggerLeases = /* @__PURE__ */ new WeakMap();
@@ -4654,7 +6441,7 @@ function readJsonCookiePartition(raw, partitionKeyOpaque = void 0) {
 
 // src/main/browser/browser-cookie-clear-store.ts
 function findPartitionWebContents(targetSession) {
-  return import_electron20.webContents.getAllWebContents().find((contents) => !contents.isDestroyed() && contents.session === targetSession);
+  return import_electron22.webContents.getAllWebContents().find((contents) => !contents.isDestroyed() && contents.session === targetSession);
 }
 function cdpSameSite(sameSite) {
   if (sameSite === "strict") {
@@ -4726,7 +6513,7 @@ function identityFromCdpCookie(url, cdpCookie) {
   };
 }
 function openHiddenCookieWindow(targetSession) {
-  return new import_electron20.BrowserWindow({
+  return new import_electron22.BrowserWindow({
     show: false,
     webPreferences: {
       session: targetSession,
@@ -5017,7 +6804,7 @@ async function writeImportedCookies(store, cookies, options) {
 var import_promises = require("node:fs/promises");
 
 // src/main/browser/browser-cookie-import-diagnostics.ts
-var import_electron21 = require("electron");
+var import_electron23 = require("electron");
 var import_node_fs11 = require("node:fs");
 var import_node_os = require("node:os");
 var import_node_path11 = require("node:path");
@@ -5025,7 +6812,7 @@ var _diagLog = null;
 function getDiagLogPath() {
   if (!_diagLog) {
     try {
-      _diagLog = (0, import_node_path11.join)(import_electron21.app.getPath("userData"), "orca-browser", "cookie-import-diag.log");
+      _diagLog = (0, import_node_path11.join)(import_electron23.app.getPath("userData"), "orca-browser", "cookie-import-diag.log");
     } catch {
       _diagLog = (0, import_node_path11.join)((0, import_node_os.tmpdir)(), "orca-cookie-import-diag.log");
     }
@@ -5148,7 +6935,7 @@ function validateCookieEntry(raw) {
 
 // src/main/browser/browser-cookie-import-pipeline.ts
 function cookieImportTarget(targetPartition) {
-  const targetSession = import_electron22.session.fromPartition(targetPartition);
+  const targetSession = import_electron24.session.fromPartition(targetPartition);
   return {
     partition: targetPartition,
     mutationLockOwner: targetSession,
@@ -5274,7 +7061,7 @@ async function pickCookieFile(parentWindow) {
     ],
     properties: ["openFile"]
   };
-  const result = parentWindow ? await import_electron22.dialog.showOpenDialog(parentWindow, opts) : await import_electron22.dialog.showOpenDialog(opts);
+  const result = parentWindow ? await import_electron24.dialog.showOpenDialog(parentWindow, opts) : await import_electron24.dialog.showOpenDialog(opts);
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
@@ -5328,11 +7115,11 @@ async function importCookiesFromFile(filePath, targetPartition) {
 }
 
 // src/main/browser/browser-cookie-chromium-import.ts
-var import_electron24 = require("electron");
+var import_electron26 = require("electron");
 var import_node_fs15 = require("node:fs");
 
 // src/main/browser/browser-cookie-chromium-prepare.ts
-var import_electron23 = require("electron");
+var import_electron25 = require("electron");
 var import_node_crypto4 = require("node:crypto");
 var import_node_fs14 = require("node:fs");
 var import_node_sqlite2 = require("node:sqlite");
@@ -5604,7 +7391,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
       result: { ok: false, reason: "Target cookie database not found. Open a browser tab first." }
     };
   }
-  const stagingDir = (0, import_node_path15.join)(import_electron23.app.getPath("userData"), "orca-browser", "cookie-import-staging");
+  const stagingDir = (0, import_node_path15.join)(import_electron25.app.getPath("userData"), "orca-browser", "cookie-import-staging");
   const partitionSegment = partitionName.replace(/[^a-zA-Z0-9_-]/g, "_");
   const stagingCookiesPath = (0, import_node_path15.join)(
     stagingDir,
@@ -6264,7 +8051,7 @@ async function importChromiumCookies(browser, targetPartition, options = {}) {
     diag(`  cookies DB not found: ${browser.cookiesPath}`);
     return { ok: false, reason: `${browser.label} cookies database not found.` };
   }
-  const targetSession = import_electron24.session.fromPartition(targetPartition);
+  const targetSession = import_electron26.session.fromPartition(targetPartition);
   return withCookieMutationLock(targetSession, async () => {
     let context = null;
     try {
@@ -6591,20 +8378,20 @@ async function importCookiesFromBrowser(browser, targetPartition, options = {}) 
 
 // src/main/ipc/browser-session-profile-ipc.ts
 function registerBrowserSessionProfileHandlers() {
-  import_electron25.ipcMain.removeHandler("browser:session:listProfiles");
-  import_electron25.ipcMain.removeHandler("browser:session:createProfile");
-  import_electron25.ipcMain.removeHandler("browser:session:deleteProfile");
-  import_electron25.ipcMain.removeHandler("browser:identity:get");
-  import_electron25.ipcMain.removeHandler("browser:identity:set");
-  import_electron25.ipcMain.removeHandler("browser:session:importCookies");
-  import_electron25.ipcMain.removeHandler("browser:session:resolvePartition");
-  import_electron25.ipcMain.handle("browser:session:listProfiles", (event) => {
+  import_electron27.ipcMain.removeHandler("browser:session:listProfiles");
+  import_electron27.ipcMain.removeHandler("browser:session:createProfile");
+  import_electron27.ipcMain.removeHandler("browser:session:deleteProfile");
+  import_electron27.ipcMain.removeHandler("browser:identity:get");
+  import_electron27.ipcMain.removeHandler("browser:identity:set");
+  import_electron27.ipcMain.removeHandler("browser:session:importCookies");
+  import_electron27.ipcMain.removeHandler("browser:session:resolvePartition");
+  import_electron27.ipcMain.handle("browser:session:listProfiles", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return [];
     }
     return browserSessionRegistry.listProfiles();
   });
-  import_electron25.ipcMain.handle(
+  import_electron27.ipcMain.handle(
     "browser:session:createProfile",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6613,13 +8400,13 @@ function registerBrowserSessionProfileHandlers() {
       return await browserSessionRegistry.createProfile(args.scope, args.label);
     }
   );
-  import_electron25.ipcMain.handle("browser:identity:get", (event) => {
+  import_electron27.ipcMain.handle("browser:identity:get", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return null;
     }
     return getBrowserIdentityModeStatus();
   });
-  import_electron25.ipcMain.handle("browser:identity:set", async (event, mode) => {
+  import_electron27.ipcMain.handle("browser:identity:set", async (event, mode) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return null;
     }
@@ -6628,7 +8415,7 @@ function registerBrowserSessionProfileHandlers() {
     }
     return setBrowserIdentityMode(mode);
   });
-  import_electron25.ipcMain.handle(
+  import_electron27.ipcMain.handle(
     "browser:session:deleteProfile",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6637,7 +8424,7 @@ function registerBrowserSessionProfileHandlers() {
       return browserSessionRegistry.deleteProfile(args.profileId);
     }
   );
-  import_electron25.ipcMain.handle(
+  import_electron27.ipcMain.handle(
     "browser:session:importCookies",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6663,7 +8450,7 @@ function registerBrowserSessionProfileHandlers() {
       return result;
     }
   );
-  import_electron25.ipcMain.handle(
+  import_electron27.ipcMain.handle(
     "browser:session:resolvePartition",
     (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6672,22 +8459,22 @@ function registerBrowserSessionProfileHandlers() {
       return browserSessionRegistry.resolvePartition(args.profileId);
     }
   );
-  import_electron25.ipcMain.removeHandler("browser:session:clearDefaultCookies");
-  import_electron25.ipcMain.handle("browser:session:clearDefaultCookies", async (event) => {
+  import_electron27.ipcMain.removeHandler("browser:session:clearDefaultCookies");
+  import_electron27.ipcMain.handle("browser:session:clearDefaultCookies", async (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
     return browserSessionRegistry.clearDefaultSessionCookies();
   });
-  import_electron25.ipcMain.removeHandler("browser:session:detectBrowsers");
-  import_electron25.ipcMain.removeHandler("browser:session:importFromBrowser");
-  import_electron25.ipcMain.handle("browser:session:detectBrowsers", (event) => {
+  import_electron27.ipcMain.removeHandler("browser:session:detectBrowsers");
+  import_electron27.ipcMain.removeHandler("browser:session:importFromBrowser");
+  import_electron27.ipcMain.handle("browser:session:detectBrowsers", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return [];
     }
     return detectedBrowserPickerEntries();
   });
-  import_electron25.ipcMain.handle(
+  import_electron27.ipcMain.handle(
     "browser:session:importFromBrowser",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6739,7 +8526,7 @@ function detectedBrowserPickerEntries() {
 }
 
 // src/main/browser-profiles-installer.ts
-var import_electron26 = require("electron");
+var import_electron28 = require("electron");
 var installBrowserProfiles = (options) => {
   const { userDataDir } = options.host;
   if (!isBrowserIdentityModeStoreInitialized()) {
@@ -6755,7 +8542,7 @@ var installBrowserProfiles = (options) => {
   registerBrowserPluginSettingsHandlers(userDataDir);
   return () => {
     for (const channel of BROWSER_PROFILE_INVOKE_CHANNELS) {
-      import_electron26.ipcMain.removeHandler(channel);
+      import_electron28.ipcMain.removeHandler(channel);
     }
     unregisterPartitionSource();
   };
@@ -6764,7 +8551,8 @@ var installBrowserProfiles = (options) => {
 // src/main/plugin-installers.ts
 var pluginInstallers = [
   installBrowserCore,
-  installBrowserProfiles
+  installBrowserProfiles,
+  installBrowserGrab
 ];
 
 // src/main/plugin-options.ts

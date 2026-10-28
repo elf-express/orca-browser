@@ -9,6 +9,12 @@ import type {
   BrowserLoadError,
   BrowserViewportOverride
 } from '../../shared/browser-workspace-types'
+import type {
+  BrowserGrabPayload,
+  BrowserGrabRect,
+  BrowserGrabResult,
+  BrowserGrabScreenshot
+} from '../../shared/browser-grab-types'
 
 export function isChromiumInternalErrorUrl(url: string): boolean {
   return url.startsWith('chrome-error://')
@@ -93,6 +99,10 @@ export type BrowserManagerLoadError = Pick<
 >
 
 export type {
+  BrowserGrabPayload,
+  BrowserGrabRect,
+  BrowserGrabResult,
+  BrowserGrabScreenshot,
   BrowserLoadError,
   BrowserViewportOverride,
   BrowserPermissionDeniedEvent,

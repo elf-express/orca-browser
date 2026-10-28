@@ -1,4 +1,5 @@
 import { resolveRendererWebContents } from './browser-guest-renderer-target'
+import { setupGrabShortcutForwarding } from './browser-guest-grab-shortcuts'
 import { setupGuestContextMenu } from './browser-guest-context-menu'
 import { setupGuestMouseWheelZoomForwarding } from './browser-guest-wheel-zoom'
 import { setupGuestShortcutForwarding } from './browser-guest-shortcut-forwarding'
@@ -12,6 +13,26 @@ export abstract class BrowserManagerBindings extends BrowserManagerGrab {
         browserTabId,
         guest,
         resolveRenderer: (tabId) => this.resolveRendererForBrowserTab(tabId)
+      })
+    )
+  }
+
+  // Why: forward grab's Cmd/Ctrl+C from a focused guest only when no edit field/selection is active, so native copy still works.
+  protected setupGrabShortcut(browserTabId: string, guest: Electron.WebContents): void {
+    const previousCleanup = this.grabShortcutCleanupByTabId.get(browserTabId)
+    if (previousCleanup) {
+      previousCleanup()
+      this.grabShortcutCleanupByTabId.delete(browserTabId)
+    }
+
+    this.grabShortcutCleanupByTabId.set(
+      browserTabId,
+      setupGrabShortcutForwarding({
+        browserTabId,
+        guest,
+        resolveRenderer: (tabId) =>
+          resolveRendererWebContents(this.rendererWebContentsIdByTabId, tabId),
+        hasActiveGrabOp: (tabId) => this.hasActiveGrabOp(tabId)
       })
     )
   }

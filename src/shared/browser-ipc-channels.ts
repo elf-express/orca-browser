@@ -24,7 +24,17 @@ export const BROWSER_EVENT_CHANNELS = [
   'browser:historyNavigate',
   'browser:zoomPage',
   'browser:scrollPage',
-  'browser:systemResumed'
+  'browser:systemResumed',
+  'browser:grabModeToggle',
+  'browser:grabActionShortcut'
+] as const
+
+export const BROWSER_GRAB_INVOKE_CHANNELS = [
+  'browser:setGrabMode',
+  'browser:awaitGrabSelection',
+  'browser:cancelGrab',
+  'browser:captureSelectionScreenshot',
+  'browser:extractHoverPayload'
 ] as const
 
 export const BROWSER_PROFILE_INVOKE_CHANNELS = [

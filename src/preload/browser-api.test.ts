@@ -45,7 +45,14 @@ const API_METHODS = [
   'session',
   'identity',
   'settings',
-  'setViewportOverride'
+  'setViewportOverride',
+  'setGrabMode',
+  'awaitGrabSelection',
+  'cancelGrab',
+  'captureSelectionScreenshot',
+  'extractHoverPayload',
+  'onGrabModeToggle',
+  'onGrabActionShortcut'
 ]
 
 beforeEach(() => {

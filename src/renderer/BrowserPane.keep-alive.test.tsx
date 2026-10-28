@@ -41,6 +41,17 @@ function createBrowserApiStub(): BrowserApi {
     onZoomPage: unsubscribe,
     onScrollPage: unsubscribe,
     onSystemResumed: unsubscribe,
+    setGrabMode: vi.fn(async () => ({ ok: true as const })),
+    awaitGrabSelection: vi.fn(async () => ({
+      opId: 'op',
+      kind: 'cancelled' as const,
+      reason: 'user' as const
+    })),
+    cancelGrab: vi.fn(async () => true),
+    captureSelectionScreenshot: vi.fn(async () => ({ ok: false as const, reason: 'unsupported' })),
+    extractHoverPayload: vi.fn(async () => ({ ok: false as const, reason: 'unsupported' })),
+    onGrabModeToggle: unsubscribe,
+    onGrabActionShortcut: unsubscribe,
     session: {
       listProfiles: vi.fn(async () => []),
       createProfile: vi.fn(async () => null),

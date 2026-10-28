@@ -23,6 +23,147 @@ type BrowserFindSource = {
     browserWorkspaceId: string;
 };
 
+/** Page-level metadata captured at selection time. */
+type BrowserGrabPageContext = {
+    sanitizedUrl: string;
+    title: string;
+    viewportWidth: number;
+    viewportHeight: number;
+    scrollX: number;
+    scrollY: number;
+    devicePixelRatio: number;
+    capturedAt: string;
+};
+/** Accessibility metadata for the selected element. */
+type BrowserGrabAccessibility = {
+    role: string | null;
+    accessibleName: string | null;
+    ariaLabel: string | null;
+    ariaLabelledBy: string | null;
+};
+/** Curated subset of computed styles. */
+type BrowserGrabComputedStyles = {
+    display: string;
+    position: string;
+    width: string;
+    height: string;
+    margin: string;
+    padding: string;
+    color: string;
+    backgroundColor: string;
+    border: string;
+    borderRadius: string;
+    fontFamily: string;
+    fontSize: string;
+    fontWeight: string;
+    lineHeight: string;
+    textAlign: string;
+    zIndex: string;
+};
+/** Viewport-relative or page-relative rectangle in CSS pixels. */
+type BrowserGrabRect = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+};
+/** The selected element's extracted data. */
+type BrowserGrabTarget = {
+    tagName: string;
+    selector: string;
+    elementPath?: string;
+    fullPath?: string;
+    cssClasses?: string;
+    nearbyElements?: string[];
+    selectedText?: string | null;
+    isFixed?: boolean;
+    reactComponents?: string | null;
+    sourceFile?: string | null;
+    textSnippet: string;
+    htmlSnippet: string;
+    attributes: Record<string, string>;
+    accessibility: BrowserGrabAccessibility;
+    rectViewport: BrowserGrabRect;
+    rectPage: BrowserGrabRect;
+    computedStyles: BrowserGrabComputedStyles;
+};
+/** Screenshot attachment — always PNG, either a data URL or a temp file path. */
+type BrowserGrabScreenshot = {
+    mimeType: 'image/png';
+    dataUrl: string;
+    width: number;
+    height: number;
+};
+/** The full payload extracted from a browser grab selection. */
+type BrowserGrabPayload = {
+    page: BrowserGrabPageContext;
+    target: BrowserGrabTarget;
+    nearbyText: string[];
+    ancestorPath: string[];
+    screenshot: BrowserGrabScreenshot | null;
+};
+type GrabIntent = 'copy' | 'annotate';
+/** Why a grab operation was cancelled before the user selected an element. */
+type BrowserGrabCancelReason = 'user' | 'tab-inactive' | 'navigation' | 'evicted' | 'timeout';
+/** Discriminated union for the result of a single grab operation. */
+type BrowserGrabResult = {
+    opId: string;
+    kind: 'selected';
+    payload: BrowserGrabPayload;
+} | {
+    opId: string;
+    kind: 'context-selected';
+    payload: BrowserGrabPayload;
+} | {
+    opId: string;
+    kind: 'cancelled';
+    reason: BrowserGrabCancelReason;
+} | {
+    opId: string;
+    kind: 'error';
+    reason: string;
+};
+type BrowserSetGrabModeArgs = {
+    browserPageId: string;
+    enabled: boolean;
+};
+/** Why a grab IPC call was rejected before the operation could start. */
+type BrowserGrabRejectReason = 'not-ready' | 'not-authorized' | 'already-active' | 'injection-failed';
+type BrowserSetGrabModeResult = {
+    ok: true;
+} | {
+    ok: false;
+    reason: BrowserGrabRejectReason;
+};
+type BrowserAwaitGrabSelectionArgs = {
+    browserPageId: string;
+    opId: string;
+};
+type BrowserCancelGrabArgs = {
+    browserPageId: string;
+};
+type BrowserCaptureSelectionScreenshotArgs = {
+    browserPageId: string;
+    rect: BrowserGrabRect;
+};
+type BrowserCaptureSelectionScreenshotResult = {
+    ok: true;
+    screenshot: BrowserGrabScreenshot;
+} | {
+    ok: false;
+    reason: string;
+};
+type BrowserExtractHoverArgs = {
+    browserPageId: string;
+};
+type BrowserExtractHoverResult = {
+    ok: true;
+    payload: BrowserGrabPayload;
+} | {
+    ok: false;
+    reason: string;
+};
+
 type BrowserPermissionDeniedEvent = {
     browserPageId: string;
     /** Electron permission string (e.g. "media", "notifications"). */
@@ -239,6 +380,16 @@ interface BrowserApi {
         deltaY: number;
     }) => void): BrowserUnsubscribe;
     onSystemResumed(callback: () => void): BrowserUnsubscribe;
+    setGrabMode(args: BrowserSetGrabModeArgs): Promise<BrowserSetGrabModeResult>;
+    awaitGrabSelection(args: BrowserAwaitGrabSelectionArgs): Promise<BrowserGrabResult>;
+    cancelGrab(args: BrowserCancelGrabArgs): Promise<boolean>;
+    captureSelectionScreenshot(args: BrowserCaptureSelectionScreenshotArgs): Promise<BrowserCaptureSelectionScreenshotResult>;
+    extractHoverPayload(args: BrowserExtractHoverArgs): Promise<BrowserExtractHoverResult>;
+    onGrabModeToggle(callback: (browserPageId: string, intent: GrabIntent) => void): BrowserUnsubscribe;
+    onGrabActionShortcut(callback: (data: {
+        browserPageId: string;
+        key: 'c' | 's';
+    }) => void): BrowserUnsubscribe;
     session: {
         listProfiles(): Promise<BrowserSessionProfile[]>;
         createProfile(args: {

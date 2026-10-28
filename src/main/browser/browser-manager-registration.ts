@@ -113,6 +113,8 @@ export abstract class BrowserManagerRegistration extends BrowserManagerGuestPoli
   }
 
   unregisterAll(): void {
+    // Cancel all active grab ops before tearing down registrations.
+    this.grabSessionController.cancelAll('evicted')
     for (const browserTabId of this.webContentsIdByTabId.keys()) {
       this.unregisterGuest(browserTabId)
     }

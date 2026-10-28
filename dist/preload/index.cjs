@@ -119,7 +119,22 @@ var browserPageInteractionApi = {
   },
   notifyActiveTabChanged: (args) => import_electron3.ipcRenderer.invoke("browser:activeTabChanged", args),
   openExternal: (args) => import_electron3.ipcRenderer.invoke("browser:openExternal", args),
-  writeClipboardText: (text) => import_electron3.ipcRenderer.invoke("browser:writeClipboardText", text)
+  writeClipboardText: (text) => import_electron3.ipcRenderer.invoke("browser:writeClipboardText", text),
+  setGrabMode: (args) => import_electron3.ipcRenderer.invoke("browser:setGrabMode", args),
+  awaitGrabSelection: (args) => import_electron3.ipcRenderer.invoke("browser:awaitGrabSelection", args),
+  cancelGrab: (args) => import_electron3.ipcRenderer.invoke("browser:cancelGrab", args),
+  captureSelectionScreenshot: (args) => import_electron3.ipcRenderer.invoke("browser:captureSelectionScreenshot", args),
+  extractHoverPayload: (args) => import_electron3.ipcRenderer.invoke("browser:extractHoverPayload", args),
+  onGrabModeToggle: (callback) => {
+    const listener = (_event, browserPageId, intent) => callback(browserPageId, intent);
+    import_electron3.ipcRenderer.on("browser:grabModeToggle", listener);
+    return () => import_electron3.ipcRenderer.removeListener("browser:grabModeToggle", listener);
+  },
+  onGrabActionShortcut: (callback) => {
+    const listener = (_event, data) => callback(data);
+    import_electron3.ipcRenderer.on("browser:grabActionShortcut", listener);
+    return () => import_electron3.ipcRenderer.removeListener("browser:grabActionShortcut", listener);
+  }
 };
 
 // src/preload/api/ui-bridge-tab-and-browser-commands.ts

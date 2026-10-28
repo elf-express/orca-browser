@@ -1,5 +1,17 @@
 import type { BrowserFindSource } from './browser-find-source'
 import type {
+  BrowserAwaitGrabSelectionArgs,
+  BrowserCancelGrabArgs,
+  BrowserCaptureSelectionScreenshotArgs,
+  BrowserCaptureSelectionScreenshotResult,
+  BrowserExtractHoverArgs,
+  BrowserExtractHoverResult,
+  BrowserGrabResult,
+  BrowserSetGrabModeArgs,
+  BrowserSetGrabModeResult,
+  GrabIntent
+} from './browser-grab-types'
+import type {
   BrowserContextMenuDismissedEvent,
   BrowserContextMenuRequestedEvent,
   BrowserPermissionDeniedEvent,
@@ -91,6 +103,19 @@ export interface BrowserApi {
     callback: (event: { browserPageId: string; deltaX: number; deltaY: number }) => void
   ): BrowserUnsubscribe
   onSystemResumed(callback: () => void): BrowserUnsubscribe
+  setGrabMode(args: BrowserSetGrabModeArgs): Promise<BrowserSetGrabModeResult>
+  awaitGrabSelection(args: BrowserAwaitGrabSelectionArgs): Promise<BrowserGrabResult>
+  cancelGrab(args: BrowserCancelGrabArgs): Promise<boolean>
+  captureSelectionScreenshot(
+    args: BrowserCaptureSelectionScreenshotArgs
+  ): Promise<BrowserCaptureSelectionScreenshotResult>
+  extractHoverPayload(args: BrowserExtractHoverArgs): Promise<BrowserExtractHoverResult>
+  onGrabModeToggle(
+    callback: (browserPageId: string, intent: GrabIntent) => void
+  ): BrowserUnsubscribe
+  onGrabActionShortcut(
+    callback: (data: { browserPageId: string; key: 'c' | 's' }) => void
+  ): BrowserUnsubscribe
   session: {
     listProfiles(): Promise<BrowserSessionProfile[]>
     createProfile(args: {
