@@ -6400,6 +6400,20 @@ function useBrowserStateIpcBridge() {
     if (!api) {
       return;
     }
+    return api.onGuestLoadFailed(({ browserPageId, loadError }) => {
+      useBrowserStore.getState().updateBrowserPageState(browserPageId, {
+        loading: false,
+        loadError,
+        canGoBack: false,
+        canGoForward: false
+      });
+    });
+  }, []);
+  useEffect15(() => {
+    const api = window.browserAPI;
+    if (!api) {
+      return;
+    }
     const reported = /* @__PURE__ */ new Map();
     const reportActivePages = (state) => {
       for (const scopeId of reported.keys()) {

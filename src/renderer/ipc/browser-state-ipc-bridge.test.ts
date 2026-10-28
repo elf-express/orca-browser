@@ -1,6 +1,10 @@
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BrowserApi, BrowserOpenLinkInTabEvent } from '../../shared/browser-api-types'
+import type {
+  BrowserApi,
+  BrowserGuestLoadFailedEvent,
+  BrowserOpenLinkInTabEvent
+} from '../../shared/browser-api-types'
 import { useBrowserStore } from '../store/browser-store'
 import { useBrowserStateIpcBridge } from './browser-state-ipc-bridge'
 
@@ -9,6 +13,7 @@ vi.mock('../components/browser-pane/host-guest/webview-registry', () => ({
 }))
 
 let openLink: ((event: BrowserOpenLinkInTabEvent) => void) | null = null
+let loadFailed: ((event: BrowserGuestLoadFailedEvent) => void) | null = null
 const notifyActiveTabChanged = vi.fn(async () => true)
 
 function resetStore(): void {
@@ -24,9 +29,16 @@ describe('useBrowserStateIpcBridge', () => {
   beforeEach(() => {
     resetStore()
     openLink = null
+    loadFailed = null
     notifyActiveTabChanged.mockClear()
     window.browserAPI = {
       notifyActiveTabChanged,
+      onGuestLoadFailed: (callback: (event: BrowserGuestLoadFailedEvent) => void) => {
+        loadFailed = callback
+        return () => {
+          loadFailed = null
+        }
+      },
       onOpenLinkInOrcaTab: (callback: (event: BrowserOpenLinkInTabEvent) => void) => {
         openLink = callback
         return () => {
@@ -106,5 +118,43 @@ describe('useBrowserStateIpcBridge', () => {
     delete window.browserAPI
     expect(() => renderHook(() => useBrowserStateIpcBridge())).not.toThrow()
     expect(openLink).toBeNull()
+  })
+  it('records a guest load failure on a known page', () => {
+    const p1 = useBrowserStore.getState().ensureScopePage('ws-1')
+    useBrowserStore.getState().updateBrowserPageState(p1.id, { loading: true, canGoBack: true })
+    renderHook(() => useBrowserStateIpcBridge())
+    const loadError = { code: -105, description: 'ERR_NAME_NOT_RESOLVED', validatedUrl: 'https://x.test/' }
+
+    loadFailed?.({ browserPageId: p1.id, loadError })
+
+    const page = useBrowserStore.getState().pagesByScope['ws-1'][0]
+    expect(page.loadError).toEqual(loadError)
+    expect(page.loading).toBe(false)
+    expect(page.canGoBack).toBe(false)
+    expect(page.canGoForward).toBe(false)
+  })
+
+  it('ignores load failures from unknown pages', () => {
+    const p1 = useBrowserStore.getState().ensureScopePage('ws-1')
+    renderHook(() => useBrowserStateIpcBridge())
+
+    loadFailed?.({
+      browserPageId: 'missing',
+      loadError: { code: -1, description: 'x', validatedUrl: 'https://x.test/' }
+    })
+
+    expect(useBrowserStore.getState().pagesByScope['ws-1'][0].loadError).toBe(
+      p1.loadError
+    )
+    expect(useBrowserStore.getState().pagesByScope['ws-1']).toHaveLength(1)
+  })
+
+  it('unsubscribes from load failures on unmount', () => {
+    const view = renderHook(() => useBrowserStateIpcBridge())
+    expect(loadFailed).not.toBeNull()
+
+    view.unmount()
+
+    expect(loadFailed).toBeNull()
   })
 })

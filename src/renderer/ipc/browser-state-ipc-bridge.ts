@@ -25,6 +25,22 @@ export function useBrowserStateIpcBridge(): void {
     if (!api) {
       return
     }
+    // Unknown page ids are ignored by the store update.
+    return api.onGuestLoadFailed(({ browserPageId, loadError }) => {
+      useBrowserStore.getState().updateBrowserPageState(browserPageId, {
+        loading: false,
+        loadError,
+        canGoBack: false,
+        canGoForward: false
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    const api = window.browserAPI
+    if (!api) {
+      return
+    }
     // Last page reported per scope; a scope that goes inactive is forgotten so reactivation reports again.
     const reported = new Map<string, string>()
     const reportActivePages = (state: BrowserStoreState): void => {
