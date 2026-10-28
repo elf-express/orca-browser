@@ -199,6 +199,214 @@ describe('BrowserSessionRegistry persistence', () => {
     expect(fsState.present.has('/staged/default')).toBe(true)
   })
 
+  it('sets up default-partition policies on restore', async () => {
+    const fsState = createFsState()
+    seedMeta(fsState, {
+      defaultSource: null,
+      userAgent: null,
+      userAgentByPartition: {},
+      pendingCookieDbPath: null,
+      pendingCookieImports: {},
+      profiles: []
+    })
+
+    const { sessionFromPartitionMock, browserManagerNotifyPermissionDeniedMock } =
+      installModuleMocks(fsState)
+    const { browserSessionRegistry } = await import('./browser-session-registry')
+    await configureRegistry(browserSessionRegistry)
+
+    browserSessionRegistry.initializeBrowserSessionsFromPersistedState()
+
+    const defaultSessions = sessionFromPartitionMock.mock.results
+      .filter((_, idx) => sessionFromPartitionMock.mock.calls[idx]?.[0] === 'persist:orca-browser')
+      .map((r) => r.value)
+    expect(defaultSessions.length).toBeGreaterThan(0)
+    const defaultSession = defaultSessions[0]
+    const requestHandler = defaultSession.setPermissionRequestHandler.mock.calls[0][0]
+    const checkHandler = defaultSession.setPermissionCheckHandler.mock.calls[0][0]
+    const guestWc = { id: 401, getURL: vi.fn(() => 'https://example.com/account') }
+    const permissionCallback = vi.fn()
+
+    requestHandler(guestWc, 'fullscreen', permissionCallback)
+    requestHandler(guestWc, 'clipboard-read', permissionCallback)
+    requestHandler(guestWc, 'clipboard-sanitized-write', permissionCallback)
+    requestHandler(guestWc, 'notifications', permissionCallback)
+    requestHandler(guestWc, 'persistent-storage', permissionCallback)
+    requestHandler(guestWc, 'geolocation', permissionCallback)
+    requestHandler(guestWc, 'media', permissionCallback, { mediaTypes: ['video'] })
+
+    await vi.waitFor(() =>
+      expect(permissionCallback.mock.calls).toEqual([
+        [true],
+        [true],
+        [true],
+        [true],
+        [true],
+        [false],
+        [true]
+      ])
+    )
+    expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+      guestWebContentsId: 401,
+      permission: 'geolocation',
+      rawUrl: 'https://example.com/account'
+    })
+
+    // A subframe denial must name the requester, not its top-level embedder.
+    browserManagerNotifyPermissionDeniedMock.mockClear()
+    requestHandler(guestWc, 'geolocation', permissionCallback, {
+      requestingUrl: 'https://widget.example.net/embed',
+      isMainFrame: false
+    })
+    await vi.waitFor(() =>
+      expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+        guestWebContentsId: 401,
+        permission: 'geolocation',
+        rawUrl: 'https://widget.example.net/embed'
+      })
+    )
+
+    // Missing or empty frame URLs fall back to the visible top-level page.
+    browserManagerNotifyPermissionDeniedMock.mockClear()
+    requestHandler(guestWc, 'geolocation', permissionCallback, { isMainFrame: true })
+    await vi.waitFor(() =>
+      expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+        guestWebContentsId: 401,
+        permission: 'geolocation',
+        rawUrl: 'https://example.com/account'
+      })
+    )
+
+    browserManagerNotifyPermissionDeniedMock.mockClear()
+    requestHandler(guestWc, 'geolocation', permissionCallback, {
+      requestingUrl: '',
+      isMainFrame: false
+    })
+    await vi.waitFor(() =>
+      expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+        guestWebContentsId: 401,
+        permission: 'geolocation',
+        rawUrl: 'https://example.com/account'
+      })
+    )
+
+    // Opaque frame URLs have no site Orca can name accurately.
+    browserManagerNotifyPermissionDeniedMock.mockClear()
+    requestHandler(guestWc, 'geolocation', permissionCallback, {
+      requestingUrl: 'about:blank',
+      isMainFrame: false
+    })
+    await vi.waitFor(() =>
+      expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+        guestWebContentsId: 401,
+        permission: 'geolocation',
+        rawUrl: ''
+      })
+    )
+    expect(
+      browserManagerNotifyPermissionDeniedMock.mock.calls.map(([args]) => args.permission)
+    ).toEqual(['geolocation'])
+    expect(checkHandler(null, 'fullscreen', '')).toBe(true)
+    expect(checkHandler(null, 'clipboard-read', '')).toBe(true)
+    expect(checkHandler(null, 'clipboard-sanitized-write', '')).toBe(true)
+    expect(checkHandler(null, 'notifications', '')).toBe(true)
+    expect(checkHandler(null, 'persistent-storage', '')).toBe(true)
+    expect(checkHandler(null, 'geolocation', '')).toBe(false)
+    expect(checkHandler(null, 'media', '', { mediaType: 'video' })).toBe(true)
+
+    // Why: this session allows unpartitioned third-party cookies, so a cross-site frame already has
+    // the access requestStorageAccess() would grant. Denying it protected nothing and only broke
+    // sites taking the API's failure path. Red before the grant landed.
+    requestHandler(guestWc, 'storage-access', permissionCallback)
+    expect(permissionCallback).toHaveBeenLastCalledWith(true)
+    expect(checkHandler(null, 'storage-access', '')).toBe(true)
+
+    // Why: requestStorageAccessFor() is a different platform decision — Chromium consults Related
+    // Website Sets and has no third-party-cookie auto-grant, and Orca has no such data source. This
+    // pins the deliberate denial so a future blanket widening of the allow-set fails loudly.
+    requestHandler(guestWc, 'top-level-storage-access', permissionCallback)
+    expect(permissionCallback).toHaveBeenLastCalledWith(false)
+    expect(checkHandler(null, 'top-level-storage-access', '')).toBe(false)
+
+    // Why: the reported symptom was a user-visible denial notice, so pin the notified list here —
+    // storage-access must no longer raise one, while the deliberate top-level denial still does.
+    expect(
+      browserManagerNotifyPermissionDeniedMock.mock.calls.map(([args]) => args.permission)
+    ).toEqual(['geolocation', 'top-level-storage-access'])
+    expect(defaultSession.setDisplayMediaRequestHandler).toHaveBeenCalled()
+    const displayMediaHandler = defaultSession.setDisplayMediaRequestHandler.mock.calls[0][0]
+    const displayMediaCallback = vi.fn()
+    displayMediaHandler(null, displayMediaCallback)
+    expect(displayMediaCallback).toHaveBeenCalledWith({ video: undefined, audio: undefined })
+  })
+
+  it('does not stack default-partition policy handlers on repeated restore', async () => {
+    const fsState = createFsState()
+    seedMeta(fsState, {
+      defaultSource: null,
+      userAgent: null,
+      userAgentByPartition: {},
+      pendingCookieDbPath: null,
+      pendingCookieImports: {},
+      profiles: []
+    })
+
+    const { sessionFromPartitionMock } = installModuleMocks(fsState)
+    const { browserSessionRegistry } = await import('./browser-session-registry')
+    await configureRegistry(browserSessionRegistry)
+
+    browserSessionRegistry.initializeBrowserSessionsFromPersistedState()
+    browserSessionRegistry.initializeBrowserSessionsFromPersistedState()
+
+    const defaultSessions = sessionFromPartitionMock.mock.results
+      .filter((_, idx) => sessionFromPartitionMock.mock.calls[idx]?.[0] === 'persist:orca-browser')
+      .map((r) => r.value)
+    const policySessions = defaultSessions.filter(
+      (s) => s.setPermissionRequestHandler.mock.calls.length > 0
+    )
+    expect(policySessions).toHaveLength(1)
+  })
+
+  it('notifies when default-partition media permission is denied', async () => {
+    const fsState = createFsState()
+    seedMeta(fsState, {
+      defaultSource: null,
+      userAgent: null,
+      userAgentByPartition: {},
+      pendingCookieDbPath: null,
+      pendingCookieImports: {},
+      profiles: []
+    })
+
+    const {
+      sessionFromPartitionMock,
+      browserManagerNotifyPermissionDeniedMock,
+      requestSystemMediaAccessMock
+    } = installModuleMocks(fsState)
+    requestSystemMediaAccessMock.mockResolvedValue(false)
+    const { browserSessionRegistry } = await import('./browser-session-registry')
+    await configureRegistry(browserSessionRegistry)
+
+    browserSessionRegistry.initializeBrowserSessionsFromPersistedState()
+
+    const defaultSession = sessionFromPartitionMock.mock.results.find(
+      (_, idx) => sessionFromPartitionMock.mock.calls[idx]?.[0] === 'persist:orca-browser'
+    )?.value
+    const requestHandler = defaultSession.setPermissionRequestHandler.mock.calls[0][0]
+    const guestWc = { id: 403, getURL: vi.fn(() => 'https://example.com/camera') }
+    const callback = vi.fn()
+
+    requestHandler(guestWc, 'media', callback, { mediaTypes: ['video'] })
+    guestWc.getURL.mockReturnValue('https://example.com/after-navigation')
+
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledWith(false))
+    expect(browserManagerNotifyPermissionDeniedMock).toHaveBeenCalledWith({
+      guestWebContentsId: 403,
+      permission: 'media',
+      rawUrl: 'https://example.com/camera'
+    })
+  })
+
   it('keeps failed partition replay pending and removes unrelated missing entries', async () => {
     const importedPartition = 'persist:orca-browser-session-22222222-2222-4222-8222-222222222222'
     const fsState = createFsState()

@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 type FakeSession = {
   getUserAgent: () => string
   setUserAgent: ReturnType<typeof vi.fn>
+  setPermissionRequestHandler: ReturnType<typeof vi.fn>
+  setPermissionCheckHandler: ReturnType<typeof vi.fn>
+  setDisplayMediaRequestHandler: ReturnType<typeof vi.fn>
 }
 
 const sessionsByPartition = new Map<string, FakeSession>()
@@ -30,7 +33,10 @@ vi.mock('electron', () => ({
       const created: FakeSession = {
         getUserAgent: () =>
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Orca/1.0 Chrome/150.0.7871.224 Electron/43.0.0 Safari/537.36',
-        setUserAgent: vi.fn()
+        setUserAgent: vi.fn(),
+        setPermissionRequestHandler: vi.fn(),
+        setPermissionCheckHandler: vi.fn(),
+        setDisplayMediaRequestHandler: vi.fn()
       }
       sessionsByPartition.set(partition, created)
       return created
@@ -38,7 +44,11 @@ vi.mock('electron', () => ({
   }
 }))
 vi.mock('./browser-manager', () => ({
-  browserManager: { resolveBrowserGuestRequestUserAgent: vi.fn() }
+  browserManager: { resolveBrowserGuestRequestUserAgent: vi.fn(), notifyPermissionDenied: vi.fn() }
+}))
+vi.mock('./browser-media-access', () => ({
+  hasSystemMediaAccess: () => false,
+  requestSystemMediaAccess: async () => false
 }))
 vi.mock('./browser-session-ua', () => ({
   installBrowserSessionUserAgentPolicy: mocks.installBrowserSessionUserAgentPolicy
@@ -138,5 +148,66 @@ describe('partition user agent policy', () => {
     await expect(
       policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
     ).rejects.toThrow('not initialized')
+  })
+})
+
+describe('partition permission policy', () => {
+  it('keeps ordinary browser partitions on the browser permission policy', async () => {
+    const policies = await loadPolicies('clean')
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    const sess = sessionsByPartition.get('persist:browsing-1')!
+
+    expect(sess.setPermissionRequestHandler).toHaveBeenCalledTimes(1)
+    expect(sess.setPermissionCheckHandler).toHaveBeenCalledTimes(1)
+    const requestHandler = sess.setPermissionRequestHandler.mock.calls[0][0] as (
+      webContents: unknown,
+      permission: string,
+      callback: (allowed: boolean) => void
+    ) => void
+    const decisions: boolean[] = []
+    const guest = { id: 1, getURL: () => 'https://example.com/' }
+    requestHandler(guest, 'fullscreen', (a) => decisions.push(a))
+    requestHandler(guest, 'geolocation', (a) => decisions.push(a))
+    expect(decisions).toEqual([true, false])
+  })
+
+  it('denies display media capture', async () => {
+    const policies = await loadPolicies('clean')
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    const sess = sessionsByPartition.get('persist:browsing-1')!
+    const handler = sess.setDisplayMediaRequestHandler.mock.calls[0][0] as (
+      request: unknown,
+      callback: (streams: unknown) => void
+    ) => void
+    const callback = vi.fn()
+    handler(null, callback)
+    expect(callback).toHaveBeenCalledWith({ video: undefined, audio: undefined })
+  })
+
+  it('does not stack handlers when a partition is installed twice', async () => {
+    const policies = await loadPolicies('clean')
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    const sess = sessionsByPartition.get('persist:browsing-1')!
+    expect(sess.setPermissionRequestHandler).toHaveBeenCalledTimes(1)
+  })
+
+  it('installs again after the partition configuration is forgotten', async () => {
+    const policies = await loadPolicies('clean')
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    policies.forgetBrowserSessionPartitionConfiguration('persist:browsing-1')
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    const sess = sessionsByPartition.get('persist:browsing-1')!
+    expect(sess.setPermissionRequestHandler).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears the handlers with the partition policies', async () => {
+    const policies = await loadPolicies('clean')
+    await policies.installBrowserSessionPartitionPolicies(profileFor('persist:browsing-1'))
+    const sess = sessionsByPartition.get('persist:browsing-1')!
+    policies.clearBrowserSessionPartitionPolicies('persist:browsing-1', sess as never)
+    expect(sess.setPermissionRequestHandler).toHaveBeenLastCalledWith(null)
+    expect(sess.setPermissionCheckHandler).toHaveBeenLastCalledWith(null)
+    expect(sess.setDisplayMediaRequestHandler).toHaveBeenLastCalledWith(null)
   })
 })

@@ -38,6 +38,8 @@ export function seedMeta(fsState: FsState, meta: unknown): void {
 export type BrowserSessionRegistryMocks = {
   sessionFromPartitionMock: RegistryMock
   installBrowserSessionUserAgentPolicyMock: RegistryMock
+  browserManagerNotifyPermissionDeniedMock: RegistryMock
+  requestSystemMediaAccessMock: RegistryMock
 }
 
 export function installModuleMocks(
@@ -49,16 +51,25 @@ export function installModuleMocks(
     partition,
     setUserAgent: vi.fn(),
     getUserAgent: vi.fn(() => CLEAN_USER_AGENT),
+    setPermissionRequestHandler: vi.fn(),
+    setPermissionCheckHandler: vi.fn(),
+    setDisplayMediaRequestHandler: vi.fn(),
     on: vi.fn(),
     removeListener: vi.fn(),
     clearStorageData: vi.fn().mockResolvedValue(undefined),
     clearCache: vi.fn().mockResolvedValue(undefined)
   }))
   const installBrowserSessionUserAgentPolicyMock: RegistryMock = vi.fn(() => vi.fn())
+  const browserManagerNotifyPermissionDeniedMock: RegistryMock = vi.fn()
+  const requestSystemMediaAccessMock: RegistryMock = vi.fn().mockResolvedValue(true)
 
   vi.doMock('electron', () => ({
     app: { getPath: vi.fn(() => USER_DATA) },
-    session: { fromPartition: sessionFromPartitionMock }
+    session: { fromPartition: sessionFromPartitionMock },
+    systemPreferences: {
+      askForMediaAccess: vi.fn().mockResolvedValue(true),
+      getMediaAccessStatus: vi.fn(() => 'granted')
+    }
   }))
 
   vi.doMock('node:fs', () => ({
@@ -125,8 +136,13 @@ export function installModuleMocks(
 
   vi.doMock('../browser-manager', () => ({
     browserManager: {
-      resolveBrowserGuestRequestUserAgent: vi.fn()
+      resolveBrowserGuestRequestUserAgent: vi.fn(),
+      notifyPermissionDenied: browserManagerNotifyPermissionDeniedMock
     }
+  }))
+  vi.doMock('../browser-media-access', () => ({
+    hasSystemMediaAccess: vi.fn(() => true),
+    requestSystemMediaAccess: requestSystemMediaAccessMock
   }))
   vi.doMock('../browser-session-ua', () => ({
     installBrowserSessionUserAgentPolicy: installBrowserSessionUserAgentPolicyMock
@@ -158,7 +174,9 @@ export function installModuleMocks(
 
   return {
     sessionFromPartitionMock,
-    installBrowserSessionUserAgentPolicyMock
+    installBrowserSessionUserAgentPolicyMock,
+    browserManagerNotifyPermissionDeniedMock,
+    requestSystemMediaAccessMock
   }
 }
 

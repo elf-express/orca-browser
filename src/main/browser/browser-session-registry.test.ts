@@ -17,6 +17,10 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/user-data') },
   session: {
     fromPartition: sessionFromPartitionMock
+  },
+  systemPreferences: {
+    askForMediaAccess: vi.fn().mockResolvedValue(true),
+    getMediaAccessStatus: vi.fn(() => 'granted')
   }
 }))
 
@@ -30,7 +34,8 @@ vi.mock('./browser-process-user-agent', async (importOriginal) => ({
 
 vi.mock('./browser-manager', () => ({
   browserManager: {
-    resolveBrowserGuestRequestUserAgent: vi.fn()
+    resolveBrowserGuestRequestUserAgent: vi.fn(),
+    notifyPermissionDenied: vi.fn()
   }
 }))
 
@@ -57,6 +62,9 @@ describe('BrowserSessionRegistry', () => {
       setUserAgent: vi.fn(),
       getUserAgent: vi.fn(() => CLEAN_USER_AGENT),
       webRequest: { onBeforeSendHeaders: vi.fn() },
+      setPermissionRequestHandler: vi.fn(),
+      setPermissionCheckHandler: vi.fn(),
+      setDisplayMediaRequestHandler: vi.fn(),
       on: vi.fn(),
       removeListener: vi.fn(),
       clearStorageData: vi.fn().mockResolvedValue(undefined),
@@ -297,6 +305,86 @@ describe('BrowserSessionRegistry', () => {
     rebuilt.browserSessionRegistry.configure({ userDataDir: tmpUserData })
     rebuilt.browserSessionRegistry.initializeBrowserSessionsFromPersistedState()
     expect(rebuilt.browserSessionRegistry.listProfiles().map((p) => p.id)).toContain(profile!.id)
+  })
+
+  it('auto-grants pointer lock for browser partitions', async () => {
+    await browserSessionRegistry.createProfile('isolated', 'Pointer Lock Test')
+    const mockSession = sessionFromPartitionMock.mock.results[0]?.value
+    const requestHandler = mockSession.setPermissionRequestHandler.mock.calls[0][0]
+    const checkHandler = mockSession.setPermissionCheckHandler.mock.calls[0][0]
+    const callback = vi.fn()
+    const guestWc = { id: 7, getURL: vi.fn(() => 'https://example.com/') }
+
+    requestHandler(guestWc, 'pointerLock', callback, {})
+
+    expect(callback).toHaveBeenCalledWith(true)
+    expect(checkHandler(null, 'pointerLock', '', {})).toBe(true)
+  })
+
+  it('auto-grants storage-access for isolated partitions', async () => {
+    // Why: mirrors the pointerLock precedent directly above — the default-partition suite does not
+    // reach this install path.
+    await browserSessionRegistry.createProfile('isolated', 'Storage Access Test')
+    const mockSession = sessionFromPartitionMock.mock.results[0]?.value
+    const requestHandler = mockSession.setPermissionRequestHandler.mock.calls[0][0]
+    const checkHandler = mockSession.setPermissionCheckHandler.mock.calls[0][0]
+    const callback = vi.fn()
+    const guestWc = { id: 7, getURL: vi.fn(() => 'https://example.com/') }
+
+    requestHandler(guestWc, 'storage-access', callback, {})
+
+    expect(callback).toHaveBeenCalledWith(true)
+    expect(checkHandler(null, 'storage-access', '', {})).toBe(true)
+    expect(checkHandler(null, 'top-level-storage-access', '', {})).toBe(false)
+  })
+
+  it('routes media permission requests through macOS TCC for isolated partitions', async () => {
+    // Why: verify the parallel fix to the default partition — isolated/imported
+    // profiles must also defer media permission checks to macOS instead of
+    // denying outright, otherwise pages inside them still hit NotAllowedError
+    // after the user grants Camera/Microphone to Orca.
+    await browserSessionRegistry.createProfile('isolated', 'Media Test')
+    const mockSession = sessionFromPartitionMock.mock.results[0]?.value
+    const requestHandler = mockSession.setPermissionRequestHandler.mock.calls[0][0]
+    const checkHandler = mockSession.setPermissionCheckHandler.mock.calls[0][0]
+
+    const cb = vi.fn()
+    const guestWc = { id: 7, getURL: vi.fn(() => 'https://example.com/') }
+    requestHandler(guestWc, 'media', cb, { mediaTypes: ['video'] })
+    await vi.waitFor(() => expect(cb).toHaveBeenCalledWith(true))
+
+    expect(checkHandler(null, 'media', '', { mediaType: 'video' })).toBe(true)
+    expect(checkHandler(null, 'notifications', '', {})).toBe(true)
+    expect(checkHandler(null, 'persistent-storage', '', {})).toBe(true)
+    expect(checkHandler(null, 'geolocation', '', {})).toBe(false)
+  })
+
+  it('retains session security policies when deleting a profile', async () => {
+    const profile = await browserSessionRegistry.createProfile('isolated', 'Policy Delete Test')
+    expect(profile).not.toBeNull()
+    const mockSession = sessionFromPartitionMock.mock.results[0]?.value
+    const permissionWrites = mockSession.setPermissionRequestHandler.mock.calls.length
+    const downloadListenerWrites = mockSession.removeListener.mock.calls.length
+
+    await expect(browserSessionRegistry.deleteProfile(profile!.id)).resolves.toBe(true)
+
+    expect(mockSession.setPermissionRequestHandler).toHaveBeenCalledTimes(permissionWrites)
+    expect(mockSession.removeListener).toHaveBeenCalledTimes(downloadListenerWrites)
+  })
+
+  it('denies a non-whitelisted permission on the default partition', async () => {
+    browserSessionRegistry.initializeBrowserSessionsFromPersistedState()
+    const mockSession = sessionFromPartitionMock.mock.results[0]?.value
+    const requestHandler = mockSession.setPermissionRequestHandler.mock.calls[0][0]
+    const callback = vi.fn()
+    requestHandler(
+      { id: 9, getURL: vi.fn(() => 'https://example.com/') },
+      'geolocation',
+      callback,
+      {}
+    )
+    expect(callback).toHaveBeenCalledWith(false)
+    expect(sessionFromPartitionMock).toHaveBeenCalledWith('persist:orca-browser')
   })
 
   describe('installBrowserSessionUserAgentPolicy', () => {

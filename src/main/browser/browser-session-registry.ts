@@ -15,7 +15,11 @@ import {
   clearPendingBrowserCookieImport,
   setPendingBrowserCookieImport
 } from './browser-session-cookie-staging'
-import { loadBrowserSessionMeta, persistBrowserSessionMeta } from './browser-session-meta-store'
+import {
+  BROWSER_SESSION_META_FILE_NAME,
+  loadBrowserSessionMeta,
+  persistBrowserSessionMeta
+} from './browser-session-meta-store'
 import type { BrowserSessionMeta } from './browser-session-meta-store'
 import {
   forgetBrowserSessionPartitionConfiguration,
@@ -31,9 +35,6 @@ import { markBrowserIdentityMigrationNoticePending } from './browser-identity-mo
 
 // The plugin keeps its own state in one folder under the host's userData.
 const BROWSER_DATA_DIR_NAME = 'orca-browser'
-const BROWSER_SESSION_META_FILE_NAME = 'browser-session-meta.json'
-
-// Why: source of truth for valid partitions; will-attach-webview consults it so a compromised renderer can't smuggle in an arbitrary partition.
 
 class BrowserSessionRegistry {
   private readonly profiles = new Map<string, BrowserSessionProfile>()
@@ -123,7 +124,7 @@ class BrowserSessionRegistry {
       this.hydrateFromPersisted(meta.profiles)
     }
 
-    // Why: nothing else installs policies on the default partition (hydrate skips it), so without this its guest permissions would be denied.
+    // Why: nothing else installs policies on the default partition (hydrate skips it), so without this its guest permission and display-media policies would never be installed.
     const defaultProfile = this.getDefaultProfile()
     void installBrowserSessionPartitionPolicies(defaultProfile).catch(() => {
       console.warn(
