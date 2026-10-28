@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { ExternalLink, SquareCode } from 'lucide-react'
+import { Crosshair, ExternalLink, MessageSquarePlus, SquareCode } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '../../../ui/button'
 import {
@@ -16,6 +16,11 @@ import {
   useBrowserChromeToolFold,
   type BrowserChromeFoldStage
 } from './use-browser-chrome-tool-fold'
+import {
+  BrowserChromeElementToolButtons,
+  type BrowserChromeElementTools
+} from './browser-chrome-element-tool-buttons'
+import { translate } from '../../../i18n'
 
 export type BrowserChromeToolAction = {
   onSelect: () => void
@@ -61,6 +66,7 @@ export function BrowserChromeToolbar({
   reloadControl,
   reloadLabel,
   importControl = null,
+  elementTools = null,
   viewSource,
   openExternal,
   overflowMenu = null,
@@ -73,6 +79,8 @@ export function BrowserChromeToolbar({
   reloadLabel?: string
   /** Cookie import — a browsing session concept; null where there is no session to import into. */
   importControl?: ((compact: boolean) => React.ReactNode) | null
+  /** The in-guest element picker (Grab and Annotate); null where the surface cannot run it. */
+  elementTools?: BrowserChromeElementTools | null
   viewSource: BrowserChromeToolAction | null
   openExternal: BrowserChromeToolAction | null
   /** The surface's ⋯ menu; null falls back to a default menu holding only the folded tools. */
@@ -84,7 +92,7 @@ export function BrowserChromeToolbar({
 }): React.JSX.Element {
   const rowRef = useRef<HTMLDivElement>(null)
   const overflowTriggerRef = useRef<HTMLButtonElement>(null)
-  // Share, draw, grab and annotate are absent from this package; the stages stay in the fold
+  // Share and draw are absent from this package; the stages stay in the fold
   // order so a surface that adds those tools folds them in the same sequence.
   const present: Record<BrowserChromeFoldStage, boolean> = {
     'import-label': importControl != null,
@@ -93,8 +101,8 @@ export function BrowserChromeToolbar({
     devtools: viewSource !== null,
     share: false,
     draw: false,
-    grab: false,
-    annotate: false
+    grab: elementTools !== null,
+    annotate: elementTools !== null
   }
   const stages = BROWSER_CHROME_FOLD_ORDER.filter(
     (stage) => present[stage] && stage !== pinnedStage
@@ -103,6 +111,32 @@ export function BrowserChromeToolbar({
   const afterMenuCloseRef = useRef<(() => void) | null>(null)
 
   const foldedTools: BrowserChromeFoldedTool[] = []
+  if (elementTools && folded.has('grab')) {
+    foldedTools.push({
+      stage: 'grab',
+      label: translate('auto.components.browser.pane.BrowserPane.fdfc7fe0ef', 'Grab page element'),
+      icon: Crosshair,
+      onSelect: () => elementTools.onStartIntent('copy'),
+      disabled: elementTools.disabled,
+      shortcut: elementTools.grabShortcutLabel,
+      active: elementTools.activeIntent === 'copy'
+    })
+  }
+  if (elementTools && folded.has('annotate')) {
+    foldedTools.push({
+      stage: 'annotate',
+      label: translate(
+        'auto.components.browser.pane.BrowserPane.fc9be38f6f',
+        'Annotate page element'
+      ),
+      icon: MessageSquarePlus,
+      onSelect: () => elementTools.onStartIntent('annotate'),
+      disabled: elementTools.disabled,
+      shortcut: elementTools.annotateShortcutLabel,
+      count: elementTools.annotationCount,
+      active: elementTools.activeIntent === 'annotate'
+    })
+  }
   if (viewSource && folded.has('devtools') && !viewSource.alreadyInOverflowMenu) {
     foldedTools.push({ stage: 'devtools', icon: SquareCode, ...viewSource })
   }
@@ -122,6 +156,7 @@ export function BrowserChromeToolbar({
     event.preventDefault()
     action()
   }
+  const showFoldedAnnotationDot = folded.has('annotate') && (elementTools?.annotationCount ?? 0) > 0
   const overflowProps: BrowserChromeOverflowMenuProps = {
     triggerRef: overflowTriggerRef,
     tools: foldedTools,
@@ -140,6 +175,14 @@ export function BrowserChromeToolbar({
     >
       {folded.has('import') ? null : importControl?.(folded.has('import-label'))}
 
+      {elementTools ? (
+        <BrowserChromeElementToolButtons
+          tools={elementTools}
+          showGrab={!folded.has('grab')}
+          showAnnotate={!folded.has('annotate')}
+        />
+      ) : null}
+
       {viewSource && !folded.has('devtools') ? (
         <BrowserChromeActionButton action={viewSource} icon={SquareCode} />
       ) : null}
@@ -155,6 +198,10 @@ export function BrowserChromeToolbar({
         ) : (
           <BrowserChromeDefaultOverflowMenu {...overflowProps} />
         )}
+        {/* Keeps pending annotations visible once the annotate button has folded into the overflow menu. */}
+        {showFoldedAnnotationDot ? (
+          <span className="pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary ring-2 ring-background" />
+        ) : null}
       </span>
     </BrowserNavigationControlRow>
   )

@@ -7,6 +7,8 @@ import {
 } from '../components/browser-pane/host-guest/browser-page-mount-admission'
 import { setBrowserRendererHost } from '../i18n'
 import { destroyPersistentWebview } from '../components/browser-pane/host-guest/webview-registry'
+import { useBrowserAnnotationStore } from './browser-annotation-store'
+import { makeAnnotation } from './browser-annotation-test-fixture'
 import { BROWSER_HISTORY_STORAGE_KEY, useBrowserStore } from './browser-store'
 
 vi.mock('../components/browser-pane/host-guest/webview-registry', () => ({
@@ -99,6 +101,21 @@ describe('useBrowserStore', () => {
     const state = useBrowserStore.getState()
     expect(state.pagesByScope['ws-1']).toEqual([])
     expect(state.activePageIdByScope['ws-1']).toBeNull()
+  })
+
+  it('closing a page disposes its annotations', () => {
+    const page = useBrowserStore.getState().ensureScopePage('ws-1')
+    const other = useBrowserStore.getState().createBrowserPage('ws-1', 'https://a.test')
+    const annotations = useBrowserAnnotationStore.getState()
+    annotations.addBrowserPageAnnotation(makeAnnotation(page.id))
+    annotations.addBrowserPageAnnotation(makeAnnotation(other.id))
+
+    useBrowserStore.getState().closeBrowserPage(page.id)
+
+    const after = useBrowserAnnotationStore.getState()
+    expect(after.browserAnnotationsByPageId[page.id]).toBeUndefined()
+    expect(after.browserAnnotationMarkerIdsByPageId[page.id]).toBeUndefined()
+    expect(after.browserAnnotationsByPageId[other.id]).toHaveLength(1)
   })
 
   it('isolates scopes', () => {

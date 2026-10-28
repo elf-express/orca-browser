@@ -14,6 +14,8 @@ export default defineConfig({
         test: {
           name: 'renderer',
           environment: 'jsdom',
+          // The ported grab toast cleanup test forces GC to prove closed panes are released.
+          execArgv: ['--expose-gc'],
           include: ['src/renderer/**/*.test.{ts,tsx}'],
           setupFiles: ['@testing-library/jest-dom/vitest']
         }

@@ -23,7 +23,7 @@ function useBrowserRendererHost() {
 }
 
 // src/renderer/store/browser-store.ts
-import { create } from "zustand";
+import { create as create2 } from "zustand";
 import { persist } from "zustand/middleware";
 
 // src/shared/constants.ts
@@ -496,6 +496,14 @@ function getBrowserPageViewportScrollState(browserPageId) {
     maxScrollTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight)
   };
 }
+function subscribeBrowserPageViewportScroll(scroller, listener) {
+  if (!scroller) {
+    return () => {
+    };
+  }
+  scroller.addEventListener("scroll", listener, { passive: true });
+  return () => scroller.removeEventListener("scroll", listener);
+}
 function removeBrowserPageViewport(browserPageId) {
   const viewport = browserPageViewports.get(browserPageId);
   if (viewport) {
@@ -874,6 +882,208 @@ function replacePersistentWebview(browserTabId, { preserveViewport = false } = {
   return removePersistentWebview(browserTabId, { preserveViewport, preserveZoom: true });
 }
 
+// src/renderer/store/browser-annotation-store.ts
+import { create } from "zustand";
+
+// src/shared/agent-payload.ts
+var BROWSER_AGENT_IMAGE_NAMES = {
+  grab: "browser-grab.png",
+  markup: "browser-markup.png"
+};
+var SAFE_AGENT_URL_PROTOCOLS = /* @__PURE__ */ new Set(["http:", "https:", "file:"]);
+var PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+function sanitizeAgentPageUrl(rawUrl) {
+  if (!rawUrl) {
+    return "";
+  }
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol === "about:") {
+      return url.toString() === "about:blank" ? "about:blank" : "";
+    }
+    if (!SAFE_AGENT_URL_PROTOCOLS.has(url.protocol)) {
+      return "";
+    }
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+function pngDataUrlToAgentImage(name, dataUrl) {
+  if (!dataUrl || !dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
+    return null;
+  }
+  return { name, mimeType: "image/png", dataBase64: dataUrl.slice(PNG_DATA_URL_PREFIX.length) };
+}
+
+// src/shared/browser-grab-types.ts
+var GRAB_BUDGET = {
+  textSnippetMaxLength: 200,
+  nearbyTextEntryMaxLength: 200,
+  nearbyTextMaxEntries: 10,
+  htmlSnippetMaxLength: 4096,
+  ancestorPathMaxEntries: 10,
+  nearbyElementsMaxEntries: 6,
+  nearbyElementMaxLength: 160,
+  selectorMaxLength: 700,
+  pathMaxLength: 900,
+  cssClassesMaxLength: 500,
+  selectedTextMaxLength: 500,
+  sourceFileMaxLength: 500,
+  reactComponentsMaxLength: 500,
+  annotationCommentMaxLength: 2e3,
+  annotationsMaxPerPage: 20,
+  /** Hard byte budget for screenshot PNG data URL before we omit the screenshot. */
+  screenshotMaxBytes: 2 * 1024 * 1024
+};
+
+// src/renderer/store/browser-annotation-store.ts
+function sanitizeBrowserPageAnnotation(annotation) {
+  return {
+    ...annotation,
+    comment: annotation.comment.length > GRAB_BUDGET.annotationCommentMaxLength ? annotation.comment.slice(0, GRAB_BUDGET.annotationCommentMaxLength) : annotation.comment,
+    payload: {
+      ...annotation.payload,
+      page: {
+        ...annotation.payload.page,
+        // The agent text embeds this URL, so a stored note never keeps a query or fragment.
+        sanitizedUrl: sanitizeAgentPageUrl(annotation.payload.page.sanitizedUrl)
+      },
+      // Saved notes must not retain transient screenshot bytes.
+      screenshot: null
+    }
+  };
+}
+function retainBrowserAnnotationMarkerIds(markersByPageId, pageId, annotations, addedId) {
+  const existingIds = markersByPageId[pageId] ?? [];
+  const retainedIds = new Set(annotations.map((annotation) => annotation.id));
+  const nextIds = [...new Set(addedId ? [...existingIds, addedId] : existingIds)].filter(
+    (id) => retainedIds.has(id)
+  );
+  if (nextIds.length === existingIds.length && nextIds.every((id, i) => id === existingIds[i])) {
+    return markersByPageId;
+  }
+  const nextByPageId = { ...markersByPageId };
+  if (nextIds.length > 0) {
+    nextByPageId[pageId] = nextIds;
+  } else {
+    delete nextByPageId[pageId];
+  }
+  return nextByPageId;
+}
+function omitPageKey(record, pageId) {
+  if (!Object.hasOwn(record, pageId)) {
+    return record;
+  }
+  const next = { ...record };
+  delete next[pageId];
+  return next;
+}
+var useBrowserAnnotationStore = create()((set) => ({
+  browserAnnotationsByPageId: {},
+  browserAnnotationMarkerIdsByPageId: {},
+  addBrowserPageAnnotation: (annotation) => set((s) => {
+    const existing = s.browserAnnotationsByPageId[annotation.browserPageId] ?? [];
+    const next = [...existing, sanitizeBrowserPageAnnotation(annotation)].slice(
+      -GRAB_BUDGET.annotationsMaxPerPage
+    );
+    return {
+      browserAnnotationsByPageId: {
+        ...s.browserAnnotationsByPageId,
+        [annotation.browserPageId]: next
+      },
+      browserAnnotationMarkerIdsByPageId: retainBrowserAnnotationMarkerIds(
+        s.browserAnnotationMarkerIdsByPageId,
+        annotation.browserPageId,
+        next,
+        annotation.id
+      )
+    };
+  }),
+  updateBrowserPageAnnotation: (pageId, annotationId, patch) => set((s) => {
+    const existing = s.browserAnnotationsByPageId[pageId] ?? [];
+    const target = existing.find((annotation) => annotation.id === annotationId);
+    if (!target) {
+      return s;
+    }
+    const updated = sanitizeBrowserPageAnnotation({ ...target, ...patch });
+    return {
+      browserAnnotationsByPageId: {
+        ...s.browserAnnotationsByPageId,
+        [pageId]: existing.map(
+          (annotation) => annotation.id === annotationId ? updated : annotation
+        )
+      }
+    };
+  }),
+  deleteBrowserPageAnnotation: (pageId, annotationId) => set((s) => {
+    const existing = s.browserAnnotationsByPageId[pageId] ?? [];
+    const next = existing.filter((annotation) => annotation.id !== annotationId);
+    if (next.length === existing.length) {
+      return s;
+    }
+    const nextByPageId = { ...s.browserAnnotationsByPageId };
+    if (next.length > 0) {
+      nextByPageId[pageId] = next;
+    } else {
+      delete nextByPageId[pageId];
+    }
+    return {
+      browserAnnotationsByPageId: nextByPageId,
+      browserAnnotationMarkerIdsByPageId: retainBrowserAnnotationMarkerIds(
+        s.browserAnnotationMarkerIdsByPageId,
+        pageId,
+        next
+      )
+    };
+  }),
+  clearBrowserPageAnnotations: (pageId) => set((s) => {
+    const notes = omitPageKey(s.browserAnnotationsByPageId, pageId);
+    const markers = omitPageKey(s.browserAnnotationMarkerIdsByPageId, pageId);
+    if (notes === s.browserAnnotationsByPageId && markers === s.browserAnnotationMarkerIdsByPageId) {
+      return s;
+    }
+    return { browserAnnotationsByPageId: notes, browserAnnotationMarkerIdsByPageId: markers };
+  }),
+  invalidateBrowserPageAnnotationGeometry: (pageId) => set((s) => {
+    const markers = omitPageKey(s.browserAnnotationMarkerIdsByPageId, pageId);
+    return markers === s.browserAnnotationMarkerIdsByPageId ? s : { browserAnnotationMarkerIdsByPageId: markers };
+  }),
+  // Identity matching preserves edits and additions made during delivery.
+  removeDeliveredBrowserPageAnnotations: (pageId, deliveredAnnotations) => set((s) => {
+    const existing = s.browserAnnotationsByPageId[pageId] ?? [];
+    const delivered = new Set(deliveredAnnotations);
+    const remaining = existing.filter((note) => !delivered.has(note));
+    if (remaining.length === existing.length) {
+      return s;
+    }
+    const nextByPageId = { ...s.browserAnnotationsByPageId };
+    if (remaining.length > 0) {
+      nextByPageId[pageId] = remaining;
+    } else {
+      delete nextByPageId[pageId];
+    }
+    return {
+      browserAnnotationsByPageId: nextByPageId,
+      browserAnnotationMarkerIdsByPageId: retainBrowserAnnotationMarkerIds(
+        s.browserAnnotationMarkerIdsByPageId,
+        pageId,
+        remaining
+      )
+    };
+  }),
+  disposeBrowserPageAnnotations: (pageId) => set((s) => {
+    const notes = omitPageKey(s.browserAnnotationsByPageId, pageId);
+    const markers = omitPageKey(s.browserAnnotationMarkerIdsByPageId, pageId);
+    if (notes === s.browserAnnotationsByPageId && markers === s.browserAnnotationMarkerIdsByPageId) {
+      return s;
+    }
+    return { browserAnnotationsByPageId: notes, browserAnnotationMarkerIdsByPageId: markers };
+  })
+}));
+
 // src/renderer/store/browser-store.ts
 var BROWSER_HISTORY_STORAGE_KEY = "orca-browser:history:v1";
 function isBlankHistoryUrl(url) {
@@ -896,7 +1106,7 @@ function makePage(scopeId, url) {
     viewportPresetId: null
   };
 }
-var useBrowserStore = create()(
+var useBrowserStore = create2()(
   persist(
     (set, get) => {
       const updatePage = (pageId, update) => {
@@ -965,6 +1175,7 @@ var useBrowserStore = create()(
               pendingAddressBarFocusByPageId: pendingFocus
             };
           });
+          useBrowserAnnotationStore.getState().disposeBrowserPageAnnotations(pageId);
         },
         setActiveBrowserPage: (scopeId, pageId) => {
           const pages = get().pagesByScope[scopeId] ?? [];
@@ -1107,14 +1318,14 @@ function BrowserPane(props) {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { useEffect as useEffect20 } from "react";
+import { useEffect as useEffect26 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { memo, useCallback as useCallback14, useMemo as useMemo7 } from "react";
+import { memo, useCallback as useCallback17, useMemo as useMemo9 } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { useMemo as useMemo6 } from "react";
+import { useMemo as useMemo8 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-pane-page-selection.ts
 var EMPTY_BROWSER_PAGES = [];
@@ -1238,11 +1449,11 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback13, useEffect as useEffect18, useLayoutEffect as useLayoutEffect6, useRef as useRef13, useState as useState15 } from "react";
+import { useCallback as useCallback16, useEffect as useEffect24, useLayoutEffect as useLayoutEffect9, useRef as useRef16, useState as useState21 } from "react";
 import { createPortal as createPortal2 } from "react-dom";
 
 // src/renderer/store/browser-session-store.ts
-import { create as create2 } from "zustand";
+import { create as create3 } from "zustand";
 
 // src/shared/browser-plugin-settings.ts
 var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
@@ -1254,7 +1465,7 @@ var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
 function errorReason(error) {
   return String(error?.message ?? error);
 }
-var useBrowserSessionStore = create2()((set, get) => {
+var useBrowserSessionStore = create3()((set, get) => {
   const runImport = async (profileId, run, options) => {
     set({ browserSessionImportState: { profileId, status: "importing" } });
     try {
@@ -1413,6 +1624,17 @@ function resolveBrowserAddressBarSubmission(rawValue, options) {
       validatedUrl: redactKagiSessionToken(rawValue.trim()) || "about:blank"
     }
   };
+}
+
+// src/renderer/components/browser-pane/describe-page/browser-overlay-shortcut-target.ts
+function browserOverlayOwnsShortcutTarget(target, overlayTabId) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return target.closest("[data-browser-overlay-tab-id]")?.getAttribute("data-browser-overlay-tab-id") === overlayTabId;
+}
+function browserChromeShortcutOwnsEvent(chromeShortcutScope, event, workspaceId) {
+  return chromeShortcutScope === "focused" || chromeShortcutScope === "owned-target" && browserOverlayOwnsShortcutTarget(event.target, workspaceId);
 }
 
 // src/renderer/components/browser-pane/host-guest/browser-page-guest-recovery.ts
@@ -2132,17 +2354,6 @@ function useBrowserPageWebviewUrlSync({
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-shortcuts.ts
 import { useEffect as useEffect3 } from "react";
 
-// src/renderer/components/browser-pane/describe-page/browser-overlay-shortcut-target.ts
-function browserOverlayOwnsShortcutTarget(target, overlayTabId) {
-  if (!(target instanceof Element)) {
-    return false;
-  }
-  return target.closest("[data-browser-overlay-tab-id]")?.getAttribute("data-browser-overlay-tab-id") === overlayTabId;
-}
-function browserChromeShortcutOwnsEvent(chromeShortcutScope, event, workspaceId) {
-  return chromeShortcutScope === "focused" || chromeShortcutScope === "owned-target" && browserOverlayOwnsShortcutTarget(event.target, workspaceId);
-}
-
 // src/renderer/components/browser-pane/host-guest/browser-keyboard.ts
 function isEditableKeyboardTarget(target) {
   const element = target && typeof target === "object" && ("closest" in target || "isContentEditable" in target) ? target : null;
@@ -2514,6 +2725,10 @@ function ImeInput(props) {
   const imeProps = useImeTextFieldProps(props);
   return /* @__PURE__ */ jsx4("input", { ...props, ...imeProps });
 }
+function ImeTextarea(props) {
+  const imeProps = useImeTextFieldProps(props);
+  return /* @__PURE__ */ jsx4("textarea", { ...props, ...imeProps });
+}
 
 // src/renderer/ui/input.tsx
 import { jsx as jsx5 } from "react/jsx-runtime";
@@ -2559,6 +2774,9 @@ function Popover(props) {
 }
 function PopoverTrigger(props) {
   return /* @__PURE__ */ jsx6(PopoverPrimitive.Trigger, { "data-slot": "popover-trigger", ...props });
+}
+function PopoverAnchor(props) {
+  return /* @__PURE__ */ jsx6(PopoverPrimitive.Anchor, { "data-slot": "popover-anchor", ...props });
 }
 function resolvePopoverScroller(target, content) {
   let node = target instanceof Node ? target : null;
@@ -3491,7 +3709,7 @@ function BrowserAddressBar({
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.tsx
 import { useRef as useRef6 } from "react";
-import { ExternalLink, SquareCode } from "lucide-react";
+import { Crosshair as Crosshair2, ExternalLink, MessageSquarePlus as MessageSquarePlus2, SquareCode } from "lucide-react";
 
 // src/renderer/ui/button.tsx
 import * as React4 from "react";
@@ -3958,13 +4176,81 @@ function useBrowserChromeToolFold(rowRef, stages) {
   return new Set(stages.slice(0, level));
 }
 
+// src/renderer/components/browser-pane/assemble-chrome/browser-chrome-element-tool-buttons.tsx
+import { Crosshair, MessageSquarePlus } from "lucide-react";
+import { Fragment as Fragment2, jsx as jsx14, jsxs as jsxs9 } from "react/jsx-runtime";
+function BrowserChromeElementToolButtons({
+  tools,
+  showGrab,
+  showAnnotate
+}) {
+  return /* @__PURE__ */ jsxs9(Fragment2, { children: [
+    showGrab ? /* @__PURE__ */ jsxs9(Tooltip, { children: [
+      /* @__PURE__ */ jsx14(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx14("span", { className: "inline-flex", children: /* @__PURE__ */ jsx14(
+        Button,
+        {
+          size: "icon",
+          variant: tools.activeIntent === "copy" ? "default" : "ghost",
+          className: cn(
+            "h-8 w-8",
+            tools.activeIntent === "copy" && "bg-foreground/80 text-background hover:bg-foreground/90"
+          ),
+          onClick: () => tools.onStartIntent("copy"),
+          disabled: tools.disabled,
+          "aria-label": translate(
+            "auto.components.browser.pane.BrowserPane.fdfc7fe0ef",
+            "Grab page element"
+          ),
+          children: /* @__PURE__ */ jsx14(Crosshair, { className: "size-4" })
+        }
+      ) }) }),
+      /* @__PURE__ */ jsx14(TooltipContent, { side: "bottom", sideOffset: 4, children: translate(
+        "auto.components.browser.pane.BrowserPane.acbe79fd01",
+        "Grab page element ({{value0}})",
+        { value0: tools.grabShortcutLabel }
+      ) })
+    ] }) : null,
+    showAnnotate ? /* @__PURE__ */ jsxs9(Tooltip, { children: [
+      /* @__PURE__ */ jsx14(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx14("span", { className: "inline-flex", children: /* @__PURE__ */ jsxs9(
+        Button,
+        {
+          size: "icon",
+          variant: tools.activeIntent === "annotate" ? "default" : "ghost",
+          className: cn(
+            "relative h-8 w-8",
+            tools.activeIntent === "annotate" && "bg-foreground/80 text-background hover:bg-foreground/90"
+          ),
+          onClick: () => tools.onStartIntent("annotate"),
+          disabled: tools.disabled,
+          "aria-label": translate(
+            "auto.components.browser.pane.BrowserPane.fc9be38f6f",
+            "Annotate page element"
+          ),
+          children: [
+            /* @__PURE__ */ jsx14(MessageSquarePlus, { className: "size-4" }),
+            tools.annotationCount > 0 ? /* @__PURE__ */ jsx14("span", { className: "absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 text-primary-foreground", children: tools.annotationCount }) : null
+          ]
+        }
+      ) }) }),
+      /* @__PURE__ */ jsx14(TooltipContent, { side: "bottom", sideOffset: 4, children: tools.annotateShortcutLabel ? translate(
+        "auto.components.browser.pane.BrowserPane.cc4a071d3a",
+        "Annotate page element ({{value0}})",
+        { value0: tools.annotateShortcutLabel }
+      ) : translate(
+        "auto.components.browser.pane.BrowserPane.fc9be38f6f",
+        "Annotate page element"
+      ) })
+    ] }) : null
+  ] });
+}
+
 // src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.tsx
-import { jsx as jsx14, jsxs as jsxs9 } from "react/jsx-runtime";
+import { jsx as jsx15, jsxs as jsxs10 } from "react/jsx-runtime";
 function BrowserChromeActionButton({
   action,
   icon: Icon2
 }) {
-  return /* @__PURE__ */ jsx14(
+  return /* @__PURE__ */ jsx15(
     Button,
     {
       size: "icon",
@@ -3974,7 +4260,7 @@ function BrowserChromeActionButton({
       title: action.label,
       "aria-label": action.label,
       disabled: action.disabled,
-      children: /* @__PURE__ */ jsx14(Icon2, { className: "size-4" })
+      children: /* @__PURE__ */ jsx15(Icon2, { className: "size-4" })
     }
   );
 }
@@ -3984,6 +4270,7 @@ function BrowserChromeToolbar({
   reloadControl,
   reloadLabel,
   importControl = null,
+  elementTools = null,
   viewSource,
   openExternal,
   overflowMenu = null,
@@ -3999,8 +4286,8 @@ function BrowserChromeToolbar({
     devtools: viewSource !== null,
     share: false,
     draw: false,
-    grab: false,
-    annotate: false
+    grab: elementTools !== null,
+    annotate: elementTools !== null
   };
   const stages = BROWSER_CHROME_FOLD_ORDER.filter(
     (stage) => present[stage] && stage !== pinnedStage
@@ -4008,6 +4295,32 @@ function BrowserChromeToolbar({
   const folded = useBrowserChromeToolFold(rowRef, stages);
   const afterMenuCloseRef = useRef6(null);
   const foldedTools = [];
+  if (elementTools && folded.has("grab")) {
+    foldedTools.push({
+      stage: "grab",
+      label: translate("auto.components.browser.pane.BrowserPane.fdfc7fe0ef", "Grab page element"),
+      icon: Crosshair2,
+      onSelect: () => elementTools.onStartIntent("copy"),
+      disabled: elementTools.disabled,
+      shortcut: elementTools.grabShortcutLabel,
+      active: elementTools.activeIntent === "copy"
+    });
+  }
+  if (elementTools && folded.has("annotate")) {
+    foldedTools.push({
+      stage: "annotate",
+      label: translate(
+        "auto.components.browser.pane.BrowserPane.fc9be38f6f",
+        "Annotate page element"
+      ),
+      icon: MessageSquarePlus2,
+      onSelect: () => elementTools.onStartIntent("annotate"),
+      disabled: elementTools.disabled,
+      shortcut: elementTools.annotateShortcutLabel,
+      count: elementTools.annotationCount,
+      active: elementTools.activeIntent === "annotate"
+    });
+  }
   if (viewSource && folded.has("devtools") && !viewSource.alreadyInOverflowMenu) {
     foldedTools.push({ stage: "devtools", icon: SquareCode, ...viewSource });
   }
@@ -4026,13 +4339,14 @@ function BrowserChromeToolbar({
     event.preventDefault();
     action();
   };
+  const showFoldedAnnotationDot = folded.has("annotate") && (elementTools?.annotationCount ?? 0) > 0;
   const overflowProps = {
     triggerRef: overflowTriggerRef,
     tools: foldedTools,
     deferUntilClose: runAfterMenuClose,
     onMenuCloseAutoFocus
   };
-  return /* @__PURE__ */ jsxs9(
+  return /* @__PURE__ */ jsxs10(
     BrowserNavigationControlRow,
     {
       rowRef,
@@ -4043,12 +4357,23 @@ function BrowserChromeToolbar({
       showTourAnchors,
       children: [
         folded.has("import") ? null : importControl?.(folded.has("import-label")),
-        viewSource && !folded.has("devtools") ? /* @__PURE__ */ jsx14(BrowserChromeActionButton, { action: viewSource, icon: SquareCode }) : null,
-        openExternal && !folded.has("external") ? /* @__PURE__ */ jsx14(BrowserChromeActionButton, { action: openExternal, icon: ExternalLink }) : null,
-        /* @__PURE__ */ jsx14("span", { className: "relative inline-flex", children: overflowMenu ? (
-          // oxlint-disable-next-line react/refs -- Intentional: overflowProps carries a ref object and closures that touch refs only from event handlers.
-          overflowMenu(overflowProps)
-        ) : /* @__PURE__ */ jsx14(BrowserChromeDefaultOverflowMenu, { ...overflowProps }) })
+        elementTools ? /* @__PURE__ */ jsx15(
+          BrowserChromeElementToolButtons,
+          {
+            tools: elementTools,
+            showGrab: !folded.has("grab"),
+            showAnnotate: !folded.has("annotate")
+          }
+        ) : null,
+        viewSource && !folded.has("devtools") ? /* @__PURE__ */ jsx15(BrowserChromeActionButton, { action: viewSource, icon: SquareCode }) : null,
+        openExternal && !folded.has("external") ? /* @__PURE__ */ jsx15(BrowserChromeActionButton, { action: openExternal, icon: ExternalLink }) : null,
+        /* @__PURE__ */ jsxs10("span", { className: "relative inline-flex", children: [
+          overflowMenu ? (
+            // oxlint-disable-next-line react/refs -- Intentional: overflowProps carries a ref object and closures that touch refs only from event handlers.
+            overflowMenu(overflowProps)
+          ) : /* @__PURE__ */ jsx15(BrowserChromeDefaultOverflowMenu, { ...overflowProps }),
+          showFoldedAnnotationDot ? /* @__PURE__ */ jsx15("span", { className: "pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary ring-2 ring-background" }) : null
+        ] })
       ]
     }
   );
@@ -4056,7 +4381,7 @@ function BrowserChromeToolbar({
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-reload-control.tsx
 import { Loader2 as Loader22, RefreshCw as RefreshCw2 } from "lucide-react";
-import { jsx as jsx15, jsxs as jsxs10 } from "react/jsx-runtime";
+import { jsx as jsx16, jsxs as jsxs11 } from "react/jsx-runtime";
 function BrowserReloadControl({
   menuOpen,
   onMenuOpenChange,
@@ -4069,9 +4394,9 @@ function BrowserReloadControl({
   onReload,
   onHardReload
 }) {
-  return /* @__PURE__ */ jsxs10(DropdownMenu, { modal: false, open: menuOpen, onOpenChange: onMenuOpenChange, children: [
-    /* @__PURE__ */ jsxs10(Tooltip, { open: menuOpen ? false : void 0, children: [
-      /* @__PURE__ */ jsx15(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx15(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx15(
+  return /* @__PURE__ */ jsxs11(DropdownMenu, { modal: false, open: menuOpen, onOpenChange: onMenuOpenChange, children: [
+    /* @__PURE__ */ jsxs11(Tooltip, { open: menuOpen ? false : void 0, children: [
+      /* @__PURE__ */ jsx16(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx16(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx16(
         Button,
         {
           size: "icon",
@@ -4094,22 +4419,22 @@ function BrowserReloadControl({
             e.preventDefault();
             onMenuOpenChange(true);
           },
-          children: loading ? /* @__PURE__ */ jsx15(Loader22, { className: "size-4 animate-spin" }) : /* @__PURE__ */ jsx15(RefreshCw2, { className: "size-4" })
+          children: loading ? /* @__PURE__ */ jsx16(Loader22, { className: "size-4 animate-spin" }) : /* @__PURE__ */ jsx16(RefreshCw2, { className: "size-4" })
         }
       ) }) }),
-      /* @__PURE__ */ jsxs10(TooltipContent, { side: "bottom", sideOffset: 4, children: [
+      /* @__PURE__ */ jsxs11(TooltipContent, { side: "bottom", sideOffset: 4, children: [
         label,
         reloadShortcut && showShortcutHint ? ` \xB7 ${reloadShortcut}` : ""
       ] })
     ] }),
-    /* @__PURE__ */ jsxs10(DropdownMenuContent, { align: "start", alignOffset: -4, children: [
-      /* @__PURE__ */ jsxs10(DropdownMenuItem, { onClick: onReload, children: [
+    /* @__PURE__ */ jsxs11(DropdownMenuContent, { align: "start", alignOffset: -4, children: [
+      /* @__PURE__ */ jsxs11(DropdownMenuItem, { onClick: onReload, children: [
         translate("auto.components.browser.pane.BrowserPane.0e080d820e", "Reload"),
-        /* @__PURE__ */ jsx15(DropdownMenuShortcut, { children: reloadShortcut })
+        /* @__PURE__ */ jsx16(DropdownMenuShortcut, { children: reloadShortcut })
       ] }),
-      /* @__PURE__ */ jsxs10(DropdownMenuItem, { onClick: onHardReload, children: [
+      /* @__PURE__ */ jsxs11(DropdownMenuItem, { onClick: onHardReload, children: [
         translate("auto.components.browser.pane.BrowserPane.a1f3c2e4b5", "Hard Reload"),
-        /* @__PURE__ */ jsx15(DropdownMenuShortcut, { children: hardReloadShortcut })
+        /* @__PURE__ */ jsx16(DropdownMenuShortcut, { children: hardReloadShortcut })
       ] })
     ] })
   ] });
@@ -4238,18 +4563,18 @@ function emitBrowserCookieImportToast(summary, successMessage) {
 
 // src/renderer/components/BrowserCookieImportDisclosure.tsx
 import { Info } from "lucide-react";
-import { Fragment as Fragment2, jsx as jsx16, jsxs as jsxs11 } from "react/jsx-runtime";
+import { Fragment as Fragment3, jsx as jsx17, jsxs as jsxs12 } from "react/jsx-runtime";
 function BrowserCookieImportDisclosure() {
-  return /* @__PURE__ */ jsxs11(Fragment2, { children: [
-    /* @__PURE__ */ jsx16(DropdownMenuSeparator, {}),
-    /* @__PURE__ */ jsxs11(DropdownMenuLabel, { className: "flex max-w-64 items-start gap-2 whitespace-normal py-2 font-normal", children: [
-      /* @__PURE__ */ jsx16(Info, { "aria-hidden": true, className: "mt-0.5 size-3.5 shrink-0" }),
-      /* @__PURE__ */ jsxs11("span", { className: "min-w-0", children: [
-        /* @__PURE__ */ jsx16("span", { className: "block font-medium leading-4 text-foreground", children: translate(
+  return /* @__PURE__ */ jsxs12(Fragment3, { children: [
+    /* @__PURE__ */ jsx17(DropdownMenuSeparator, {}),
+    /* @__PURE__ */ jsxs12(DropdownMenuLabel, { className: "flex max-w-64 items-start gap-2 whitespace-normal py-2 font-normal", children: [
+      /* @__PURE__ */ jsx17(Info, { "aria-hidden": true, className: "mt-0.5 size-3.5 shrink-0" }),
+      /* @__PURE__ */ jsxs12("span", { className: "min-w-0", children: [
+        /* @__PURE__ */ jsx17("span", { className: "block font-medium leading-4 text-foreground", children: translate(
           "auto.components.BrowserCookieImportDisclosure.title",
           "Google logins aren't imported"
         ) }),
-        /* @__PURE__ */ jsx16("span", { className: "block leading-4 text-muted-foreground", children: translate(
+        /* @__PURE__ */ jsx17("span", { className: "block leading-4 text-muted-foreground", children: translate(
           "auto.components.BrowserCookieImportDisclosure.description",
           "Sign in to Google directly in Orca."
         ) })
@@ -4262,18 +4587,18 @@ function BrowserCookieImportDisclosure() {
 import { cva as cva4 } from "class-variance-authority";
 import { Minus, XIcon } from "lucide-react";
 import * as DialogPrimitive2 from "radix-ui/dialog";
-import { jsx as jsx17, jsxs as jsxs12 } from "react/jsx-runtime";
+import { jsx as jsx18, jsxs as jsxs13 } from "react/jsx-runtime";
 function Dialog({ ...props }) {
-  return /* @__PURE__ */ jsx17(DialogPrimitive2.Root, { "data-slot": "dialog", ...props });
+  return /* @__PURE__ */ jsx18(DialogPrimitive2.Root, { "data-slot": "dialog", ...props });
 }
 function DialogPortal({ ...props }) {
-  return /* @__PURE__ */ jsx17(DialogPrimitive2.Portal, { "data-slot": "dialog-portal", ...props });
+  return /* @__PURE__ */ jsx18(DialogPrimitive2.Portal, { "data-slot": "dialog-portal", ...props });
 }
 function DialogOverlay({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx17(
+  return /* @__PURE__ */ jsx18(
     DialogPrimitive2.Overlay,
     {
       "data-slot": "dialog-overlay",
@@ -4297,20 +4622,20 @@ var dialogContentSurfaceVariants = cva4("", {
 });
 function DialogContentCloseButton({ variant }) {
   const label = variant === "minimize" ? translate("auto.components.ui.dialog.minimize", "Minimize") : translate("auto.components.ui.dialog.f26c4baeda", "Close");
-  const button = /* @__PURE__ */ jsxs12(
+  const button = /* @__PURE__ */ jsxs13(
     DialogPrimitive2.Close,
     {
       "data-slot": "dialog-close",
       className: "absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
       children: [
-        variant === "minimize" ? /* @__PURE__ */ jsx17(Minus, { className: "size-3.5" }) : /* @__PURE__ */ jsx17(XIcon, {}),
-        /* @__PURE__ */ jsx17("span", { className: "sr-only", children: label })
+        variant === "minimize" ? /* @__PURE__ */ jsx18(Minus, { className: "size-3.5" }) : /* @__PURE__ */ jsx18(XIcon, {}),
+        /* @__PURE__ */ jsx18("span", { className: "sr-only", children: label })
       ]
     }
   );
-  return variant === "minimize" ? /* @__PURE__ */ jsxs12(Tooltip, { children: [
-    /* @__PURE__ */ jsx17(TooltipTrigger, { asChild: true, children: button }),
-    /* @__PURE__ */ jsx17(TooltipContent, { side: "top", sideOffset: 4, children: label })
+  return variant === "minimize" ? /* @__PURE__ */ jsxs13(Tooltip, { children: [
+    /* @__PURE__ */ jsx18(TooltipTrigger, { asChild: true, children: button }),
+    /* @__PURE__ */ jsx18(TooltipContent, { side: "top", sideOffset: 4, children: label })
   ] }) : button;
 }
 function DialogContent({
@@ -4322,9 +4647,9 @@ function DialogContent({
   surface,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs12(DialogPortal, { "data-slot": "dialog-portal", children: [
-    /* @__PURE__ */ jsx17(DialogOverlay, { className: overlayClassName }),
-    /* @__PURE__ */ jsxs12(
+  return /* @__PURE__ */ jsxs13(DialogPortal, { "data-slot": "dialog-portal", children: [
+    /* @__PURE__ */ jsx18(DialogOverlay, { className: overlayClassName }),
+    /* @__PURE__ */ jsxs13(
       DialogPrimitive2.Content,
       {
         "data-slot": "dialog-content",
@@ -4337,14 +4662,14 @@ function DialogContent({
         onEscapeKeyDown: (event) => handleImeOverlayEscape(event, props.onEscapeKeyDown),
         children: [
           children,
-          showCloseButton && /* @__PURE__ */ jsx17(DialogContentCloseButton, { variant: closeButtonVariant })
+          showCloseButton && /* @__PURE__ */ jsx18(DialogContentCloseButton, { variant: closeButtonVariant })
         ]
       }
     )
   ] });
 }
 function DialogHeader({ className, ...props }) {
-  return /* @__PURE__ */ jsx17(
+  return /* @__PURE__ */ jsx18(
     "div",
     {
       "data-slot": "dialog-header",
@@ -4359,7 +4684,7 @@ function DialogFooter({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs12(
+  return /* @__PURE__ */ jsxs13(
     "div",
     {
       "data-slot": "dialog-footer",
@@ -4367,7 +4692,7 @@ function DialogFooter({
       ...props,
       children: [
         children,
-        showCloseButton && /* @__PURE__ */ jsx17(DialogPrimitive2.Close, { asChild: true, children: /* @__PURE__ */ jsx17(Button, { variant: "outline", children: translate("auto.components.ui.dialog.f26c4baeda", "Close") }) })
+        showCloseButton && /* @__PURE__ */ jsx18(DialogPrimitive2.Close, { asChild: true, children: /* @__PURE__ */ jsx18(Button, { variant: "outline", children: translate("auto.components.ui.dialog.f26c4baeda", "Close") }) })
       ]
     }
   );
@@ -4377,7 +4702,7 @@ function DialogTitle({
   size = "default",
   ...props
 }) {
-  return /* @__PURE__ */ jsx17(
+  return /* @__PURE__ */ jsx18(
     DialogPrimitive2.Title,
     {
       "data-slot": "dialog-title",
@@ -4394,7 +4719,7 @@ function DialogDescription({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx17(
+  return /* @__PURE__ */ jsx18(
     DialogPrimitive2.Description,
     {
       "data-slot": "dialog-description",
@@ -4425,7 +4750,7 @@ function useMountedRef() {
 }
 
 // src/renderer/components/settings/BrowserNewProfileDialog.tsx
-import { jsx as jsx18, jsxs as jsxs13 } from "react/jsx-runtime";
+import { jsx as jsx19, jsxs as jsxs14 } from "react/jsx-runtime";
 function BrowserNewProfileDialog({
   open,
   onOpenChange
@@ -4437,7 +4762,7 @@ function BrowserNewProfileDialog({
     onOpenChange(false);
     setNewProfileName("");
   };
-  return /* @__PURE__ */ jsx18(
+  return /* @__PURE__ */ jsx19(
     Dialog,
     {
       open,
@@ -4446,9 +4771,9 @@ function BrowserNewProfileDialog({
           handleClose();
         }
       },
-      children: /* @__PURE__ */ jsxs13(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-        /* @__PURE__ */ jsx18(DialogHeader, { children: /* @__PURE__ */ jsx18(DialogTitle, { className: "text-base", children: translate("auto.components.settings.BrowserPane.8481ee0331", "New Browser Profile") }) }),
-        /* @__PURE__ */ jsxs13(
+      children: /* @__PURE__ */ jsxs14(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+        /* @__PURE__ */ jsx19(DialogHeader, { children: /* @__PURE__ */ jsx19(DialogTitle, { className: "text-base", children: translate("auto.components.settings.BrowserPane.8481ee0331", "New Browser Profile") }) }),
+        /* @__PURE__ */ jsxs14(
           "form",
           {
             onSubmit: async (e) => {
@@ -4487,7 +4812,7 @@ function BrowserNewProfileDialog({
               }
             },
             children: [
-              /* @__PURE__ */ jsx18(
+              /* @__PURE__ */ jsx19(
                 Input,
                 {
                   value: newProfileName,
@@ -4501,9 +4826,9 @@ function BrowserNewProfileDialog({
                   className: "mb-3"
                 }
               ),
-              /* @__PURE__ */ jsxs13(DialogFooter, { children: [
-                /* @__PURE__ */ jsx18(Button, { type: "button", variant: "outline", size: "sm", onClick: handleClose, children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
-                /* @__PURE__ */ jsx18(Button, { type: "submit", size: "sm", disabled: !newProfileName.trim() || isCreatingProfile, children: isCreatingProfile ? translate("auto.components.settings.BrowserPane.7b649a578a", "Creating\u2026") : translate("auto.components.settings.BrowserPane.64898ecdab", "Create") })
+              /* @__PURE__ */ jsxs14(DialogFooter, { children: [
+                /* @__PURE__ */ jsx19(Button, { type: "button", variant: "outline", size: "sm", onClick: handleClose, children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
+                /* @__PURE__ */ jsx19(Button, { type: "submit", size: "sm", disabled: !newProfileName.trim() || isCreatingProfile, children: isCreatingProfile ? translate("auto.components.settings.BrowserPane.7b649a578a", "Creating\u2026") : translate("auto.components.settings.BrowserPane.64898ecdab", "Create") })
               ] })
             ]
           }
@@ -4515,9 +4840,9 @@ function BrowserNewProfileDialog({
 
 // src/renderer/ui/label.tsx
 import * as LabelPrimitive from "radix-ui/label";
-import { jsx as jsx19 } from "react/jsx-runtime";
+import { jsx as jsx20 } from "react/jsx-runtime";
 function Label2({ className, ...props }) {
-  return /* @__PURE__ */ jsx19(
+  return /* @__PURE__ */ jsx20(
     LabelPrimitive.Root,
     {
       "data-slot": "label",
@@ -4533,12 +4858,12 @@ function Label2({ className, ...props }) {
 // src/renderer/ui/select.tsx
 import { CheckIcon as CheckIcon2, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import * as SelectPrimitive from "radix-ui/select";
-import { jsx as jsx20, jsxs as jsxs14 } from "react/jsx-runtime";
+import { jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
 function Select({ ...props }) {
-  return /* @__PURE__ */ jsx20(SelectPrimitive.Root, { "data-slot": "select", ...props });
+  return /* @__PURE__ */ jsx21(SelectPrimitive.Root, { "data-slot": "select", ...props });
 }
 function SelectValue({ ...props }) {
-  return /* @__PURE__ */ jsx20(SelectPrimitive.Value, { "data-slot": "select-value", ...props });
+  return /* @__PURE__ */ jsx21(SelectPrimitive.Value, { "data-slot": "select-value", ...props });
 }
 function SelectTrigger({
   className,
@@ -4546,7 +4871,7 @@ function SelectTrigger({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs14(
+  return /* @__PURE__ */ jsxs15(
     SelectPrimitive.Trigger,
     {
       "data-slot": "select-trigger",
@@ -4558,7 +4883,7 @@ function SelectTrigger({
       ...props,
       children: [
         children,
-        /* @__PURE__ */ jsx20(SelectPrimitive.Icon, { asChild: true, children: /* @__PURE__ */ jsx20(ChevronDownIcon, { className: "size-4 opacity-50" }) })
+        /* @__PURE__ */ jsx21(SelectPrimitive.Icon, { asChild: true, children: /* @__PURE__ */ jsx21(ChevronDownIcon, { className: "size-4 opacity-50" }) })
       ]
     }
   );
@@ -4571,7 +4896,7 @@ function SelectContent({
   portalContainer,
   ...props
 }) {
-  return /* @__PURE__ */ jsx20(SelectPrimitive.Portal, { container: portalContainer ?? void 0, children: /* @__PURE__ */ jsxs14(
+  return /* @__PURE__ */ jsx21(SelectPrimitive.Portal, { container: portalContainer ?? void 0, children: /* @__PURE__ */ jsxs15(
     SelectPrimitive.Content,
     {
       "data-slot": "select-content",
@@ -4584,8 +4909,8 @@ function SelectContent({
       align,
       ...props,
       children: [
-        /* @__PURE__ */ jsx20(SelectScrollUpButton, {}),
-        /* @__PURE__ */ jsx20(
+        /* @__PURE__ */ jsx21(SelectScrollUpButton, {}),
+        /* @__PURE__ */ jsx21(
           SelectPrimitive.Viewport,
           {
             className: cn(
@@ -4595,7 +4920,7 @@ function SelectContent({
             children
           }
         ),
-        /* @__PURE__ */ jsx20(SelectScrollDownButton, {})
+        /* @__PURE__ */ jsx21(SelectScrollDownButton, {})
       ]
     }
   ) });
@@ -4605,7 +4930,7 @@ function SelectItem({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs14(
+  return /* @__PURE__ */ jsxs15(
     SelectPrimitive.Item,
     {
       "data-slot": "select-item",
@@ -4615,15 +4940,15 @@ function SelectItem({
       ),
       ...props,
       children: [
-        /* @__PURE__ */ jsx20(
+        /* @__PURE__ */ jsx21(
           "span",
           {
             "data-slot": "select-item-indicator",
             className: "absolute right-2 flex size-3.5 items-center justify-center",
-            children: /* @__PURE__ */ jsx20(SelectPrimitive.ItemIndicator, { children: /* @__PURE__ */ jsx20(CheckIcon2, { className: "size-4" }) })
+            children: /* @__PURE__ */ jsx21(SelectPrimitive.ItemIndicator, { children: /* @__PURE__ */ jsx21(CheckIcon2, { className: "size-4" }) })
           }
         ),
-        /* @__PURE__ */ jsx20(SelectPrimitive.ItemText, { children })
+        /* @__PURE__ */ jsx21(SelectPrimitive.ItemText, { children })
       ]
     }
   );
@@ -4632,13 +4957,13 @@ function SelectScrollUpButton({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx20(
+  return /* @__PURE__ */ jsx21(
     SelectPrimitive.ScrollUpButton,
     {
       "data-slot": "select-scroll-up-button",
       className: cn("flex cursor-default items-center justify-center py-1", className),
       ...props,
-      children: /* @__PURE__ */ jsx20(ChevronUpIcon, { className: "size-4" })
+      children: /* @__PURE__ */ jsx21(ChevronUpIcon, { className: "size-4" })
     }
   );
 }
@@ -4646,39 +4971,39 @@ function SelectScrollDownButton({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx20(
+  return /* @__PURE__ */ jsx21(
     SelectPrimitive.ScrollDownButton,
     {
       "data-slot": "select-scroll-down-button",
       className: cn("flex cursor-default items-center justify-center py-1", className),
       ...props,
-      children: /* @__PURE__ */ jsx20(ChevronDownIcon, { className: "size-4" })
+      children: /* @__PURE__ */ jsx21(ChevronDownIcon, { className: "size-4" })
     }
   );
 }
 
 // src/renderer/components/settings/BrowserSearchEngineSetting.tsx
-import { jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
+import { jsx as jsx22, jsxs as jsxs16 } from "react/jsx-runtime";
 function BrowserSearchEngineSetting({
   selectedSearchEngine,
   onSearchEngineChange
 }) {
-  return /* @__PURE__ */ jsxs15("div", { className: "flex items-start justify-between gap-4 py-2", children: [
-    /* @__PURE__ */ jsxs15("div", { className: "space-y-0.5", children: [
-      /* @__PURE__ */ jsx21(Label2, { children: translate("auto.components.settings.BrowserPane.0d9c987f21", "Default Search Engine") }),
-      /* @__PURE__ */ jsx21("p", { className: "text-xs text-muted-foreground", children: translate(
+  return /* @__PURE__ */ jsxs16("div", { className: "flex items-start justify-between gap-4 py-2", children: [
+    /* @__PURE__ */ jsxs16("div", { className: "space-y-0.5", children: [
+      /* @__PURE__ */ jsx22(Label2, { children: translate("auto.components.settings.BrowserPane.0d9c987f21", "Default Search Engine") }),
+      /* @__PURE__ */ jsx22("p", { className: "text-xs text-muted-foreground", children: translate(
         "auto.components.settings.BrowserPane.3e46903ad4",
         "Used when typing non-URL text in the address bar."
       ) })
     ] }),
-    /* @__PURE__ */ jsxs15(
+    /* @__PURE__ */ jsxs16(
       Select,
       {
         value: selectedSearchEngine,
         onValueChange: (value) => onSearchEngineChange(value),
         children: [
-          /* @__PURE__ */ jsx21(SelectTrigger, { className: "h-7 w-36 text-xs", children: /* @__PURE__ */ jsx21(SelectValue, {}) }),
-          /* @__PURE__ */ jsx21(SelectContent, { children: Object.keys(SEARCH_ENGINE_LABELS).map((engine) => /* @__PURE__ */ jsx21(SelectItem, { value: engine, className: "text-xs", children: SEARCH_ENGINE_LABELS[engine] }, engine)) })
+          /* @__PURE__ */ jsx22(SelectTrigger, { className: "h-7 w-36 text-xs", children: /* @__PURE__ */ jsx22(SelectValue, {}) }),
+          /* @__PURE__ */ jsx22(SelectContent, { children: Object.keys(SEARCH_ENGINE_LABELS).map((engine) => /* @__PURE__ */ jsx22(SelectItem, { value: engine, className: "text-xs", children: SEARCH_ENGINE_LABELS[engine] }, engine)) })
         ]
       }
     )
@@ -4692,7 +5017,7 @@ import { Plus } from "lucide-react";
 import { useState as useState5 } from "react";
 import { Import, Loader2 as Loader23, Trash2 } from "lucide-react";
 import { toast as toast3 } from "sonner";
-import { jsx as jsx22, jsxs as jsxs16 } from "react/jsx-runtime";
+import { jsx as jsx23, jsxs as jsxs17 } from "react/jsx-runtime";
 function BrowserProfileRow({
   profile,
   inUse,
@@ -4761,21 +5086,21 @@ function BrowserProfileRow({
     }
   };
   const sourceLabel = profile.source ? `${BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily}${profile.source.profileName ? ` (${profile.source.profileName})` : ""}` : translate("auto.components.settings.BrowserProfileRow.796d846483", "No cookies imported");
-  return /* @__PURE__ */ jsxs16(
+  return /* @__PURE__ */ jsxs17(
     "div",
     {
       "data-profile-id": profile.id,
       className: `flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left ${inUse ? "border-foreground/20 bg-accent/15" : "border-border/70"}`,
       children: [
-        /* @__PURE__ */ jsxs16("div", { className: "min-w-0 flex-1", children: [
-          /* @__PURE__ */ jsxs16("div", { className: "flex items-center gap-2", children: [
-            /* @__PURE__ */ jsx22("span", { className: "truncate text-sm font-medium", children: profile.label }),
-            inUse ? /* @__PURE__ */ jsx22("span", { className: "shrink-0 rounded border border-border/50 px-1.5 text-[10px] font-medium leading-4 text-foreground/80", children: translate("auto.components.browser.settings.currentProfile", "In use") }) : null
+        /* @__PURE__ */ jsxs17("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ jsxs17("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsx23("span", { className: "truncate text-sm font-medium", children: profile.label }),
+            inUse ? /* @__PURE__ */ jsx23("span", { className: "shrink-0 rounded border border-border/50 px-1.5 text-[10px] font-medium leading-4 text-foreground/80", children: translate("auto.components.browser.settings.currentProfile", "In use") }) : null
           ] }),
-          /* @__PURE__ */ jsx22("p", { className: "truncate text-[11px] text-muted-foreground", children: sourceLabel })
+          /* @__PURE__ */ jsx23("p", { className: "truncate text-[11px] text-muted-foreground", children: sourceLabel })
         ] }),
-        /* @__PURE__ */ jsxs16("div", { className: "flex shrink-0 items-center gap-1", children: [
-          /* @__PURE__ */ jsxs16(
+        /* @__PURE__ */ jsxs17("div", { className: "flex shrink-0 items-center gap-1", children: [
+          /* @__PURE__ */ jsxs17(
             DropdownMenu,
             {
               onOpenChange: (open) => {
@@ -4784,7 +5109,7 @@ function BrowserProfileRow({
                 }
               },
               children: [
-                /* @__PURE__ */ jsx22(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsxs16(
+                /* @__PURE__ */ jsx23(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsxs17(
                   Button,
                   {
                     variant: "ghost",
@@ -4792,20 +5117,20 @@ function BrowserProfileRow({
                     className: "h-6 gap-1 px-1.5 text-[11px] text-muted-foreground",
                     disabled: isImporting,
                     children: [
-                      isImporting ? /* @__PURE__ */ jsx22(Loader23, { className: "size-3 animate-spin" }) : /* @__PURE__ */ jsx22(Import, { className: "size-3" }),
+                      isImporting ? /* @__PURE__ */ jsx23(Loader23, { className: "size-3 animate-spin" }) : /* @__PURE__ */ jsx23(Import, { className: "size-3" }),
                       translate("auto.components.settings.BrowserProfileRow.cdec84552f", "Import Cookies")
                     ]
                   }
                 ) }),
-                /* @__PURE__ */ jsxs16(DropdownMenuContent, { align: "end", children: [
+                /* @__PURE__ */ jsxs17(DropdownMenuContent, { align: "end", children: [
                   detectedBrowsers.map(
-                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs16(DropdownMenuSub, { children: [
-                      /* @__PURE__ */ jsx22(DropdownMenuSubTrigger, { children: translate(
+                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs17(DropdownMenuSub, { children: [
+                      /* @__PURE__ */ jsx23(DropdownMenuSubTrigger, { children: translate(
                         "auto.components.settings.BrowserProfileRow.c5a273a809",
                         "From {{value0}}",
                         { value0: browser.label }
                       ) }),
-                      /* @__PURE__ */ jsx22(DropdownMenuPortal, { children: /* @__PURE__ */ jsx22(DropdownMenuSubContent, { children: browser.profiles.map((bp) => /* @__PURE__ */ jsx22(
+                      /* @__PURE__ */ jsx23(DropdownMenuPortal, { children: /* @__PURE__ */ jsx23(DropdownMenuSubContent, { children: browser.profiles.map((bp) => /* @__PURE__ */ jsx23(
                         DropdownMenuItem,
                         {
                           onSelect: () => void handleImportFromBrowser(browser.family, bp.directory),
@@ -4813,7 +5138,7 @@ function BrowserProfileRow({
                         },
                         bp.directory
                       )) }) })
-                    ] }, browser.family) : /* @__PURE__ */ jsx22(
+                    ] }, browser.family) : /* @__PURE__ */ jsx23(
                       DropdownMenuItem,
                       {
                         onSelect: () => void handleImportFromBrowser(browser.family),
@@ -4826,14 +5151,14 @@ function BrowserProfileRow({
                       browser.family
                     )
                   ),
-                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx22(DropdownMenuSeparator, {}),
-                  /* @__PURE__ */ jsx22(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate("auto.components.settings.BrowserProfileRow.ebb78dfd6f", "From File\u2026") }),
-                  /* @__PURE__ */ jsx22(BrowserCookieImportDisclosure, {})
+                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx23(DropdownMenuSeparator, {}),
+                  /* @__PURE__ */ jsx23(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate("auto.components.settings.BrowserProfileRow.ebb78dfd6f", "From File\u2026") }),
+                  /* @__PURE__ */ jsx23(BrowserCookieImportDisclosure, {})
                 ] })
               ]
             }
           ),
-          isDefault ? /* @__PURE__ */ jsx22(
+          isDefault ? /* @__PURE__ */ jsx23(
             Button,
             {
               variant: "ghost",
@@ -4852,9 +5177,9 @@ function BrowserProfileRow({
                   );
                 }
               },
-              children: /* @__PURE__ */ jsx22(Trash2, { className: "size-3" })
+              children: /* @__PURE__ */ jsx23(Trash2, { className: "size-3" })
             }
-          ) : /* @__PURE__ */ jsx22(
+          ) : /* @__PURE__ */ jsx23(
             Button,
             {
               variant: "ghost",
@@ -4865,25 +5190,25 @@ function BrowserProfileRow({
                 "Delete profile"
               ),
               onClick: () => setConfirmingDelete(true),
-              children: /* @__PURE__ */ jsx22(Trash2, { className: "size-3" })
+              children: /* @__PURE__ */ jsx23(Trash2, { className: "size-3" })
             }
           )
         ] }),
-        /* @__PURE__ */ jsx22(Dialog, { open: confirmingDelete, onOpenChange: setConfirmingDelete, children: /* @__PURE__ */ jsxs16(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-          /* @__PURE__ */ jsxs16(DialogHeader, { children: [
-            /* @__PURE__ */ jsx22(DialogTitle, { className: "text-base", children: translate(
+        /* @__PURE__ */ jsx23(Dialog, { open: confirmingDelete, onOpenChange: setConfirmingDelete, children: /* @__PURE__ */ jsxs17(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+          /* @__PURE__ */ jsxs17(DialogHeader, { children: [
+            /* @__PURE__ */ jsx23(DialogTitle, { className: "text-base", children: translate(
               "auto.components.browser.settings.deleteProfileTitle",
               "Delete this profile?"
             ) }),
-            /* @__PURE__ */ jsx22(DialogDescription, { className: "text-xs", children: translate(
+            /* @__PURE__ */ jsx23(DialogDescription, { className: "text-xs", children: translate(
               "auto.components.browser.settings.deleteProfileDescription",
               'Cookies and logins stored in "{{value0}}" will be removed.',
               { value0: profile.label }
             ) })
           ] }),
-          /* @__PURE__ */ jsxs16(DialogFooter, { children: [
-            /* @__PURE__ */ jsx22(Button, { variant: "outline", size: "sm", onClick: () => setConfirmingDelete(false), children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
-            /* @__PURE__ */ jsx22(Button, { variant: "destructive", size: "sm", onClick: () => void handleDelete(), children: translate("auto.components.browser.settings.deleteConfirm", "Delete") })
+          /* @__PURE__ */ jsxs17(DialogFooter, { children: [
+            /* @__PURE__ */ jsx23(Button, { variant: "outline", size: "sm", onClick: () => setConfirmingDelete(false), children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
+            /* @__PURE__ */ jsx23(Button, { variant: "destructive", size: "sm", onClick: () => void handleDelete(), children: translate("auto.components.browser.settings.deleteConfirm", "Delete") })
           ] })
         ] }) })
       ]
@@ -4892,7 +5217,7 @@ function BrowserProfileRow({
 }
 
 // src/renderer/components/settings/BrowserSessionCookiesSection.tsx
-import { jsx as jsx23, jsxs as jsxs17 } from "react/jsx-runtime";
+import { jsx as jsx24, jsxs as jsxs18 } from "react/jsx-runtime";
 function BrowserSessionCookiesSection({
   inUseProfileId,
   onAddProfile
@@ -4900,22 +5225,22 @@ function BrowserSessionCookiesSection({
   const profiles = useBrowserSessionStore((s) => s.browserSessionProfiles);
   const defaultProfile = profiles.find((profile) => profile.id === "default");
   const nonDefaultProfiles = profiles.filter((profile) => profile.id !== "default");
-  return /* @__PURE__ */ jsxs17("div", { className: "space-y-3 py-2", children: [
-    /* @__PURE__ */ jsxs17("div", { className: "flex items-center justify-between gap-3", children: [
-      /* @__PURE__ */ jsxs17("div", { className: "space-y-0.5", children: [
-        /* @__PURE__ */ jsx23(Label2, { children: translate("auto.components.settings.BrowserPane.2d66a6efb5", "Session & Cookies") }),
-        /* @__PURE__ */ jsx23("p", { className: "text-xs text-muted-foreground", children: translate(
+  return /* @__PURE__ */ jsxs18("div", { className: "space-y-3 py-2", children: [
+    /* @__PURE__ */ jsxs18("div", { className: "flex items-center justify-between gap-3", children: [
+      /* @__PURE__ */ jsxs18("div", { className: "space-y-0.5", children: [
+        /* @__PURE__ */ jsx24(Label2, { children: translate("auto.components.settings.BrowserPane.2d66a6efb5", "Session & Cookies") }),
+        /* @__PURE__ */ jsx24("p", { className: "text-xs text-muted-foreground", children: translate(
           "auto.components.browser.settings.profilesHint",
           "Import cookies into a profile, and switch profiles per tab from the toolbar menu."
         ) })
       ] }),
-      /* @__PURE__ */ jsxs17(Button, { variant: "outline", size: "xs", onClick: onAddProfile, className: "shrink-0 gap-1.5", children: [
-        /* @__PURE__ */ jsx23(Plus, { className: "size-3" }),
+      /* @__PURE__ */ jsxs18(Button, { variant: "outline", size: "xs", onClick: onAddProfile, className: "shrink-0 gap-1.5", children: [
+        /* @__PURE__ */ jsx24(Plus, { className: "size-3" }),
         translate("auto.components.settings.BrowserPane.6f2584b39e", "Add Profile")
       ] })
     ] }),
-    /* @__PURE__ */ jsxs17("div", { className: "space-y-2", children: [
-      /* @__PURE__ */ jsx23(
+    /* @__PURE__ */ jsxs18("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsx24(
         BrowserProfileRow,
         {
           profile: defaultProfile ?? {
@@ -4929,7 +5254,7 @@ function BrowserSessionCookiesSection({
           isDefault: true
         }
       ),
-      nonDefaultProfiles.map((profile) => /* @__PURE__ */ jsx23(
+      nonDefaultProfiles.map((profile) => /* @__PURE__ */ jsx24(
         BrowserProfileRow,
         {
           profile,
@@ -4943,7 +5268,7 @@ function BrowserSessionCookiesSection({
 
 // src/renderer/components/settings/BrowserUserAgentSetting.tsx
 import { useState as useState6 } from "react";
-import { jsx as jsx24, jsxs as jsxs18 } from "react/jsx-runtime";
+import { jsx as jsx25, jsxs as jsxs19 } from "react/jsx-runtime";
 function BrowserUserAgentSetting() {
   const status = useBrowserSessionStore((s) => s.identity);
   const setIdentityMode = useBrowserSessionStore((s) => s.setIdentityMode);
@@ -4969,9 +5294,9 @@ function BrowserUserAgentSetting() {
   };
   let control;
   if (!status) {
-    control = /* @__PURE__ */ jsx24("span", { className: "text-xs text-muted-foreground", children: translate("settings.browser.userAgent.loading", "Loading\u2026") });
+    control = /* @__PURE__ */ jsx25("span", { className: "text-xs text-muted-foreground", children: translate("settings.browser.userAgent.loading", "Loading\u2026") });
   } else if (status.identity.configuredMode === null) {
-    control = /* @__PURE__ */ jsx24("div", { className: "text-xs text-destructive", children: translate(
+    control = /* @__PURE__ */ jsx25("div", { className: "text-xs text-destructive", children: translate(
       "settings.browser.userAgent.resetRequired",
       "Identity data must be reset explicitly before it can be changed."
     ) });
@@ -4995,8 +5320,8 @@ function BrowserUserAgentSetting() {
         )
       }
     ];
-    control = /* @__PURE__ */ jsxs18("div", { className: "space-y-1 text-right", children: [
-      /* @__PURE__ */ jsx24("div", { role: "radiogroup", "aria-label": title, className: "inline-flex gap-1", children: options.map((option) => /* @__PURE__ */ jsx24(
+    control = /* @__PURE__ */ jsxs19("div", { className: "space-y-1 text-right", children: [
+      /* @__PURE__ */ jsx25("div", { role: "radiogroup", "aria-label": title, className: "inline-flex gap-1", children: options.map((option) => /* @__PURE__ */ jsx25(
         Button,
         {
           type: "button",
@@ -5012,21 +5337,21 @@ function BrowserUserAgentSetting() {
         },
         option.value
       )) }),
-      status.identity.restartRequired ? /* @__PURE__ */ jsx24("div", { className: "text-[11px] text-muted-foreground", children: translate("settings.browser.userAgent.restartRequired", "Restart required") }) : null,
-      error ? /* @__PURE__ */ jsx24("div", { className: "text-[11px] text-destructive", children: error }) : null
+      status.identity.restartRequired ? /* @__PURE__ */ jsx25("div", { className: "text-[11px] text-muted-foreground", children: translate("settings.browser.userAgent.restartRequired", "Restart required") }) : null,
+      error ? /* @__PURE__ */ jsx25("div", { className: "text-[11px] text-destructive", children: error }) : null
     ] });
   }
-  return /* @__PURE__ */ jsxs18("div", { className: "flex items-start justify-between gap-4 py-2", children: [
-    /* @__PURE__ */ jsxs18("div", { className: "space-y-0.5", children: [
-      /* @__PURE__ */ jsx24(Label2, { children: title }),
-      /* @__PURE__ */ jsx24("p", { className: "text-xs text-muted-foreground", children: description })
+  return /* @__PURE__ */ jsxs19("div", { className: "flex items-start justify-between gap-4 py-2", children: [
+    /* @__PURE__ */ jsxs19("div", { className: "space-y-0.5", children: [
+      /* @__PURE__ */ jsx25(Label2, { children: title }),
+      /* @__PURE__ */ jsx25("p", { className: "text-xs text-muted-foreground", children: description })
     ] }),
-    /* @__PURE__ */ jsx24("div", { className: "shrink-0", children: control })
+    /* @__PURE__ */ jsx25("div", { className: "shrink-0", children: control })
   ] });
 }
 
 // src/renderer/components/settings/BrowserSettingsPanel.tsx
-import { jsx as jsx25, jsxs as jsxs19 } from "react/jsx-runtime";
+import { jsx as jsx26, jsxs as jsxs20 } from "react/jsx-runtime";
 function BrowserSettingsPanel(props) {
   const { scopeId } = props;
   const searchEngine = useBrowserSessionStore((s) => s.settings.searchEngine);
@@ -5052,36 +5377,36 @@ function BrowserSettingsPanel(props) {
       void state.loadIdentity();
     }
   }, []);
-  return /* @__PURE__ */ jsxs19("div", { className: "space-y-4", children: [
-    /* @__PURE__ */ jsx25(
+  return /* @__PURE__ */ jsxs20("div", { className: "space-y-4", children: [
+    /* @__PURE__ */ jsx26(
       BrowserSearchEngineSetting,
       {
         selectedSearchEngine: searchEngine,
         onSearchEngineChange: (engine) => void updateSettings({ searchEngine: engine })
       }
     ),
-    /* @__PURE__ */ jsx25(BrowserUserAgentSetting, {}),
-    /* @__PURE__ */ jsx25(
+    /* @__PURE__ */ jsx26(BrowserUserAgentSetting, {}),
+    /* @__PURE__ */ jsx26(
       BrowserSessionCookiesSection,
       {
         inUseProfileId,
         onAddProfile: () => setNewProfileDialogOpen(true)
       }
     ),
-    /* @__PURE__ */ jsx25(BrowserNewProfileDialog, { open: newProfileDialogOpen, onOpenChange: setNewProfileDialogOpen })
+    /* @__PURE__ */ jsx26(BrowserNewProfileDialog, { open: newProfileDialogOpen, onOpenChange: setNewProfileDialogOpen })
   ] });
 }
 
 // src/renderer/components/settings/BrowserSettingsDialog.tsx
-import { jsx as jsx26, jsxs as jsxs20 } from "react/jsx-runtime";
+import { jsx as jsx27, jsxs as jsxs21 } from "react/jsx-runtime";
 function BrowserSettingsDialog(props) {
   const { open, onOpenChange, scopeId } = props;
-  return /* @__PURE__ */ jsx26(Dialog, { open, onOpenChange, children: /* @__PURE__ */ jsxs20(DialogContent, { className: "max-h-[85vh] overflow-y-auto sm:max-w-xl", children: [
-    /* @__PURE__ */ jsx26(DialogHeader, { children: /* @__PURE__ */ jsx26(DialogTitle, { className: "text-base", children: translate(
+  return /* @__PURE__ */ jsx27(Dialog, { open, onOpenChange, children: /* @__PURE__ */ jsxs21(DialogContent, { className: "max-h-[85vh] overflow-y-auto sm:max-w-xl", children: [
+    /* @__PURE__ */ jsx27(DialogHeader, { children: /* @__PURE__ */ jsx27(DialogTitle, { className: "text-base", children: translate(
       "auto.components.browser.pane.BrowserToolbarMenu.a771c2b6c8",
       "Browser Settings\u2026"
     ) }) }),
-    open ? /* @__PURE__ */ jsx26(BrowserSettingsPanel, { scopeId }) : null
+    open ? /* @__PURE__ */ jsx27(BrowserSettingsPanel, { scopeId }) : null
   ] }) });
 }
 
@@ -5149,7 +5474,7 @@ function formatBrowserImportSummary({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
-import { Fragment as Fragment3, jsx as jsx27, jsxs as jsxs21 } from "react/jsx-runtime";
+import { Fragment as Fragment4, jsx as jsx28, jsxs as jsxs22 } from "react/jsx-runtime";
 function BrowserImportHintButton({
   profileId,
   compact = false
@@ -5263,9 +5588,9 @@ function BrowserImportHintButton({
   if (!shouldShow) {
     return null;
   }
-  return /* @__PURE__ */ jsxs21(Fragment3, { children: [
-    /* @__PURE__ */ jsxs21(Popover, { modal: false, open, onOpenChange: handleOpenChange, children: [
-      /* @__PURE__ */ jsx27(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsxs21(
+  return /* @__PURE__ */ jsxs22(Fragment4, { children: [
+    /* @__PURE__ */ jsxs22(Popover, { modal: false, open, onOpenChange: handleOpenChange, children: [
+      /* @__PURE__ */ jsx28(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsxs22(
         Button,
         {
           type: "button",
@@ -5277,7 +5602,7 @@ function BrowserImportHintButton({
             "Import browser data"
           ),
           children: [
-            /* @__PURE__ */ jsx27(Import2, { className: "size-3.5" }),
+            /* @__PURE__ */ jsx28(Import2, { className: "size-3.5" }),
             compact ? null : translate(
               "auto.components.browser.pane.BrowserImportHintButton.b24fef25be",
               "Import"
@@ -5285,21 +5610,21 @@ function BrowserImportHintButton({
           ]
         }
       ) }),
-      /* @__PURE__ */ jsx27(PopoverContent, { align: "end", side: "bottom", sideOffset: 6, className: "w-80 p-3", children: /* @__PURE__ */ jsxs21("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ jsxs21("div", { className: "space-y-1.5", children: [
-          /* @__PURE__ */ jsx27("div", { className: "text-sm font-medium text-foreground", children: translate(
+      /* @__PURE__ */ jsx28(PopoverContent, { align: "end", side: "bottom", sideOffset: 6, className: "w-80 p-3", children: /* @__PURE__ */ jsxs22("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ jsxs22("div", { className: "space-y-1.5", children: [
+          /* @__PURE__ */ jsx28("div", { className: "text-sm font-medium text-foreground", children: translate(
             "auto.components.browser.pane.BrowserImportHintButton.4f5ffaa6a1",
             "Import browser data"
           ) }),
-          /* @__PURE__ */ jsx27("p", { className: "text-xs leading-5 text-muted-foreground", children: importSummary }),
-          /* @__PURE__ */ jsx27("p", { className: "text-[11px] leading-4 text-muted-foreground/80", children: translate(
+          /* @__PURE__ */ jsx28("p", { className: "text-xs leading-5 text-muted-foreground", children: importSummary }),
+          /* @__PURE__ */ jsx28("p", { className: "text-[11px] leading-4 text-muted-foreground/80", children: translate(
             "auto.components.browser.pane.BrowserImportHintButton.e52a955e6f",
             "You can always find this in Settings > Browser."
           ) })
         ] }),
-        /* @__PURE__ */ jsxs21("div", { className: "flex items-center gap-3", children: [
-          /* @__PURE__ */ jsxs21(DropdownMenu, { modal: false, open: importMenuOpen, onOpenChange: setImportMenuOpen, children: [
-            /* @__PURE__ */ jsx27(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx27(
+        /* @__PURE__ */ jsxs22("div", { className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ jsxs22(DropdownMenu, { modal: false, open: importMenuOpen, onOpenChange: setImportMenuOpen, children: [
+            /* @__PURE__ */ jsx28(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx28(
               Button,
               {
                 type: "button",
@@ -5313,15 +5638,15 @@ function BrowserImportHintButton({
                 )
               }
             ) }),
-            /* @__PURE__ */ jsxs21(DropdownMenuContent, { align: "start", className: "w-52", children: [
+            /* @__PURE__ */ jsxs22(DropdownMenuContent, { align: "start", className: "w-52", children: [
               detectedBrowsers.map(
-                (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs21(DropdownMenuSub, { children: [
-                  /* @__PURE__ */ jsx27(DropdownMenuSubTrigger, { children: translate(
+                (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs22(DropdownMenuSub, { children: [
+                  /* @__PURE__ */ jsx28(DropdownMenuSubTrigger, { children: translate(
                     "auto.components.browser.pane.BrowserImportHintButton.0c6d254eca",
                     "From {{value0}}",
                     { value0: browser.label }
                   ) }),
-                  /* @__PURE__ */ jsx27(DropdownMenuPortal, { children: /* @__PURE__ */ jsx27(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx27(
+                  /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsx28(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx28(
                     DropdownMenuItem,
                     {
                       onSelect: () => void handleImportFromBrowser(browser.family, profile.directory),
@@ -5329,7 +5654,7 @@ function BrowserImportHintButton({
                     },
                     profile.directory
                   )) }) })
-                ] }, browser.family) : /* @__PURE__ */ jsx27(
+                ] }, browser.family) : /* @__PURE__ */ jsx28(
                   DropdownMenuItem,
                   {
                     onSelect: () => void handleImportFromBrowser(browser.family),
@@ -5342,15 +5667,15 @@ function BrowserImportHintButton({
                   browser.family
                 )
               ),
-              detectedBrowsers.length > 0 ? /* @__PURE__ */ jsx27(DropdownMenuSeparator, {}) : null,
-              /* @__PURE__ */ jsx27(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate(
+              detectedBrowsers.length > 0 ? /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}) : null,
+              /* @__PURE__ */ jsx28(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate(
                 "auto.components.browser.pane.BrowserImportHintButton.e0e125e074",
                 "From File\u2026"
               ) }),
-              /* @__PURE__ */ jsx27(BrowserCookieImportDisclosure, {})
+              /* @__PURE__ */ jsx28(BrowserCookieImportDisclosure, {})
             ] })
           ] }),
-          /* @__PURE__ */ jsx27(
+          /* @__PURE__ */ jsx28(
             "button",
             {
               type: "button",
@@ -5362,7 +5687,7 @@ function BrowserImportHintButton({
               )
             }
           ),
-          /* @__PURE__ */ jsx27(
+          /* @__PURE__ */ jsx28(
             "button",
             {
               type: "button",
@@ -5377,7 +5702,7 @@ function BrowserImportHintButton({
         ] })
       ] }) })
     ] }),
-    /* @__PURE__ */ jsx27(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen })
+    /* @__PURE__ */ jsx28(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen })
   ] });
 }
 
@@ -5461,7 +5786,7 @@ function browserViewportPresetToOverride(preset) {
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-menu-dropdown.tsx
 import { Check as Check2, Ellipsis as Ellipsis2, Import as Import3, Monitor, Plus as Plus2, Settings } from "lucide-react";
-import { jsx as jsx28, jsxs as jsxs22 } from "react/jsx-runtime";
+import { jsx as jsx29, jsxs as jsxs23 } from "react/jsx-runtime";
 function BrowserToolbarMenuDropdown({
   onOpenSettings,
   allProfiles,
@@ -5477,8 +5802,8 @@ function BrowserToolbarMenuDropdown({
   onApplyViewportPreset,
   overflow
 }) {
-  return /* @__PURE__ */ jsxs22(DropdownMenu, { modal: false, children: [
-    /* @__PURE__ */ jsx28(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx28(
+  return /* @__PURE__ */ jsxs23(DropdownMenu, { modal: false, children: [
+    /* @__PURE__ */ jsx29(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx29(
       Button,
       {
         ref: overflow.triggerRef,
@@ -5489,17 +5814,17 @@ function BrowserToolbarMenuDropdown({
           "auto.components.browser.pane.BrowserToolbarMenu.7b838540c7",
           "Browser menu"
         ),
-        children: /* @__PURE__ */ jsx28(Ellipsis2, { className: "size-4" })
+        children: /* @__PURE__ */ jsx29(Ellipsis2, { className: "size-4" })
       }
     ) }),
-    /* @__PURE__ */ jsxs22(
+    /* @__PURE__ */ jsxs23(
       DropdownMenuContent,
       {
         align: "end",
         className: "w-56",
         onCloseAutoFocus: overflow.onMenuCloseAutoFocus,
         children: [
-          /* @__PURE__ */ jsx28(
+          /* @__PURE__ */ jsx29(
             BrowserChromeFoldedMenuItems,
             {
               tools: overflow.tools,
@@ -5508,31 +5833,31 @@ function BrowserToolbarMenuDropdown({
           ),
           allProfiles.map((profile) => {
             const isSelectedProfile = profile.id === effectiveProfileId;
-            return /* @__PURE__ */ jsxs22(
+            return /* @__PURE__ */ jsxs23(
               DropdownMenuItem,
               {
                 onSelect: () => onSwitchProfile(profile.id === "default" ? null : profile.id),
                 children: [
-                  /* @__PURE__ */ jsx28(
+                  /* @__PURE__ */ jsx29(
                     Check2,
                     {
                       className: `mr-2 size-3.5 shrink-0 ${isSelectedProfile ? "opacity-100" : "opacity-0"}`
                     }
                   ),
-                  /* @__PURE__ */ jsx28("span", { className: "truncate", children: profile.label }),
-                  profile.source?.browserFamily && /* @__PURE__ */ jsx28("span", { className: "ml-auto pl-2 text-[11px] text-muted-foreground", children: BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily })
+                  /* @__PURE__ */ jsx29("span", { className: "truncate", children: profile.label }),
+                  profile.source?.browserFamily && /* @__PURE__ */ jsx29("span", { className: "ml-auto pl-2 text-[11px] text-muted-foreground", children: BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily })
                 ]
               },
               profile.id
             );
           }),
-          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs22(DropdownMenuItem, { onSelect: onNewProfile, children: [
-            /* @__PURE__ */ jsx28(Plus2, { className: "mr-2 size-3.5" }),
+          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs23(DropdownMenuItem, { onSelect: onNewProfile, children: [
+            /* @__PURE__ */ jsx29(Plus2, { className: "mr-2 size-3.5" }),
             translate("auto.components.browser.pane.BrowserToolbarMenu.cf7cdc67ef", "New Profile\u2026")
           ] }),
-          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs22(
+          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs23(
             DropdownMenuSub,
             {
               onOpenChange: (open) => {
@@ -5541,12 +5866,12 @@ function BrowserToolbarMenuDropdown({
                 }
               },
               children: [
-                /* @__PURE__ */ jsxs22(
+                /* @__PURE__ */ jsxs23(
                   DropdownMenuSubTrigger,
                   {
                     disabled: browserSessionImportState?.profileId === effectiveProfileId && browserSessionImportState.status === "importing",
                     children: [
-                      /* @__PURE__ */ jsx28(Import3, { className: "mr-2 size-3.5" }),
+                      /* @__PURE__ */ jsx29(Import3, { className: "mr-2 size-3.5" }),
                       translate(
                         "auto.components.browser.pane.BrowserToolbarMenu.2293adf620",
                         "Import Cookies"
@@ -5554,15 +5879,15 @@ function BrowserToolbarMenuDropdown({
                     ]
                   }
                 ),
-                /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsxs22(DropdownMenuSubContent, { children: [
+                /* @__PURE__ */ jsx29(DropdownMenuPortal, { children: /* @__PURE__ */ jsxs23(DropdownMenuSubContent, { children: [
                   detectedBrowsers.map(
-                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs22(DropdownMenuSub, { children: [
-                      /* @__PURE__ */ jsx28(DropdownMenuSubTrigger, { children: translate(
+                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs23(DropdownMenuSub, { children: [
+                      /* @__PURE__ */ jsx29(DropdownMenuSubTrigger, { children: translate(
                         "auto.components.browser.pane.BrowserToolbarMenu.eb280bfb11",
                         "From {{value0}}",
                         { value0: browser.label }
                       ) }),
-                      /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsx28(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx28(
+                      /* @__PURE__ */ jsx29(DropdownMenuPortal, { children: /* @__PURE__ */ jsx29(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx29(
                         DropdownMenuItem,
                         {
                           onSelect: () => onImportFromBrowser(browser.family, profile.directory),
@@ -5570,7 +5895,7 @@ function BrowserToolbarMenuDropdown({
                         },
                         profile.directory
                       )) }) })
-                    ] }, browser.family) : /* @__PURE__ */ jsx28(
+                    ] }, browser.family) : /* @__PURE__ */ jsx29(
                       DropdownMenuItem,
                       {
                         onSelect: () => onImportFromBrowser(browser.family),
@@ -5583,44 +5908,44 @@ function BrowserToolbarMenuDropdown({
                       browser.family
                     )
                   ),
-                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
-                  /* @__PURE__ */ jsx28(DropdownMenuItem, { onSelect: onImportFromFile, children: translate(
+                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
+                  /* @__PURE__ */ jsx29(DropdownMenuItem, { onSelect: onImportFromFile, children: translate(
                     "auto.components.browser.pane.BrowserToolbarMenu.56f94f4ffa",
                     "From File\u2026"
                   ) }),
-                  /* @__PURE__ */ jsx28(BrowserCookieImportDisclosure, {})
+                  /* @__PURE__ */ jsx29(BrowserCookieImportDisclosure, {})
                 ] }) })
               ]
             }
           ),
-          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs22(DropdownMenuSub, { children: [
-            /* @__PURE__ */ jsxs22(DropdownMenuSubTrigger, { children: [
-              /* @__PURE__ */ jsx28(Monitor, { className: "mr-2 size-3.5" }),
+          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs23(DropdownMenuSub, { children: [
+            /* @__PURE__ */ jsxs23(DropdownMenuSubTrigger, { children: [
+              /* @__PURE__ */ jsx29(Monitor, { className: "mr-2 size-3.5" }),
               translate(
                 "auto.components.browser.pane.BrowserToolbarMenu.e5d31de1a9",
                 "Viewport Size"
               )
             ] }),
-            /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsx28(DropdownMenuSubContent, { children: /* @__PURE__ */ jsxs22(
+            /* @__PURE__ */ jsx29(DropdownMenuPortal, { children: /* @__PURE__ */ jsx29(DropdownMenuSubContent, { children: /* @__PURE__ */ jsxs23(
               DropdownMenuRadioGroup,
               {
                 value: viewportPresetId ?? "default",
                 onValueChange: (v) => onApplyViewportPreset(v === "default" ? null : v),
                 children: [
-                  /* @__PURE__ */ jsx28(DropdownMenuRadioItem, { value: "default", children: translate(
+                  /* @__PURE__ */ jsx29(DropdownMenuRadioItem, { value: "default", children: translate(
                     "auto.components.browser.pane.BrowserToolbarMenu.ed8f54509d",
                     "Default"
                   ) }),
-                  /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
-                  BROWSER_VIEWPORT_PRESETS.map((preset) => /* @__PURE__ */ jsx28(DropdownMenuRadioItem, { value: preset.id, children: /* @__PURE__ */ jsx28("span", { className: "truncate", children: preset.label }) }, preset.id))
+                  /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
+                  BROWSER_VIEWPORT_PRESETS.map((preset) => /* @__PURE__ */ jsx29(DropdownMenuRadioItem, { value: preset.id, children: /* @__PURE__ */ jsx29("span", { className: "truncate", children: preset.label }) }, preset.id))
                 ]
               }
             ) }) })
           ] }),
-          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs22(DropdownMenuItem, { onSelect: onOpenSettings, children: [
-            /* @__PURE__ */ jsx28(Settings, { className: "mr-2 size-3.5" }),
+          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs23(DropdownMenuItem, { onSelect: onOpenSettings, children: [
+            /* @__PURE__ */ jsx29(Settings, { className: "mr-2 size-3.5" }),
             translate(
               "auto.components.browser.pane.BrowserToolbarMenu.a771c2b6c8",
               "Browser Settings\u2026"
@@ -5633,7 +5958,7 @@ function BrowserToolbarMenuDropdown({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-profile-dialogs.tsx
-import { Fragment as Fragment4, jsx as jsx29, jsxs as jsxs23 } from "react/jsx-runtime";
+import { Fragment as Fragment5, jsx as jsx30, jsxs as jsxs24 } from "react/jsx-runtime";
 function BrowserToolbarProfileDialogs({
   pendingSwitchProfileId,
   onPendingSwitchChange,
@@ -5646,8 +5971,8 @@ function BrowserToolbarProfileDialogs({
   onCreateProfile,
   onCancelNewProfile
 }) {
-  return /* @__PURE__ */ jsxs23(Fragment4, { children: [
-    /* @__PURE__ */ jsx29(
+  return /* @__PURE__ */ jsxs24(Fragment5, { children: [
+    /* @__PURE__ */ jsx30(
       Dialog,
       {
         open: pendingSwitchProfileId !== void 0,
@@ -5656,30 +5981,30 @@ function BrowserToolbarProfileDialogs({
             onPendingSwitchChange(false);
           }
         },
-        children: /* @__PURE__ */ jsxs23(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-          /* @__PURE__ */ jsxs23(DialogHeader, { children: [
-            /* @__PURE__ */ jsx29(DialogTitle, { className: "text-base", children: translate(
+        children: /* @__PURE__ */ jsxs24(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+          /* @__PURE__ */ jsxs24(DialogHeader, { children: [
+            /* @__PURE__ */ jsx30(DialogTitle, { className: "text-base", children: translate(
               "auto.components.browser.pane.BrowserToolbarMenu.fe683eb3b4",
               "Switch Profile"
             ) }),
-            /* @__PURE__ */ jsx29(DialogDescription, { className: "text-xs", children: translate(
+            /* @__PURE__ */ jsx30(DialogDescription, { className: "text-xs", children: translate(
               "auto.components.browser.pane.BrowserToolbarMenu.a38f217b46",
               "Switching profiles will reload this page. Any unsaved form data will be lost."
             ) })
           ] }),
-          /* @__PURE__ */ jsxs23(DialogFooter, { children: [
-            /* @__PURE__ */ jsx29(Button, { variant: "outline", size: "sm", onClick: () => onPendingSwitchChange(false), children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
-            /* @__PURE__ */ jsx29(Button, { size: "sm", onClick: onConfirmSwitch, children: translate("auto.components.browser.pane.BrowserToolbarMenu.58f2c81542", "Switch") })
+          /* @__PURE__ */ jsxs24(DialogFooter, { children: [
+            /* @__PURE__ */ jsx30(Button, { variant: "outline", size: "sm", onClick: () => onPendingSwitchChange(false), children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
+            /* @__PURE__ */ jsx30(Button, { size: "sm", onClick: onConfirmSwitch, children: translate("auto.components.browser.pane.BrowserToolbarMenu.58f2c81542", "Switch") })
           ] })
         ] })
       }
     ),
-    /* @__PURE__ */ jsx29(Dialog, { open: newProfileDialogOpen, onOpenChange: onNewProfileDialogOpenChange, children: /* @__PURE__ */ jsxs23(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-      /* @__PURE__ */ jsx29(DialogHeader, { children: /* @__PURE__ */ jsx29(DialogTitle, { className: "text-base", children: translate(
+    /* @__PURE__ */ jsx30(Dialog, { open: newProfileDialogOpen, onOpenChange: onNewProfileDialogOpenChange, children: /* @__PURE__ */ jsxs24(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+      /* @__PURE__ */ jsx30(DialogHeader, { children: /* @__PURE__ */ jsx30(DialogTitle, { className: "text-base", children: translate(
         "auto.components.browser.pane.BrowserToolbarMenu.67e9b9fcd6",
         "New Browser Profile"
       ) }) }),
-      /* @__PURE__ */ jsxs23(
+      /* @__PURE__ */ jsxs24(
         "form",
         {
           onSubmit: (e) => {
@@ -5687,7 +6012,7 @@ function BrowserToolbarProfileDialogs({
             onCreateProfile();
           },
           children: [
-            /* @__PURE__ */ jsx29(
+            /* @__PURE__ */ jsx30(
               Input,
               {
                 value: newProfileName,
@@ -5701,9 +6026,9 @@ function BrowserToolbarProfileDialogs({
                 className: "mb-3"
               }
             ),
-            /* @__PURE__ */ jsxs23(DialogFooter, { children: [
-              /* @__PURE__ */ jsx29(Button, { type: "button", variant: "outline", size: "sm", onClick: onCancelNewProfile, children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
-              /* @__PURE__ */ jsx29(
+            /* @__PURE__ */ jsxs24(DialogFooter, { children: [
+              /* @__PURE__ */ jsx30(Button, { type: "button", variant: "outline", size: "sm", onClick: onCancelNewProfile, children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
+              /* @__PURE__ */ jsx30(
                 Button,
                 {
                   type: "submit",
@@ -5727,7 +6052,7 @@ function BrowserToolbarProfileDialogs({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserToolbarMenu.tsx
-import { Fragment as Fragment5, jsx as jsx30, jsxs as jsxs24 } from "react/jsx-runtime";
+import { Fragment as Fragment6, jsx as jsx31, jsxs as jsxs25 } from "react/jsx-runtime";
 function BrowserToolbarMenu({
   currentProfileId,
   scopeId,
@@ -5873,8 +6198,8 @@ function BrowserToolbarMenu({
       toast5.error(result.reason);
     }
   };
-  return /* @__PURE__ */ jsxs24(Fragment5, { children: [
-    /* @__PURE__ */ jsx30(
+  return /* @__PURE__ */ jsxs25(Fragment6, { children: [
+    /* @__PURE__ */ jsx31(
       BrowserToolbarMenuDropdown,
       {
         onOpenSettings: () => setSettingsOpen(true),
@@ -5892,8 +6217,8 @@ function BrowserToolbarMenu({
         overflow
       }
     ),
-    /* @__PURE__ */ jsx30(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen, scopeId }),
-    /* @__PURE__ */ jsx30(
+    /* @__PURE__ */ jsx31(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen, scopeId }),
+    /* @__PURE__ */ jsx31(
       BrowserToolbarProfileDialogs,
       {
         pendingSwitchProfileId,
@@ -5915,7 +6240,7 @@ function BrowserToolbarMenu({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
-import { jsx as jsx31 } from "react/jsx-runtime";
+import { jsx as jsx32 } from "react/jsx-runtime";
 function BrowserPageToolbar({
   page,
   isActive,
@@ -5936,11 +6261,17 @@ function BrowserPageToolbar({
   submitAddressBar,
   navigateToUrl,
   addressBarInputRef,
-  dismissAddressBarSuggestionsRef
+  dismissAddressBarSuggestionsRef,
+  grab,
+  grabIntent,
+  startGrabIntent,
+  browserAnnotationsLength,
+  isBlankTab
 }) {
   const browserPageId = page.id;
   const externalUrl = getOpenableExternalUrl(currentUrl);
-  return /* @__PURE__ */ jsx31(TooltipProvider, { children: /* @__PURE__ */ jsx31(
+  const isMac = getRendererPlatform() === "darwin";
+  return /* @__PURE__ */ jsx32(TooltipProvider, { children: /* @__PURE__ */ jsx32(
     BrowserChromeToolbar,
     {
       controls: {
@@ -5952,7 +6283,7 @@ function BrowserPageToolbar({
         reload: () => runReloadTrigger("button"),
         navigate: navigateToUrl
       },
-      addressSlot: /* @__PURE__ */ jsx31(
+      addressSlot: /* @__PURE__ */ jsx32(
         BrowserAddressBar,
         {
           value: addressBarValue,
@@ -5963,7 +6294,7 @@ function BrowserPageToolbar({
           dismissSuggestionsRef: dismissAddressBarSuggestionsRef
         }
       ),
-      reloadControl: /* @__PURE__ */ jsx31(
+      reloadControl: /* @__PURE__ */ jsx32(
         BrowserReloadControl,
         {
           menuOpen: reloadMenuOpen,
@@ -5978,8 +6309,16 @@ function BrowserPageToolbar({
           onHardReload: () => runReloadTrigger("hard-reload")
         }
       ),
-      importControl: (compact) => /* @__PURE__ */ jsx31(BrowserImportHintButton, { profileId: page.sessionProfileId, compact }),
-      overflowMenu: (overflow) => /* @__PURE__ */ jsx31(
+      importControl: (compact) => /* @__PURE__ */ jsx32(BrowserImportHintButton, { profileId: page.sessionProfileId, compact }),
+      elementTools: {
+        activeIntent: grab.state !== "idle" ? grabIntent : null,
+        onStartIntent: startGrabIntent,
+        disabled: isBlankTab,
+        grabShortcutLabel: isMac ? "\u2318C" : "Ctrl+C",
+        annotateShortcutLabel: isMac ? "\u2318\u21E7C" : "Alt+Shift+N",
+        annotationCount: browserAnnotationsLength
+      },
+      overflowMenu: (overflow) => /* @__PURE__ */ jsx32(
         BrowserToolbarMenu,
         {
           currentProfileId: page.sessionProfileId,
@@ -6016,7 +6355,7 @@ function BrowserPageToolbar({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
-import { jsx as jsx32, jsxs as jsxs25 } from "react/jsx-runtime";
+import { jsx as jsx33, jsxs as jsxs26 } from "react/jsx-runtime";
 function BrowserPageChromeHeader({
   chromeHeaderRef,
   browserTab,
@@ -6030,11 +6369,15 @@ function BrowserPageChromeHeader({
   submitAddressBar,
   navigateToUrl,
   currentUrl,
+  grab,
+  grabAnnotations,
+  annotationSend,
+  isBlankTab,
   resourceNotice,
   setResourceNotice
 }) {
-  return /* @__PURE__ */ jsxs25("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
-    /* @__PURE__ */ jsx32(
+  return /* @__PURE__ */ jsxs26("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
+    /* @__PURE__ */ jsx33(
       BrowserPageToolbar,
       {
         page: browserTab,
@@ -6056,12 +6399,17 @@ function BrowserPageChromeHeader({
         submitAddressBar,
         navigateToUrl,
         addressBarInputRef,
-        dismissAddressBarSuggestionsRef
+        dismissAddressBarSuggestionsRef,
+        grab,
+        grabIntent: grabAnnotations.grabIntent,
+        startGrabIntent: grabAnnotations.startGrabIntent,
+        browserAnnotationsLength: annotationSend.browserAnnotations.length,
+        isBlankTab
       }
     ),
-    resourceNotice ? /* @__PURE__ */ jsxs25("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
-      /* @__PURE__ */ jsx32("span", { children: resourceNotice }),
-      /* @__PURE__ */ jsx32(
+    resourceNotice ? /* @__PURE__ */ jsxs26("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
+      /* @__PURE__ */ jsx33("span", { children: resourceNotice }),
+      /* @__PURE__ */ jsx33(
         "button",
         {
           type: "button",
@@ -7465,16 +7813,1350 @@ function useBrowserPageResourceNotices(browserTabId) {
   return { resourceNotice, setResourceNotice };
 }
 
-// src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
+// src/renderer/components/browser-pane/annotate/use-browser-page-annotation-send.ts
 import {
   useCallback as useCallback11,
   useEffect as useEffect15,
   useLayoutEffect as useLayoutEffect5,
+  useMemo as useMemo6,
   useRef as useRef11,
   useState as useState13
 } from "react";
+import { toast as toast6 } from "sonner";
+
+// src/renderer/components/browser-pane/annotate/browser-annotation-output.ts
+function formatPageHeading(payload) {
+  try {
+    const url = new URL(payload.page.sanitizedUrl);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return payload.page.sanitizedUrl || "current page";
+  }
+}
+function annotationElementLabel(payload) {
+  const react = payload.target.reactComponents;
+  const accessibleName = payload.target.accessibility.accessibleName;
+  const base = accessibleName ? `${payload.target.tagName} "${inlineText(accessibleName)}"` : payload.target.textSnippet ? `${payload.target.tagName} "${inlineText(payload.target.textSnippet).slice(0, 60)}"` : payload.target.tagName;
+  return react ? `${inlineText(react)} ${base}` : base;
+}
+var BROWSER_ANNOTATION_INLINE_TEXT_MAX_LENGTH = 2048;
+function inlineText(content, maxLength = BROWSER_ANNOTATION_INLINE_TEXT_MAX_LENGTH) {
+  let normalized = "";
+  let pendingSpace = false;
+  for (let index = 0; index < content.length && normalized.length < maxLength; ) {
+    const code = content.charCodeAt(index);
+    if (isInlineWhitespaceCode(code)) {
+      if (code === 13 && content.charCodeAt(index + 1) === 10) {
+        index += 1;
+      }
+      pendingSpace = normalized.length > 0;
+      index += 1;
+      continue;
+    }
+    const codePoint = content.codePointAt(index);
+    if (codePoint === void 0) {
+      break;
+    }
+    const char = String.fromCodePoint(codePoint);
+    const extraSpaceLength = pendingSpace ? 1 : 0;
+    if (normalized.length + extraSpaceLength + char.length > maxLength) {
+      break;
+    }
+    if (pendingSpace) {
+      normalized += " ";
+      pendingSpace = false;
+    }
+    normalized += char;
+    index += char.length;
+  }
+  return normalized;
+}
+function isInlineWhitespaceCode(code) {
+  return code === 32 || code >= 9 && code <= 13 || code === 160 || code === 5760 || code >= 8192 && code <= 8202 || code === 8232 || code === 8233 || code === 8239 || code === 8287 || code === 12288 || code === 65279;
+}
+function formatStyles(styles) {
+  const lines = [];
+  const entries = [
+    ["display", styles.display],
+    ["position", styles.position],
+    ["width", styles.width],
+    ["height", styles.height],
+    ["margin", styles.margin],
+    ["padding", styles.padding],
+    ["color", styles.color],
+    ["background", styles.backgroundColor],
+    ["border", styles.border],
+    ["border-radius", styles.borderRadius],
+    ["font-family", styles.fontFamily],
+    ["font-size", styles.fontSize],
+    ["font-weight", styles.fontWeight],
+    ["line-height", styles.lineHeight],
+    ["text-align", styles.textAlign],
+    ["z-index", styles.zIndex]
+  ];
+  for (const [name, value] of entries) {
+    if (!value || value === "auto" || value === "normal") {
+      continue;
+    }
+    if (name === "position" && value === "static") {
+      continue;
+    }
+    if (name === "display" && value === "inline") {
+      continue;
+    }
+    if (name === "background" && value === "rgba(0, 0, 0, 0)") {
+      continue;
+    }
+    lines.push(`- ${name}: ${value}`);
+  }
+  return lines;
+}
+function maxBacktickRunLength(content, floor) {
+  let maxRun = floor;
+  let currentRun = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) !== 96) {
+      currentRun = 0;
+      continue;
+    }
+    currentRun += 1;
+    if (currentRun > maxRun) {
+      maxRun = currentRun;
+    }
+  }
+  return maxRun;
+}
+function fence(language, content) {
+  const maxRun = maxBacktickRunLength(content, 3);
+  const marker = "`".repeat(maxRun + 1);
+  return [`${marker}${language}`, content, marker];
+}
+function inlineCode(content) {
+  const maxRun = maxBacktickRunLength(content, 0);
+  const marker = "`".repeat(maxRun + 1);
+  const padding = content.startsWith("`") || content.endsWith("`") ? " " : "";
+  return `${marker}${padding}${content}${padding}${marker}`;
+}
+function formatBrowserAnnotationsAsMarkdown(annotations) {
+  if (annotations.length === 0) {
+    return "";
+  }
+  const firstAnnotation = annotations[0];
+  const first = firstAnnotation.payload;
+  const groups = /* @__PURE__ */ new Map();
+  annotations.forEach((annotation, index) => {
+    const url = annotation.payload.page.sanitizedUrl;
+    const entries = groups.get(url) ?? [];
+    entries.push({ annotation, index });
+    groups.set(url, entries);
+  });
+  const mixedPages = groups.size > 1;
+  const lines = mixedPages ? ["## Design Feedback across pages", ""] : [
+    `## Design Feedback: ${formatPageHeading(first)}`,
+    "",
+    `**URL:** ${first.page.sanitizedUrl}`,
+    `**Browser tab id:** ${firstAnnotation.browserPageId}`,
+    `**Viewport:** ${first.page.viewportWidth}x${first.page.viewportHeight}`,
+    ""
+  ];
+  for (const [url, entries] of groups) {
+    if (mixedPages) {
+      lines.push(
+        `## Design Feedback: ${inlineText(formatPageHeading(entries[0].annotation.payload))}`
+      );
+      lines.push("", `**URL:** ${inlineCode(inlineText(url))}`, "");
+    }
+    entries.forEach(({ annotation, index }) => {
+      const { payload } = annotation;
+      const { target } = payload;
+      const rect = target.rectViewport;
+      const styleLines = formatStyles(target.computedStyles);
+      lines.push(`### ${index + 1}. ${annotationElementLabel(payload)}`);
+      if (mixedPages) {
+        lines.push(`**Browser tab id:** ${inlineCode(inlineText(annotation.browserPageId))}`);
+        lines.push(`**Viewport:** ${payload.page.viewportWidth}x${payload.page.viewportHeight}`);
+      }
+      lines.push(`**Intent:** ${annotation.intent}`);
+      lines.push(`**Selector:** ${inlineCode(target.selector)}`);
+      if (target.elementPath) {
+        lines.push(`**Location:** ${inlineCode(target.elementPath)}`);
+      }
+      if (target.sourceFile) {
+        lines.push(`**Source:** ${inlineText(target.sourceFile)}`);
+      }
+      if (target.reactComponents) {
+        lines.push(`**React:** ${inlineText(target.reactComponents)}`);
+      }
+      lines.push(
+        `**Bounds:** x=${Math.round(rect.x)}, y=${Math.round(rect.y)}, ${Math.round(rect.width)}x${Math.round(rect.height)}`
+      );
+      if (target.cssClasses) {
+        lines.push(`**Classes:** ${inlineCode(target.cssClasses)}`);
+      }
+      if (target.selectedText) {
+        lines.push(`**Selected text:** "${inlineText(target.selectedText)}"`);
+      } else if (target.textSnippet) {
+        lines.push(`**Text:** "${inlineText(target.textSnippet)}"`);
+      }
+      if (payload.nearbyText.length > 0) {
+        lines.push("**Nearby text:**");
+        for (const text of payload.nearbyText) {
+          lines.push(`- ${inlineText(text)}`);
+        }
+      }
+      if (target.nearbyElements?.length) {
+        lines.push("**Nearby elements:**");
+        for (const element of target.nearbyElements) {
+          lines.push(`- ${inlineText(element)}`);
+        }
+      }
+      if (styleLines.length > 0) {
+        lines.push("**Computed styles:**");
+        lines.push(...styleLines);
+      }
+      if (target.fullPath) {
+        lines.push(`**Full DOM path:** ${inlineCode(target.fullPath)}`);
+      }
+      if (target.htmlSnippet) {
+        lines.push("**HTML:**");
+        lines.push(...fence("html", target.htmlSnippet));
+      }
+      lines.push(`**Feedback:** ${inlineText(annotation.comment)}`);
+      lines.push("");
+    });
+  }
+  return lines.join("\n").trimEnd();
+}
+
+// src/renderer/components/browser-pane/annotate/GrabConfirmationSheet.tsx
+import { Copy, Image, MessageSquarePlus as MessageSquarePlus3, X as X2 } from "lucide-react";
+
+// src/renderer/ui/scroll-area.tsx
+import * as ScrollAreaPrimitive from "radix-ui/scroll-area";
+import { jsx as jsx34, jsxs as jsxs27 } from "react/jsx-runtime";
+function ScrollArea({
+  className,
+  viewportClassName,
+  viewportRef,
+  viewportTabIndex,
+  viewportProps,
+  children,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs27(
+    ScrollAreaPrimitive.Root,
+    {
+      "data-slot": "scroll-area",
+      className: cn("relative", className),
+      ...props,
+      children: [
+        /* @__PURE__ */ jsx34(
+          ScrollAreaPrimitive.Viewport,
+          {
+            ref: viewportRef,
+            tabIndex: viewportTabIndex,
+            "data-slot": "scroll-area-viewport",
+            className: cn(
+              "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+              viewportClassName
+            ),
+            ...viewportProps,
+            children
+          }
+        ),
+        /* @__PURE__ */ jsx34(ScrollBar, {}),
+        /* @__PURE__ */ jsx34(ScrollAreaPrimitive.Corner, {})
+      ]
+    }
+  );
+}
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}) {
+  return /* @__PURE__ */ jsx34(
+    ScrollAreaPrimitive.ScrollAreaScrollbar,
+    {
+      "data-slot": "scroll-area-scrollbar",
+      orientation,
+      className: cn(
+        "flex touch-none p-px transition-colors select-none bg-transparent",
+        orientation === "vertical" && "h-full w-3 py-2 border-l border-l-transparent",
+        orientation === "horizontal" && "h-3 px-2 flex-col border-t border-t-transparent",
+        className
+      ),
+      ...props,
+      children: /* @__PURE__ */ jsx34(
+        ScrollAreaPrimitive.ScrollAreaThumb,
+        {
+          "data-slot": "scroll-area-thumb",
+          className: "relative flex-1 rounded-full bg-muted-foreground/40 hover:bg-muted-foreground/60"
+        }
+      )
+    }
+  );
+}
+
+// src/renderer/components/browser-pane/annotate/GrabConfirmationSheet.tsx
+import { jsx as jsx35, jsxs as jsxs28 } from "react/jsx-runtime";
+function formatGrabPayloadAsText(payload) {
+  const lines = [];
+  lines.push(`Attached browser context from ${payload.page.sanitizedUrl}`);
+  lines.push("");
+  lines.push("Selected element:");
+  lines.push(payload.target.tagName);
+  if (payload.target.accessibility.accessibleName) {
+    lines.push(`Accessible name: "${payload.target.accessibility.accessibleName}"`);
+  }
+  if (payload.target.accessibility.role) {
+    lines.push(`Role: ${payload.target.accessibility.role}`);
+  }
+  lines.push(`Selector: ${payload.target.selector}`);
+  if (payload.target.sourceFile) {
+    lines.push(`Source: ${payload.target.sourceFile}`);
+  }
+  if (payload.target.reactComponents) {
+    lines.push(`React: ${payload.target.reactComponents}`);
+  }
+  const { rectViewport } = payload.target;
+  lines.push(`Dimensions: ${Math.round(rectViewport.width)}x${Math.round(rectViewport.height)}`);
+  lines.push("");
+  if (payload.target.textSnippet) {
+    lines.push("Text content:");
+    lines.push(payload.target.textSnippet);
+    lines.push("");
+  }
+  if (payload.nearbyText.length > 0) {
+    lines.push("Nearby context:");
+    for (const text of payload.nearbyText) {
+      lines.push(`- ${text}`);
+    }
+    lines.push("");
+  }
+  const styles = payload.target.computedStyles;
+  const styleLines = [];
+  if (styles.display && styles.display !== "inline") {
+    styleLines.push(`display: ${styles.display}`);
+  }
+  if (styles.position && styles.position !== "static") {
+    styleLines.push(`position: ${styles.position}`);
+  }
+  if (styles.fontSize) {
+    styleLines.push(`font-size: ${styles.fontSize}`);
+  }
+  if (styles.color) {
+    styleLines.push(`color: ${styles.color}`);
+  }
+  if (styles.backgroundColor && styles.backgroundColor !== "rgba(0, 0, 0, 0)") {
+    styleLines.push(`background: ${styles.backgroundColor}`);
+  }
+  if (styleLines.length > 0) {
+    lines.push("Computed styles:");
+    for (const sl of styleLines) {
+      lines.push(`  ${sl}`);
+    }
+    lines.push("");
+  }
+  if (payload.target.htmlSnippet) {
+    lines.push("HTML:");
+    lines.push(payload.target.htmlSnippet);
+    lines.push("");
+  }
+  if (payload.ancestorPath.length > 0) {
+    lines.push(`Ancestor path: ${payload.ancestorPath.join(" > ")}`);
+  }
+  if (payload.target.fullPath) {
+    lines.push(`Full DOM path: ${payload.target.fullPath}`);
+  }
+  return lines.join("\n").trimEnd();
+}
+function EscapedText({ text, className }) {
+  return /* @__PURE__ */ jsx35("span", { className, children: text });
+}
+function getNearbyTextRows(nearbyText) {
+  const counts = /* @__PURE__ */ new Map();
+  return nearbyText.map((text) => {
+    const count = counts.get(text) ?? 0;
+    counts.set(text, count + 1);
+    return { key: `${text}:${count}`, text };
+  });
+}
+function GrabConfirmationSheet({
+  payload,
+  onCopy,
+  onCopyScreenshot,
+  onAttach,
+  onCancel
+}) {
+  const { target, page, nearbyText } = payload;
+  const nearbyTextRows = getNearbyTextRows(nearbyText);
+  return /* @__PURE__ */ jsxs28("div", { className: "absolute inset-0 z-20 flex flex-col bg-background/98 backdrop-blur-sm", children: [
+    /* @__PURE__ */ jsxs28("div", { className: "flex items-center justify-between border-b border-border/70 px-4 py-3", children: [
+      /* @__PURE__ */ jsxs28("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsx35("div", { className: "rounded-md bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-400", children: translate("auto.components.browser.pane.GrabConfirmationSheet.f3575229df", "Grab") }),
+        /* @__PURE__ */ jsx35("span", { className: "text-sm text-muted-foreground", children: translate(
+          "auto.components.browser.pane.GrabConfirmationSheet.50f7114f99",
+          "Review before attaching. Captured page context may include visible site content."
+        ) })
+      ] }),
+      /* @__PURE__ */ jsx35(Button, { size: "icon", variant: "ghost", className: "h-7 w-7", onClick: onCancel, children: /* @__PURE__ */ jsx35(X2, { className: "size-4" }) })
+    ] }),
+    /* @__PURE__ */ jsx35(ScrollArea, { className: "flex-1 p-4", children: /* @__PURE__ */ jsxs28("div", { className: "space-y-4", children: [
+      payload.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsx35("div", { className: "overflow-hidden rounded-lg border border-border/60", children: /* @__PURE__ */ jsx35(
+        "img",
+        {
+          src: payload.screenshot.dataUrl,
+          alt: translate(
+            "auto.components.browser.pane.GrabConfirmationSheet.9c6ce0632a",
+            "Selected element screenshot"
+          ),
+          className: "max-h-48 w-full object-contain bg-black/5"
+        }
+      ) }) : null,
+      /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate(
+          "auto.components.browser.pane.GrabConfirmationSheet.a759d8f866",
+          "Selected Element"
+        ) }),
+        /* @__PURE__ */ jsxs28("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3 text-sm", children: [
+          /* @__PURE__ */ jsxs28("div", { className: "flex items-baseline gap-2", children: [
+            /* @__PURE__ */ jsx35("span", { className: "font-mono font-semibold text-foreground", children: /* @__PURE__ */ jsx35(EscapedText, { text: `<${target.tagName}>` }) }),
+            target.accessibility.role ? /* @__PURE__ */ jsxs28("span", { className: "text-xs text-muted-foreground", children: [
+              translate(
+                "auto.components.browser.pane.GrabConfirmationSheet.d053db279d",
+                "role="
+              ),
+              /* @__PURE__ */ jsx35(EscapedText, { text: target.accessibility.role })
+            ] }) : null
+          ] }),
+          target.accessibility.accessibleName ? /* @__PURE__ */ jsxs28("div", { className: "mt-1 text-muted-foreground", children: [
+            translate(
+              "auto.components.browser.pane.GrabConfirmationSheet.accessibleNameOpenQuote",
+              '"'
+            ),
+            /* @__PURE__ */ jsx35(EscapedText, { text: target.accessibility.accessibleName }),
+            translate("auto.components.browser.pane.GrabConfirmationSheet.eb98a0971a", '"')
+          ] }) : null,
+          /* @__PURE__ */ jsx35("div", { className: "mt-1 font-mono text-xs text-muted-foreground/70", children: /* @__PURE__ */ jsx35(EscapedText, { text: target.selector }) }),
+          /* @__PURE__ */ jsxs28("div", { className: "mt-1 text-xs text-muted-foreground/60", children: [
+            Math.round(target.rectViewport.width),
+            "x",
+            Math.round(target.rectViewport.height)
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate("auto.components.browser.pane.GrabConfirmationSheet.9098b118ab", "Page") }),
+        /* @__PURE__ */ jsxs28("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3 text-sm", children: [
+          /* @__PURE__ */ jsx35("div", { className: "font-medium text-foreground", children: /* @__PURE__ */ jsx35(
+            EscapedText,
+            {
+              text: page.title || translate(
+                "auto.components.browser.pane.GrabConfirmationSheet.405bb315da",
+                "Untitled"
+              )
+            }
+          ) }),
+          /* @__PURE__ */ jsx35("div", { className: "mt-0.5 text-xs text-muted-foreground/70", children: /* @__PURE__ */ jsx35(EscapedText, { text: page.sanitizedUrl }) })
+        ] })
+      ] }),
+      target.htmlSnippet ? /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate("auto.components.browser.pane.GrabConfirmationSheet.7d1480fbf1", "HTML") }),
+        /* @__PURE__ */ jsx35("pre", { className: "max-h-32 overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 font-mono text-xs text-foreground/80", children: /* @__PURE__ */ jsx35(EscapedText, { text: target.htmlSnippet }) })
+      ] }) : null,
+      nearbyText.length > 0 ? /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate(
+          "auto.components.browser.pane.GrabConfirmationSheet.effd75e330",
+          "Nearby Context"
+        ) }),
+        /* @__PURE__ */ jsx35("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3", children: /* @__PURE__ */ jsx35("ul", { className: "list-inside list-disc space-y-0.5 text-sm text-muted-foreground", children: nearbyTextRows.map((row) => /* @__PURE__ */ jsx35("li", { children: /* @__PURE__ */ jsx35(EscapedText, { text: row.text }) }, row.key)) }) })
+      ] }) : null
+    ] }) }),
+    /* @__PURE__ */ jsxs28("div", { className: "flex items-center justify-end gap-2 border-t border-border/70 px-4 py-3", children: [
+      /* @__PURE__ */ jsx35(Button, { variant: "ghost", size: "sm", onClick: onCancel, children: translate("auto.components.browser.pane.GrabConfirmationSheet.87d97bdd6d", "Cancel") }),
+      /* @__PURE__ */ jsxs28(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopy, children: [
+        /* @__PURE__ */ jsx35(Copy, { className: "size-3.5" }),
+        translate("auto.components.browser.pane.GrabConfirmationSheet.26fd87f4df", "Copy")
+      ] }),
+      onCopyScreenshot ? /* @__PURE__ */ jsxs28(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopyScreenshot, children: [
+        /* @__PURE__ */ jsx35(Image, { className: "size-3.5" }),
+        translate(
+          "auto.components.browser.pane.GrabConfirmationSheet.7095e98362",
+          "Copy Screenshot"
+        )
+      ] }) : null,
+      /* @__PURE__ */ jsxs28(Button, { size: "sm", className: "gap-1.5", onClick: onAttach, children: [
+        /* @__PURE__ */ jsx35(MessageSquarePlus3, { className: "size-3.5" }),
+        translate("auto.components.browser.pane.sendToAgent.attach", "Send to agent")
+      ] })
+    ] })
+  ] });
+}
+
+// src/renderer/components/browser-pane/annotate/browser-agent-send.ts
+function compactImages(images) {
+  return images.filter((image) => image !== null);
+}
+function buildGrabAgentPayload(payload) {
+  return {
+    kind: "grab",
+    pageUrl: sanitizeAgentPageUrl(payload.page.sanitizedUrl),
+    pageTitle: payload.page.title,
+    text: formatGrabPayloadAsText(payload),
+    images: compactImages([
+      pngDataUrlToAgentImage(BROWSER_AGENT_IMAGE_NAMES.grab, payload.screenshot?.dataUrl)
+    ])
+  };
+}
+function buildAnnotationAgentPayload(annotations) {
+  if (annotations.length === 0) {
+    return null;
+  }
+  const { page } = annotations[0].payload;
+  return {
+    kind: "annotation",
+    pageUrl: sanitizeAgentPageUrl(page.sanitizedUrl),
+    pageTitle: page.title,
+    text: formatBrowserAnnotationsAsMarkdown([...annotations]),
+    images: []
+  };
+}
+function isSendToAgentCanceled(error) {
+  const isErrorLike = error instanceof Error || typeof DOMException !== "undefined" && error instanceof DOMException;
+  return isErrorLike && error.name === "AbortError";
+}
+function useSendToAgent() {
+  const host = useBrowserRendererHost();
+  if (!host.onSendToAgent) {
+    return null;
+  }
+  return async (payload) => {
+    await host.onSendToAgent(payload);
+  };
+}
+
+// src/renderer/components/browser-pane/describe-page/browser-annotation-geometry.ts
+import { MessageCircleQuestionMark, PencilLine } from "lucide-react";
+var BROWSER_ANNOTATION_INTENT_OPTIONS = [
+  {
+    value: "change",
+    get label() {
+      return translate("auto.components.browser.pane.BrowserPane.143204e423", "Change");
+    },
+    icon: PencilLine
+  },
+  {
+    value: "question",
+    get label() {
+      return translate("auto.components.browser.pane.BrowserPane.b5ba6085de", "Question");
+    },
+    icon: MessageCircleQuestionMark
+  }
+];
+var DEFAULT_BROWSER_ANNOTATION_PRIORITY = "important";
+var EMPTY_BROWSER_ANNOTATIONS = [];
+var PENDING_ANNOTATION_CARD_HEIGHT = 240;
+var PENDING_ANNOTATION_CARD_WIDTH = 352;
+var PENDING_ANNOTATION_CARD_MARGIN = 22;
+function createBrowserAnnotationId() {
+  return `browser-annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function createBrowserAnnotationPayload(payload) {
+  return {
+    ...payload,
+    // Why: annotations are persisted; screenshot data is a transient copy payload that can be megabytes per selection.
+    screenshot: null
+  };
+}
+var BROWSER_OVERLAY_SIDES = ["bottom", "top", "right", "left"];
+function pickBrowserOverlaySide(space, cardHeight) {
+  const vertical = cardHeight + PENDING_ANNOTATION_CARD_MARGIN;
+  const horizontal = PENDING_ANNOTATION_CARD_WIDTH + PENDING_ANNOTATION_CARD_MARGIN;
+  const room = {
+    bottom: space.bottom / vertical,
+    top: space.top / vertical,
+    right: space.right / horizontal,
+    left: space.left / horizontal
+  };
+  const fitting = BROWSER_OVERLAY_SIDES.find((side) => room[side] >= 1);
+  return fitting ?? (room.bottom >= room.top ? "bottom" : "top");
+}
+function getBrowserOverlayAnchor(payload, container, webview, viewport, cardHeight = null) {
+  const containerRect = container?.getBoundingClientRect();
+  const webviewRect = webview?.getBoundingClientRect();
+  const rect = getLiveBrowserAnnotationRect(payload, viewport);
+  const guestWidth = viewport.viewportWidth ?? payload.page.viewportWidth;
+  const scale = webviewRect && webviewRect.width > 0 && guestWidth > 0 ? webviewRect.width / guestWidth : 1;
+  const offsetX = (webviewRect?.left ?? 0) - (containerRect?.left ?? 0);
+  const offsetY = (webviewRect?.top ?? 0) - (containerRect?.top ?? 0);
+  const containerWidth = containerRect?.width ?? 0;
+  const containerHeight = containerRect?.height ?? 0;
+  const width = rect.width * scale;
+  const height = rect.height * scale;
+  const elementLeft = offsetX + rect.x * scale;
+  const elementRight = elementLeft + width;
+  const elementTop = offsetY + rect.y * scale;
+  const elementBottom = elementTop + height;
+  const side = pickBrowserOverlaySide(
+    {
+      top: elementTop,
+      bottom: containerHeight - elementBottom,
+      left: elementLeft,
+      right: containerWidth - elementRight
+    },
+    cardHeight ?? PENDING_ANNOTATION_CARD_HEIGHT
+  );
+  const edge = {
+    top: { x: elementLeft + width / 2, y: elementTop },
+    bottom: { x: elementLeft + width / 2, y: elementBottom },
+    left: { x: elementLeft, y: elementTop + height / 2 },
+    right: { x: elementRight, y: elementTop + height / 2 }
+  }[side];
+  return {
+    x: clampNumber(edge.x, 12, Math.max(12, containerWidth - 12)),
+    y: clampNumber(edge.y, 12, Math.max(12, containerHeight - 12)),
+    side
+  };
+}
+function clampNumber(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+function getLiveBrowserAnnotationRect(payload, viewport) {
+  if (viewport.target) {
+    return viewport.target;
+  }
+  if (payload.target.isFixed) {
+    return payload.target.rectViewport;
+  }
+  const scrollX = viewport.version === 0 ? payload.page.scrollX : viewport.scrollX;
+  const scrollY = viewport.version === 0 ? payload.page.scrollY : viewport.scrollY;
+  return {
+    ...payload.target.rectViewport,
+    x: payload.target.rectPage.x - scrollX,
+    y: payload.target.rectPage.y - scrollY
+  };
+}
+
+// src/renderer/components/browser-pane/annotate/use-browser-page-annotation-send.ts
+function useBrowserPageAnnotationSend({
+  browserTabId
+}) {
+  const browserAnnotations = useBrowserAnnotationStore(
+    (s) => s.browserAnnotationsByPageId[browserTabId] ?? EMPTY_BROWSER_ANNOTATIONS
+  );
+  const browserAnnotationsRef = useRef11(browserAnnotations);
+  const [browserAnnotationTrayOpen, setBrowserAnnotationTrayOpen] = useState13(true);
+  const [browserAnnotationsCopied, setBrowserAnnotationsCopied] = useState13(false);
+  const [browserAnnotationsSending, setBrowserAnnotationsSending] = useState13(false);
+  const sendInFlightRef = useRef11(false);
+  const annotationCopyTimerRef = useRef11(void 0);
+  const copyPrompt = useMemo6(
+    () => formatBrowserAnnotationsAsMarkdown(browserAnnotations),
+    [browserAnnotations]
+  );
+  const sendToAgent = useSendToAgent();
+  const sendToAgentRef = useRef11(sendToAgent);
+  const deleteBrowserPageAnnotation = useBrowserAnnotationStore(
+    (s) => s.deleteBrowserPageAnnotation
+  );
+  const updateBrowserPageAnnotation = useBrowserAnnotationStore(
+    (s) => s.updateBrowserPageAnnotation
+  );
+  const clearBrowserPageAnnotations = useBrowserAnnotationStore(
+    (s) => s.clearBrowserPageAnnotations
+  );
+  const removeDeliveredBrowserPageAnnotations = useBrowserAnnotationStore(
+    (s) => s.removeDeliveredBrowserPageAnnotations
+  );
+  useLayoutEffect5(() => {
+    browserAnnotationsRef.current = browserAnnotations;
+    sendToAgentRef.current = sendToAgent;
+  }, [browserAnnotations, sendToAgent]);
+  useEffect15(() => {
+    return () => {
+      clearTimeout(annotationCopyTimerRef.current);
+    };
+  }, []);
+  const handleCopyBrowserAnnotations = useCallback11(() => {
+    if (!copyPrompt) {
+      return;
+    }
+    void window.browserAPI.writeClipboardText(copyPrompt);
+    clearTimeout(annotationCopyTimerRef.current);
+    setBrowserAnnotationsCopied(true);
+    annotationCopyTimerRef.current = setTimeout(() => setBrowserAnnotationsCopied(false), 1400);
+  }, [copyPrompt]);
+  const handleSendBrowserAnnotationsToAgent = useCallback11(async () => {
+    const send = sendToAgentRef.current;
+    const delivered = browserAnnotationsRef.current;
+    const payload = buildAnnotationAgentPayload(delivered);
+    if (!send || !payload || sendInFlightRef.current) {
+      return;
+    }
+    sendInFlightRef.current = true;
+    setBrowserAnnotationsSending(true);
+    try {
+      await send(payload);
+      removeDeliveredBrowserPageAnnotations(browserTabId, delivered);
+    } catch (error) {
+      if (!isSendToAgentCanceled(error)) {
+        toast6.error(
+          translate("auto.components.browser.pane.sendToAgent.failed", "Could not send to agent")
+        );
+      }
+    } finally {
+      sendInFlightRef.current = false;
+      setBrowserAnnotationsSending(false);
+    }
+  }, [browserTabId, removeDeliveredBrowserPageAnnotations]);
+  const handleClearBrowserAnnotations = useCallback11(() => {
+    if (browserAnnotationsRef.current.length === 0) {
+      return;
+    }
+    clearTimeout(annotationCopyTimerRef.current);
+    setBrowserAnnotationsCopied(false);
+    clearBrowserPageAnnotations(browserTabId);
+  }, [browserTabId, clearBrowserPageAnnotations]);
+  const handleDeleteBrowserAnnotation = useCallback11(
+    (annotationId) => {
+      if (browserAnnotationsRef.current.length === 1) {
+        clearTimeout(annotationCopyTimerRef.current);
+        setBrowserAnnotationsCopied(false);
+        setBrowserAnnotationTrayOpen(true);
+      }
+      deleteBrowserPageAnnotation(browserTabId, annotationId);
+    },
+    [browserTabId, deleteBrowserPageAnnotation, setBrowserAnnotationTrayOpen]
+  );
+  const handleUpdateBrowserAnnotation = useCallback11(
+    (annotationId, comment, intent) => {
+      updateBrowserPageAnnotation(browserTabId, annotationId, { comment, intent });
+    },
+    [browserTabId, updateBrowserPageAnnotation]
+  );
+  return {
+    browserAnnotations,
+    browserAnnotationTrayOpen,
+    setBrowserAnnotationTrayOpen,
+    browserAnnotationsCopied,
+    browserAnnotationsSending,
+    handleSendBrowserAnnotationsToAgent: sendToAgent ? handleSendBrowserAnnotationsToAgent : null,
+    handleCopyBrowserAnnotations,
+    handleClearBrowserAnnotations,
+    handleDeleteBrowserAnnotation,
+    handleUpdateBrowserAnnotation
+  };
+}
+
+// src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
+import {
+  useCallback as useCallback12,
+  useEffect as useEffect17,
+  useLayoutEffect as useLayoutEffect6,
+  useRef as useRef12,
+  useState as useState14
+} from "react";
+import { toast as toast7 } from "sonner";
+
+// src/renderer/components/browser-pane/annotate/use-browser-page-annotation-viewport-tracking.ts
+import { useEffect as useEffect16 } from "react";
+function useBrowserPageAnnotationViewportTracking({
+  isActive,
+  pendingAnnotation,
+  annotationCount,
+  container,
+  scroller,
+  setBrowserOverlayViewport
+}) {
+  useEffect16(() => {
+    if (!isActive || !pendingAnnotation && annotationCount === 0) {
+      return;
+    }
+    let frame = null;
+    const bump = () => {
+      if (frame !== null) {
+        return;
+      }
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setBrowserOverlayViewport((current) => ({ ...current, version: current.version + 1 }));
+      });
+    };
+    const observer = typeof ResizeObserver === "undefined" || !container ? null : new ResizeObserver(bump);
+    if (observer && container) {
+      observer.observe(container);
+    }
+    const unsubscribe = subscribeBrowserPageViewportScroll(scroller, bump);
+    return () => {
+      observer?.disconnect();
+      unsubscribe();
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [annotationCount, container, isActive, pendingAnnotation, scroller, setBrowserOverlayViewport]);
+}
+
+// src/renderer/lib/browser-clipboard.ts
+var PNG_DATA_URL_PREFIX2 = "data:image/png;base64,";
+async function writeClipboardImage(pngDataUrl) {
+  if (!pngDataUrl.startsWith(PNG_DATA_URL_PREFIX2)) {
+    return;
+  }
+  const blob = await (await fetch(pngDataUrl)).blob();
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+}
+
+// src/renderer/components/browser-pane/annotate/browser-page-grab-action.ts
+async function copyGrabScreenshotToClipboard(dataUrl) {
+  try {
+    await writeClipboardImage(dataUrl);
+  } catch {
+  }
+}
+function runBrowserGrabActionShortcut({
+  key,
+  grabIntent,
+  grab,
+  grabPayloadRef,
+  toolTargetIdRef,
+  showGrabToast
+}) {
+  if (grabIntent === "annotate") {
+    return;
+  }
+  const copyFromPayload = (payload) => {
+    if (key === "c") {
+      const text = formatGrabPayloadAsText(payload);
+      void window.browserAPI.writeClipboardText(text);
+      showGrabToast("Copied", "success", payload);
+    } else {
+      const dataUrl = payload.screenshot?.dataUrl;
+      if (dataUrl?.startsWith("data:image/png;base64,")) {
+        void copyGrabScreenshotToClipboard(dataUrl);
+        showGrabToast("Screenshotted", "success", payload);
+      } else {
+        showGrabToast("No screenshot available", "error", payload);
+      }
+    }
+  };
+  if (grab.state === "confirming") {
+    if (grab.contextMenu && key === "c") {
+      const currentPayload = grabPayloadRef.current;
+      if (currentPayload) {
+        copyFromPayload(currentPayload);
+      }
+      grab.rearm();
+    } else if (key === "s") {
+      const currentPayload = grabPayloadRef.current;
+      if (currentPayload) {
+        copyFromPayload(currentPayload);
+      }
+      grab.rearm();
+    }
+  } else {
+    void (async () => {
+      let result;
+      try {
+        result = await window.browserAPI.extractHoverPayload({
+          browserPageId: toolTargetIdRef.current
+        });
+      } catch {
+        showGrabToast("Could not read the hovered element", "error");
+        return;
+      }
+      if (!result.ok) {
+        showGrabToast("No element hovered", "error");
+        return;
+      }
+      const payload = result.payload;
+      if (key === "s") {
+        try {
+          const ssResult = await window.browserAPI.captureSelectionScreenshot({
+            browserPageId: toolTargetIdRef.current,
+            rect: payload.target.rectViewport
+          });
+          if (ssResult.ok) {
+            payload.screenshot = ssResult.screenshot;
+          }
+        } catch {
+        }
+      }
+      copyFromPayload(payload);
+    })();
+  }
+}
+
+// src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
+var copiedGrabToastMessage = () => translate(
+  "auto.components.browser.pane.annotate.use.browser.page.grab.annotations.0c7b9b2b7a",
+  "Copied"
+);
+var screenshottedGrabToastMessage = () => translate(
+  "auto.components.browser.pane.annotate.use.browser.page.grab.annotations.c937229f19",
+  "Screenshotted"
+);
+var annotationAddedGrabToastMessage = () => translate(
+  "auto.components.browser.pane.annotate.use.browser.page.grab.annotations.1f5cb19034",
+  "Annotation added"
+);
+function useBrowserPageGrabAnnotations({
+  browserTabId,
+  toolTargetId = browserTabId,
+  isActive,
+  grab,
+  containerRef,
+  trackingContainer,
+  trackingScroller,
+  webviewRef,
+  setBrowserOverlayViewport,
+  browserAnnotationsLength,
+  setBrowserAnnotationTrayOpen
+}) {
+  const mountedRef = useMountedRef();
+  const toolTargetIdRef = useRef12(toolTargetId);
+  const grabToastTimerRef = useRef12(void 0);
+  const [grabIntent, setGrabIntent] = useState14("copy");
+  const grabIntentRef = useRef12(grabIntent);
+  const [pendingAnnotationPayload, setPendingAnnotationPayload] = useState14(null);
+  const pendingAnnotationPayloadRef = useRef12(null);
+  const [grabToast, setGrabToast] = useState14(null);
+  const grabRef = useRef12(grab);
+  const grabPayloadRef = useRef12(grab.payload);
+  const sendToAgent = useSendToAgent();
+  const sendToAgentRef = useRef12(sendToAgent);
+  const grabSendInFlightRef = useRef12(false);
+  useLayoutEffect6(() => {
+    toolTargetIdRef.current = toolTargetId;
+    grabIntentRef.current = grabIntent;
+    pendingAnnotationPayloadRef.current = pendingAnnotationPayload;
+    grabRef.current = grab;
+    grabPayloadRef.current = grab.payload;
+    sendToAgentRef.current = sendToAgent;
+  }, [grab, grabIntent, pendingAnnotationPayload, sendToAgent, toolTargetId]);
+  const grabMenuActionTakenRef = useRef12(false);
+  const addBrowserPageAnnotation = useBrowserAnnotationStore((s) => s.addBrowserPageAnnotation);
+  useEffect17(() => () => clearTimeout(grabToastTimerRef.current), []);
+  const dismissGrabToast = useCallback12(() => {
+    clearTimeout(grabToastTimerRef.current);
+    setGrabToast(null);
+    if (grabRef.current.state === "confirming" && !(grabIntentRef.current === "annotate" && pendingAnnotationPayloadRef.current)) {
+      grabRef.current.rearm();
+    }
+  }, []);
+  const showGrabToast = useCallback12(
+    (message, type, payload) => {
+      if (!mountedRef.current) {
+        return;
+      }
+      let x = 0;
+      let y = 0;
+      let below = true;
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (payload) {
+        const rect = payload.target.rectViewport;
+        const webview = webviewRef.current;
+        const webviewRect = webview?.getBoundingClientRect();
+        const offsetX = (webviewRect?.left ?? 0) - (containerRect?.left ?? 0);
+        const offsetY = (webviewRect?.top ?? 0) - (containerRect?.top ?? 0);
+        x = offsetX + rect.x + rect.width / 2;
+        const elementBottom = offsetY + rect.y + rect.height;
+        const elementTop = offsetY + rect.y;
+        const containerHeight = containerRect?.height ?? 0;
+        below = elementBottom + 52 < containerHeight;
+        y = below ? elementBottom : elementTop;
+      } else if (containerRect) {
+        x = containerRect.width / 2;
+        y = containerRect.height / 2;
+      }
+      clearTimeout(grabToastTimerRef.current);
+      setGrabToast({ message, type, x, y, below, payload: payload ?? null });
+      grabToastTimerRef.current = setTimeout(() => dismissGrabToast(), 2e3);
+    },
+    [containerRef, dismissGrabToast, mountedRef, webviewRef]
+  );
+  useEffect17(() => {
+    if (grab.state !== "confirming" || !grab.payload) {
+      return;
+    }
+    if (grabIntent === "annotate") {
+      setPendingAnnotationPayload(
+        () => grabPayloadRef.current === grab.payload ? grab.payload : null
+      );
+      setBrowserOverlayViewport(
+        (current) => current.target ? { ...current, target: void 0 } : current
+      );
+      return;
+    }
+    if (!grab.contextMenu) {
+      const text = formatGrabPayloadAsText(grab.payload);
+      void window.browserAPI.writeClipboardText(text);
+      showGrabToast(copiedGrabToastMessage(), "success", grab.payload);
+    }
+  }, [
+    grab.state,
+    grab.payload,
+    grab.contextMenu,
+    grabIntent,
+    setBrowserOverlayViewport,
+    showGrabToast
+  ]);
+  useBrowserPageAnnotationViewportTracking({
+    isActive,
+    pendingAnnotation: pendingAnnotationPayload,
+    annotationCount: browserAnnotationsLength,
+    container: trackingContainer ?? containerRef.current,
+    scroller: trackingScroller ?? containerRef.current?.querySelector("[data-browser-page-scroller]") ?? null,
+    setBrowserOverlayViewport
+  });
+  const startGrabIntent = useCallback12(
+    (nextIntent) => {
+      if (nextIntent === "annotate") {
+      }
+      setGrabIntent(nextIntent);
+      if (nextIntent === "copy") {
+        setPendingAnnotationPayload(null);
+      } else {
+        setBrowserAnnotationTrayOpen(true);
+      }
+      if (grab.state === "idle" || grab.state === "error" || grabIntent === nextIntent) {
+        grab.toggle();
+      }
+    },
+    [grab, grabIntent, setBrowserAnnotationTrayOpen]
+  );
+  const handleGrabActionShortcut = useCallback12(
+    (key) => {
+      runBrowserGrabActionShortcut({
+        key,
+        grabIntent,
+        grab,
+        grabPayloadRef,
+        toolTargetIdRef,
+        showGrabToast
+      });
+    },
+    [grab, grabIntent, showGrabToast]
+  );
+  const handleGrabCopy = useCallback12(() => {
+    grabMenuActionTakenRef.current = true;
+    const payload = grabPayloadRef.current;
+    if (!payload) {
+      return;
+    }
+    const text = formatGrabPayloadAsText(payload);
+    void window.browserAPI.writeClipboardText(text);
+    showGrabToast(copiedGrabToastMessage(), "success", payload);
+    grab.rearm();
+  }, [grab, showGrabToast]);
+  const handleGrabCopyScreenshot = useCallback12(() => {
+    grabMenuActionTakenRef.current = true;
+    const payload = grabPayloadRef.current;
+    if (!payload) {
+      return;
+    }
+    const dataUrl = payload.screenshot?.dataUrl;
+    if (!dataUrl?.startsWith("data:image/png;base64,")) {
+      return;
+    }
+    void copyGrabScreenshotToClipboard(dataUrl);
+    showGrabToast(screenshottedGrabToastMessage(), "success", payload);
+    grab.rearm();
+  }, [grab, showGrabToast]);
+  const handleGrabSendToAgent = useCallback12(
+    async (payload) => {
+      const send = sendToAgentRef.current;
+      if (!send || grabSendInFlightRef.current) {
+        return false;
+      }
+      grabSendInFlightRef.current = true;
+      try {
+        let screenshot = payload.screenshot;
+        try {
+          const result = await window.browserAPI.captureSelectionScreenshot({
+            browserPageId: toolTargetIdRef.current,
+            rect: payload.target.rectViewport
+          });
+          if (result.ok) {
+            screenshot = result.screenshot;
+          }
+        } catch {
+        }
+        await send(buildGrabAgentPayload({ ...payload, screenshot }));
+        grabRef.current.exit();
+        return true;
+      } catch (error) {
+        if (!isSendToAgentCanceled(error)) {
+          toast7.error(
+            translate("auto.components.browser.pane.sendToAgent.failed", "Could not send to agent")
+          );
+        }
+        return false;
+      } finally {
+        grabSendInFlightRef.current = false;
+      }
+    },
+    []
+  );
+  const handleAddBrowserAnnotation = useCallback12(
+    (comment, intent) => {
+      const payload = pendingAnnotationPayloadRef.current;
+      if (!payload) {
+        return;
+      }
+      addBrowserPageAnnotation({
+        id: createBrowserAnnotationId(),
+        browserPageId: browserTabId,
+        comment,
+        intent,
+        priority: DEFAULT_BROWSER_ANNOTATION_PRIORITY,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        payload: createBrowserAnnotationPayload(payload)
+      });
+      pendingAnnotationPayloadRef.current = null;
+      setPendingAnnotationPayload(null);
+      setBrowserAnnotationTrayOpen(true);
+      showGrabToast(annotationAddedGrabToastMessage(), "success", payload);
+      grab.rearm();
+    },
+    [addBrowserPageAnnotation, browserTabId, grab, setBrowserAnnotationTrayOpen, showGrabToast]
+  );
+  const handleCancelPendingBrowserAnnotation = useCallback12(() => {
+    pendingAnnotationPayloadRef.current = null;
+    setPendingAnnotationPayload(null);
+    if (grabIntent === "annotate" && grab.state === "confirming") {
+      grab.rearm();
+    }
+  }, [grab, grabIntent]);
+  const cancelPendingBrowserCapture = useCallback12(() => {
+    grabRef.current.cancel();
+    pendingAnnotationPayloadRef.current = null;
+    grabPayloadRef.current = null;
+    setPendingAnnotationPayload(null);
+    clearTimeout(grabToastTimerRef.current);
+    setGrabToast(null);
+  }, []);
+  return {
+    grabIntent,
+    startGrabIntent,
+    pendingAnnotationPayload,
+    setPendingAnnotationPayload,
+    grabToast,
+    setGrabToast,
+    grabToastTimerRef,
+    dismissGrabToast,
+    handleGrabCopy,
+    handleGrabCopyScreenshot,
+    handleGrabSendToAgent: sendToAgent ? handleGrabSendToAgent : null,
+    grabMenuActionTakenRef,
+    handleAddBrowserAnnotation,
+    handleCancelPendingBrowserAnnotation,
+    cancelPendingBrowserCapture,
+    handleGrabActionShortcut
+  };
+}
+
+// src/renderer/components/browser-pane/annotate/useGrabMode.ts
+import { useCallback as useCallback13, useEffect as useEffect18, useLayoutEffect as useLayoutEffect7, useRef as useRef13, useState as useState15 } from "react";
+var opIdCounter = 0;
+function nextOpId() {
+  return `grab-${++opIdCounter}-${Date.now()}`;
+}
+function getGrabEnableError(reason) {
+  switch (reason) {
+    case "not-ready":
+      return translate(
+        "auto.components.browser-pane.grab.errorNotReady",
+        "This page isn't ready for element selection yet."
+      );
+    case "not-authorized":
+      return translate(
+        "auto.components.browser-pane.grab.errorNotAuthorized",
+        "Browser access was denied."
+      );
+    case "already-active":
+      return translate(
+        "auto.components.browser-pane.grab.errorAlreadyActive",
+        "Element selection is already active."
+      );
+    case "injection-failed":
+      return translate(
+        "auto.components.browser-pane.grab.errorInjectionFailed",
+        "Could not start element selection on this page."
+      );
+  }
+}
+function useGrabMode(browserPageId) {
+  const [state, setState] = useState15("idle");
+  const [payload, setPayload] = useState15(null);
+  const [error, setError] = useState15(null);
+  const [contextMenu, setContextMenu] = useState15(false);
+  const activeOpIdRef = useRef13(null);
+  const grabTabIdRef = useRef13(null);
+  const armGenerationRef = useRef13(0);
+  const browserTabIdRef = useRef13(browserPageId);
+  const mountedRef = useMountedRef();
+  useLayoutEffect7(() => {
+    browserTabIdRef.current = browserPageId;
+  }, [browserPageId]);
+  useEffect18(() => {
+    return () => {
+      const grabTabId = grabTabIdRef.current;
+      if (grabTabId) {
+        armGenerationRef.current += 1;
+        void window.browserAPI.setGrabMode({ browserPageId: grabTabId, enabled: false });
+        void window.browserAPI.cancelGrab({ browserPageId: grabTabId });
+        grabTabIdRef.current = null;
+        activeOpIdRef.current = null;
+      }
+    };
+  }, [browserPageId]);
+  const armAndAwait = useCallback13(async () => {
+    const tabId = browserPageId;
+    const armGeneration = armGenerationRef.current += 1;
+    grabTabIdRef.current = tabId;
+    setState("armed");
+    const setResult = await window.browserAPI.setGrabMode({
+      browserPageId: tabId,
+      enabled: true
+    });
+    if (!mountedRef.current || armGenerationRef.current !== armGeneration || browserTabIdRef.current !== tabId || grabTabIdRef.current !== tabId) {
+      const supersededBySameTab = armGenerationRef.current !== armGeneration && grabTabIdRef.current === tabId;
+      if (!supersededBySameTab) {
+        void window.browserAPI.setGrabMode({ browserPageId: tabId, enabled: false });
+        void window.browserAPI.cancelGrab({ browserPageId: tabId });
+        if (grabTabIdRef.current === tabId) {
+          grabTabIdRef.current = null;
+        }
+      }
+      return;
+    }
+    if (!setResult.ok) {
+      grabTabIdRef.current = null;
+      setState("error");
+      setError(getGrabEnableError(setResult.reason));
+      return;
+    }
+    const opId = nextOpId();
+    activeOpIdRef.current = opId;
+    setState("awaiting");
+    const result = await window.browserAPI.awaitGrabSelection({
+      browserPageId: tabId,
+      opId
+    });
+    if (!mountedRef.current || activeOpIdRef.current !== opId || grabTabIdRef.current !== tabId) {
+      return;
+    }
+    activeOpIdRef.current = null;
+    if (result.kind === "selected" || result.kind === "context-selected") {
+      let screenshot = null;
+      try {
+        const ssResult = await window.browserAPI.captureSelectionScreenshot({
+          browserPageId: tabId,
+          rect: result.payload.target.rectViewport
+        });
+        if (ssResult.ok) {
+          screenshot = ssResult.screenshot;
+        }
+      } catch {
+      }
+      if (!mountedRef.current || armGenerationRef.current !== armGeneration || grabTabIdRef.current !== tabId) {
+        return;
+      }
+      setContextMenu(result.kind === "context-selected");
+      setPayload({ ...result.payload, screenshot });
+      setState("confirming");
+    } else if (result.kind === "cancelled") {
+      grabTabIdRef.current = null;
+      setState("idle");
+      setPayload(null);
+    } else {
+      grabTabIdRef.current = null;
+      setState("error");
+      setError(result.reason);
+    }
+  }, [browserPageId, mountedRef]);
+  const cancel = useCallback13(() => {
+    const targetTabId = grabTabIdRef.current ?? browserPageId;
+    armGenerationRef.current += 1;
+    void window.browserAPI.setGrabMode({
+      browserPageId: targetTabId,
+      enabled: false
+    });
+    if (activeOpIdRef.current) {
+      void window.browserAPI.cancelGrab({
+        browserPageId: targetTabId
+      });
+      activeOpIdRef.current = null;
+    }
+    grabTabIdRef.current = null;
+    setState("idle");
+    setPayload(null);
+    setError(null);
+    setContextMenu(false);
+  }, [browserPageId]);
+  const toggle = useCallback13(() => {
+    if ((state === "idle" || state === "error") && grabTabIdRef.current === null) {
+      setError(null);
+      setPayload(null);
+      setContextMenu(false);
+      void armAndAwait();
+    } else {
+      cancel();
+    }
+  }, [state, armAndAwait, cancel]);
+  const rearm = useCallback13(() => {
+    setState("armed");
+    setPayload(null);
+    setError(null);
+    setContextMenu(false);
+    void armAndAwait();
+  }, [armAndAwait]);
+  const exit = useCallback13(() => {
+    const targetTabId = grabTabIdRef.current ?? browserTabIdRef.current;
+    armGenerationRef.current += 1;
+    void window.browserAPI.setGrabMode({
+      browserPageId: targetTabId,
+      enabled: false
+    });
+    activeOpIdRef.current = null;
+    grabTabIdRef.current = null;
+    setState("idle");
+    setPayload(null);
+    setError(null);
+    setContextMenu(false);
+  }, []);
+  useEffect18(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && state !== "idle") {
+        const element = e.target && typeof e.target === "object" && "closest" in e.target ? e.target : null;
+        if (isEditableKeyboardTarget(e.target) || element?.closest(
+          '[data-slot="select-trigger"], [data-slot="select-content"], [data-slot="annotation-edit"]'
+        )) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        cancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [state, cancel]);
+  return { state, payload, error, contextMenu, toggle, cancel, rearm, exit };
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
+import {
+  useCallback as useCallback14,
+  useEffect as useEffect19,
+  useLayoutEffect as useLayoutEffect8,
+  useRef as useRef14,
+  useState as useState16
+} from "react";
 import { createPortal } from "react-dom";
-import { Fragment as Fragment6, jsx as jsx33, jsxs as jsxs26 } from "react/jsx-runtime";
+import { Fragment as Fragment7, jsx as jsx36, jsxs as jsxs29 } from "react/jsx-runtime";
 var MENU_ITEM_CLASS = "relative flex w-full cursor-default items-center gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium outline-none select-none hover:bg-black/8 focus:bg-black/8 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/14 dark:focus:bg-white/14";
 function BrowserPageContextMenu({
   browserPageId,
@@ -7485,9 +9167,9 @@ function BrowserPageContextMenu({
   onReload
 }) {
   const createBrowserPage = useBrowserStore((s) => s.createBrowserPage);
-  const [contextMenu, setContextMenu] = useState13(null);
-  const contextMenuRef = useRef11(null);
-  useEffect15(() => {
+  const [contextMenu, setContextMenu] = useState16(null);
+  const contextMenuRef = useRef14(null);
+  useEffect19(() => {
     return window.browserAPI.onContextMenuRequested((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -7503,7 +9185,7 @@ function BrowserPageContextMenu({
       });
     });
   }, [browserPageId]);
-  useEffect15(() => {
+  useEffect19(() => {
     return window.browserAPI.onContextMenuDismissed((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -7511,21 +9193,21 @@ function BrowserPageContextMenu({
       setContextMenu(null);
     });
   }, [browserPageId]);
-  const closeMenu = useCallback11(() => {
+  const closeMenu = useCallback14(() => {
     setContextMenu(null);
     try {
       webviewRef.current?.focus();
     } catch {
     }
   }, [webviewRef]);
-  const menuItems = useCallback11(() => {
+  const menuItems = useCallback14(() => {
     const el = contextMenuRef.current;
     if (!el) {
       return [];
     }
     return [...el.querySelectorAll('[role="menuitem"]:not(:disabled)')];
   }, []);
-  useEffect15(() => {
+  useEffect19(() => {
     if (!contextMenu) {
       return;
     }
@@ -7538,13 +9220,13 @@ function BrowserPageContextMenu({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [closeMenu, contextMenu]);
-  useEffect15(() => {
+  useEffect19(() => {
     if (!contextMenu) {
       return;
     }
     menuItems()[0]?.focus();
   }, [contextMenu, menuItems]);
-  const handleMenuKeyDown = useCallback11(
+  const handleMenuKeyDown = useCallback14(
     (e) => {
       const items = menuItems();
       if (items.length === 0) {
@@ -7569,7 +9251,7 @@ function BrowserPageContextMenu({
     },
     [menuItems]
   );
-  useLayoutEffect5(() => {
+  useLayoutEffect8(() => {
     const el = contextMenuRef.current;
     if (!el || !contextMenu) {
       return;
@@ -7596,9 +9278,9 @@ function BrowserPageContextMenu({
     return null;
   }
   return createPortal(
-    /* @__PURE__ */ jsxs26(Fragment6, { children: [
-      /* @__PURE__ */ jsx33("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
-      /* @__PURE__ */ jsxs26(
+    /* @__PURE__ */ jsxs29(Fragment7, { children: [
+      /* @__PURE__ */ jsx36("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
+      /* @__PURE__ */ jsxs29(
         "div",
         {
           ref: contextMenuRef,
@@ -7610,8 +9292,8 @@ function BrowserPageContextMenu({
           style: { left: contextMenu.x, top: contextMenu.y },
           className: "fixed z-50 min-w-[13rem] overflow-hidden rounded-[11px] border border-black/14 bg-[rgba(255,255,255,0.82)] p-1 text-black shadow-[0_16px_36px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:text-white dark:shadow-[0_20px_44px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)]",
           children: [
-            contextMenu.linkUrl ? /* @__PURE__ */ jsxs26(Fragment6, { children: [
-              /* @__PURE__ */ jsx33(
+            contextMenu.linkUrl ? /* @__PURE__ */ jsxs29(Fragment7, { children: [
+              /* @__PURE__ */ jsx36(
                 "button",
                 {
                   role: "menuitem",
@@ -7628,7 +9310,7 @@ function BrowserPageContextMenu({
                   )
                 }
               ),
-              /* @__PURE__ */ jsx33(
+              /* @__PURE__ */ jsx36(
                 "button",
                 {
                   role: "menuitem",
@@ -7646,7 +9328,7 @@ function BrowserPageContextMenu({
                   )
                 }
               ),
-              /* @__PURE__ */ jsx33(
+              /* @__PURE__ */ jsx36(
                 "button",
                 {
                   role: "menuitem",
@@ -7658,10 +9340,10 @@ function BrowserPageContextMenu({
                   children: translate("auto.components.browser.contextMenu.copyLink", "Copy Link")
                 }
               ),
-              /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" })
+              /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs26(Fragment6, { children: [
-              /* @__PURE__ */ jsx33(
+            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs29(Fragment7, { children: [
+              /* @__PURE__ */ jsx36(
                 "button",
                 {
                   role: "menuitem",
@@ -7673,9 +9355,9 @@ function BrowserPageContextMenu({
                   children: translate("auto.components.browser.pane.BrowserPane.2a4c4b8e1f", "Copy")
                 }
               ),
-              /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" })
+              /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            /* @__PURE__ */ jsx33(
+            /* @__PURE__ */ jsx36(
               "button",
               {
                 role: "menuitem",
@@ -7688,7 +9370,7 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.40edfa75cb", "Back")
               }
             ),
-            /* @__PURE__ */ jsx33(
+            /* @__PURE__ */ jsx36(
               "button",
               {
                 role: "menuitem",
@@ -7701,7 +9383,7 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.250a9b3e42", "Forward")
               }
             ),
-            /* @__PURE__ */ jsx33(
+            /* @__PURE__ */ jsx36(
               "button",
               {
                 role: "menuitem",
@@ -7713,8 +9395,8 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.0e080d820e", "Reload")
               }
             ),
-            /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" }),
-            /* @__PURE__ */ jsx33(
+            /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx36(
               "button",
               {
                 role: "menuitem",
@@ -7732,7 +9414,7 @@ function BrowserPageContextMenu({
                 )
               }
             ),
-            /* @__PURE__ */ jsx33(
+            /* @__PURE__ */ jsx36(
               "button",
               {
                 role: "menuitem",
@@ -7744,8 +9426,8 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.1b179ab561", "Copy Page URL")
               }
             ),
-            /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" }),
-            /* @__PURE__ */ jsx33(
+            /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx36(
               "button",
               {
                 role: "menuitem",
@@ -7766,8 +9448,8 @@ function BrowserPageContextMenu({
 }
 
 // src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.tsx
-import { Copy, ExternalLink as ExternalLink2, Globe as Globe3, RefreshCw as RefreshCw3 } from "lucide-react";
-import { jsx as jsx34, jsxs as jsxs27 } from "react/jsx-runtime";
+import { Copy as Copy2, ExternalLink as ExternalLink2, Globe as Globe3, RefreshCw as RefreshCw3 } from "lucide-react";
+import { jsx as jsx37, jsxs as jsxs30 } from "react/jsx-runtime";
 function getLoadErrorMetadata(loadError) {
   try {
     const parsed = new URL(loadError.validatedUrl);
@@ -7792,15 +9474,15 @@ function BrowserLoadFailureOverlay({
   const meta = getLoadErrorMetadata(loadError);
   const guestRecoveryError = loadError.code === BROWSER_GUEST_RECOVERY_ERROR_CODE;
   const recoveryHint = formatLoadFailureRecoveryHint(meta, loadError);
-  return /* @__PURE__ */ jsx34("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs27("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
-    /* @__PURE__ */ jsx34("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx34(Globe3, { className: "size-5" }) }),
-    /* @__PURE__ */ jsx34("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
+  return /* @__PURE__ */ jsx37("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs30("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
+    /* @__PURE__ */ jsx37("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx37(Globe3, { className: "size-5" }) }),
+    /* @__PURE__ */ jsx37("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
       value0: meta.host
     }) : translate("browser.loadFailure.cantLoadPage", "Can't load this page") }),
-    /* @__PURE__ */ jsx34("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
-    recoveryHint ? /* @__PURE__ */ jsx34("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
-    /* @__PURE__ */ jsxs27("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
-      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx34(
+    /* @__PURE__ */ jsx37("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
+    recoveryHint ? /* @__PURE__ */ jsx37("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
+    /* @__PURE__ */ jsxs30("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
+      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx37(
         Button,
         {
           size: "sm",
@@ -7809,11 +9491,11 @@ function BrowserLoadFailureOverlay({
           children: translate("browser.loadFailure.tryHttps", "Try HTTPS")
         }
       ) : null,
-      /* @__PURE__ */ jsxs27(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
-        /* @__PURE__ */ jsx34(RefreshCw3, { className: "size-4" }),
+      /* @__PURE__ */ jsxs30(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
+        /* @__PURE__ */ jsx37(RefreshCw3, { className: "size-4" }),
         translate("browser.loadFailure.retry", "Retry")
       ] }),
-      /* @__PURE__ */ jsxs27(
+      /* @__PURE__ */ jsxs30(
         Button,
         {
           size: "sm",
@@ -7821,12 +9503,12 @@ function BrowserLoadFailureOverlay({
           className: "h-9 gap-2 px-3",
           onClick: () => onCopy(currentUrl),
           children: [
-            /* @__PURE__ */ jsx34(Copy, { className: "size-4" }),
+            /* @__PURE__ */ jsx37(Copy2, { className: "size-4" }),
             translate("browser.loadFailure.copyAddress", "Copy Address")
           ]
         }
       ),
-      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs27(
+      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs30(
         Button,
         {
           size: "sm",
@@ -7834,7 +9516,7 @@ function BrowserLoadFailureOverlay({
           className: "h-9 gap-2 px-3",
           onClick: () => onOpenExternal(externalUrl),
           children: [
-            /* @__PURE__ */ jsx34(ExternalLink2, { className: "size-4" }),
+            /* @__PURE__ */ jsx37(ExternalLink2, { className: "size-4" }),
             translate("browser.loadFailure.openExternally", "Open Externally")
           ]
         }
@@ -7844,12 +9526,12 @@ function BrowserLoadFailureOverlay({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.tsx
-import { jsxs as jsxs28 } from "react/jsx-runtime";
+import { jsxs as jsxs31 } from "react/jsx-runtime";
 function BrowserPageZoomIndicator({
   state,
   percent
 }) {
-  return /* @__PURE__ */ jsxs28(
+  return /* @__PURE__ */ jsxs31(
     "div",
     {
       role: "status",
@@ -7868,8 +9550,8 @@ function BrowserPageZoomIndicator({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { useCallback as useCallback12, useEffect as useEffect16, useRef as useRef12, useState as useState14 } from "react";
-import { ChevronUp, ChevronDown, X as X2 } from "lucide-react";
+import { useCallback as useCallback15, useEffect as useEffect20, useRef as useRef15, useState as useState17 } from "react";
+import { ChevronUp, ChevronDown, X as X3 } from "lucide-react";
 
 // src/renderer/lib/find-query-bounds.ts
 var FIND_QUERY_MAX_BYTES = 2 * 1024;
@@ -7881,21 +9563,21 @@ function getFindRequestQuery(query) {
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { jsx as jsx35, jsxs as jsxs29 } from "react/jsx-runtime";
+import { jsx as jsx38, jsxs as jsxs32 } from "react/jsx-runtime";
 function BrowserFind({
   isOpen,
   onClose,
   webviewRef,
   guestGeneration = null
 }) {
-  const inputRef = useRef12(null);
-  const wasOpenRef = useRef12(isOpen);
-  const activeFindQueryRef = useRef12(null);
-  const [query, setQuery] = useState14("");
-  const [activeMatch, setActiveMatch] = useState14(0);
-  const [totalMatches, setTotalMatches] = useState14(0);
+  const inputRef = useRef15(null);
+  const wasOpenRef = useRef15(isOpen);
+  const activeFindQueryRef = useRef15(null);
+  const [query, setQuery] = useState17("");
+  const [activeMatch, setActiveMatch] = useState17(0);
+  const [totalMatches, setTotalMatches] = useState17(0);
   const requestQuery = getFindRequestQuery(query);
-  const safeFindInPage = useCallback12(
+  const safeFindInPage = useCallback15(
     (text, opts) => {
       const webview = webviewRef.current;
       if (!webview || !text) {
@@ -7908,7 +9590,7 @@ function BrowserFind({
     },
     [webviewRef]
   );
-  const safeStopFindInPage = useCallback12(() => {
+  const safeStopFindInPage = useCallback15(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
@@ -7918,21 +9600,21 @@ function BrowserFind({
     } catch {
     }
   }, [webviewRef]);
-  const findNext = useCallback12(() => {
+  const findNext = useCallback15(() => {
     if (requestQuery) {
       const findNext2 = activeFindQueryRef.current !== requestQuery;
       safeFindInPage(requestQuery, { forward: true, findNext: findNext2 });
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  const findPrevious = useCallback12(() => {
+  const findPrevious = useCallback15(() => {
     if (requestQuery) {
       const findNext2 = activeFindQueryRef.current !== requestQuery;
       safeFindInPage(requestQuery, { forward: false, findNext: findNext2 });
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  useEffect16(() => {
+  useEffect20(() => {
     if (isOpen) {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -7940,7 +9622,7 @@ function BrowserFind({
       safeStopFindInPage();
     }
   }, [isOpen, safeStopFindInPage]);
-  useEffect16(() => {
+  useEffect20(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
     if (!isOpen) {
@@ -7966,7 +9648,7 @@ function BrowserFind({
     const id = window.setTimeout(runFind, 200);
     return () => window.clearTimeout(id);
   }, [isOpen, requestQuery, safeFindInPage, safeStopFindInPage]);
-  useEffect16(() => {
+  useEffect20(() => {
     const webview = webviewRef.current;
     if (!webview || !isOpen) {
       return;
@@ -7988,7 +9670,7 @@ function BrowserFind({
     setActiveMatch(0);
     setTotalMatches(0);
   }
-  const handleKeyDown = useCallback12(
+  const handleKeyDown = useCallback15(
     (e) => {
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -8004,14 +9686,14 @@ function BrowserFind({
   if (!isOpen) {
     return null;
   }
-  return /* @__PURE__ */ jsxs29(
+  return /* @__PURE__ */ jsxs32(
     "div",
     {
       className: "absolute top-2 right-2 z-50 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/95 px-2 py-1 shadow-lg backdrop-blur-sm",
       style: { width: 300 },
       onKeyDown: handleKeyDown,
       children: [
-        /* @__PURE__ */ jsx35(
+        /* @__PURE__ */ jsx38(
           ImeInput,
           {
             ref: inputRef,
@@ -8025,13 +9707,13 @@ function BrowserFind({
             className: "min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
           }
         ),
-        query ? /* @__PURE__ */ jsx35("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
+        query ? /* @__PURE__ */ jsx38("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
           "auto.components.browser.pane.BrowserFind.fc63f336aa",
           "{{value0}} of {{value1}}",
           { value0: activeMatch, value1: totalMatches }
         ) : translate("auto.components.browser.pane.BrowserFind.7baca7b1b8", "No matches") }) : null,
-        /* @__PURE__ */ jsx35("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
-        /* @__PURE__ */ jsx35(
+        /* @__PURE__ */ jsx38("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx38(
           Button,
           {
             type: "button",
@@ -8040,10 +9722,10 @@ function BrowserFind({
             onClick: findPrevious,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.ca7aebbd7f", "Previous match"),
-            children: /* @__PURE__ */ jsx35(ChevronUp, { size: 14 })
+            children: /* @__PURE__ */ jsx38(ChevronUp, { size: 14 })
           }
         ),
-        /* @__PURE__ */ jsx35(
+        /* @__PURE__ */ jsx38(
           Button,
           {
             type: "button",
@@ -8052,11 +9734,11 @@ function BrowserFind({
             onClick: findNext,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.5c0c02ae76", "Next match"),
-            children: /* @__PURE__ */ jsx35(ChevronDown, { size: 14 })
+            children: /* @__PURE__ */ jsx38(ChevronDown, { size: 14 })
           }
         ),
-        /* @__PURE__ */ jsx35("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
-        /* @__PURE__ */ jsx35(
+        /* @__PURE__ */ jsx38("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx38(
           Button,
           {
             type: "button",
@@ -8065,7 +9747,7 @@ function BrowserFind({
             onClick: onClose,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.c9d5f63fdc", "Close"),
-            children: /* @__PURE__ */ jsx35(X2, { size: 14 })
+            children: /* @__PURE__ */ jsx38(X3, { size: 14 })
           }
         )
       ]
@@ -8073,8 +9755,829 @@ function BrowserFind({
   );
 }
 
+// src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
+import { useState as useState20 } from "react";
+import { Copy as Copy4, Image as Image3, MessageSquarePlus as MessageSquarePlus7 } from "lucide-react";
+
+// src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
+import { useEffect as useEffect21, useState as useState18 } from "react";
+import { CircleCheck, Copy as Copy3, MessageSquarePlus as MessageSquarePlus4, Pencil, Send, Trash2 as Trash22 } from "lucide-react";
+
+// src/renderer/ui/toggle-group.tsx
+import * as React5 from "react";
+import * as ToggleGroupPrimitive from "radix-ui/toggle-group";
+
+// src/renderer/ui/toggle.tsx
+import { cva as cva5 } from "class-variance-authority";
+import * as TogglePrimitive from "radix-ui/toggle";
+import { jsx as jsx39 } from "react/jsx-runtime";
+var toggleVariants = cva5(
+  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-[color,box-shadow] outline-none hover:bg-muted hover:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-transparent",
+        outline: "border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground"
+      },
+      size: {
+        default: "h-9 min-w-9 px-2",
+        sm: "h-8 min-w-8 px-1.5",
+        lg: "h-10 min-w-10 px-2.5"
+      }
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default"
+    }
+  }
+);
+
+// src/renderer/ui/toggle-group.tsx
+import { jsx as jsx40 } from "react/jsx-runtime";
+var ToggleGroupContext = React5.createContext({
+  size: "default",
+  variant: "default",
+  spacing: 0
+});
+function ToggleGroup({
+  className,
+  variant,
+  size,
+  spacing = 0,
+  children,
+  ...props
+}) {
+  const contextValue = React5.useMemo(() => ({ variant, size, spacing }), [variant, size, spacing]);
+  return /* @__PURE__ */ jsx40(
+    ToggleGroupPrimitive.Root,
+    {
+      "data-slot": "toggle-group",
+      "data-variant": variant,
+      "data-size": size,
+      "data-spacing": spacing,
+      style: { "--gap": spacing },
+      className: cn(
+        "group/toggle-group flex w-fit items-center gap-[--spacing(var(--gap))] rounded-md data-[spacing=default]:data-[variant=outline]:shadow-xs",
+        className
+      ),
+      ...props,
+      children: /* @__PURE__ */ jsx40(ToggleGroupContext.Provider, { value: contextValue, children })
+    }
+  );
+}
+function ToggleGroupItem({
+  className,
+  children,
+  variant,
+  size,
+  ...props
+}) {
+  const context = React5.useContext(ToggleGroupContext);
+  return /* @__PURE__ */ jsx40(
+    ToggleGroupPrimitive.Item,
+    {
+      "data-slot": "toggle-group-item",
+      "data-variant": context.variant || variant,
+      "data-size": context.size || size,
+      "data-spacing": context.spacing,
+      className: cn(
+        toggleVariants({
+          variant: context.variant || variant,
+          size: context.size || size
+        }),
+        "w-auto min-w-0 shrink-0 px-3 focus:z-10 focus-visible:z-10",
+        "data-[spacing=0]:rounded-none data-[spacing=0]:shadow-none data-[spacing=0]:first:rounded-l-md data-[spacing=0]:last:rounded-r-md data-[spacing=0]:data-[variant=outline]:border-l-0 data-[spacing=0]:data-[variant=outline]:first:border-l",
+        className
+      ),
+      ...props,
+      children
+    }
+  );
+}
+
+// src/renderer/lib/screen-submit-shortcut.ts
+function isScreenSubmitShortcut(event) {
+  if (isImeOwnedKeyboardEvent(event)) {
+    return false;
+  }
+  if (event.key !== "Enter" || event.altKey || event.shiftKey) {
+    return false;
+  }
+  const platform = getRendererPlatform();
+  return platform === "darwin" ? Boolean(event.metaKey) && !event.ctrlKey : Boolean(event.ctrlKey) && !event.metaKey;
+}
+function getScreenSubmitModifierLabel() {
+  return getRendererPlatform() === "darwin" ? "\u2318" : "Ctrl";
+}
+
+// src/renderer/components/browser-pane/annotate/browser-annotation-page-url.ts
+function browserAnnotationMatchesPageUrl(capturedUrl, currentUrl) {
+  try {
+    const captured = new URL(capturedUrl);
+    const current = new URL(currentUrl);
+    current.search = "";
+    current.hash = "";
+    return captured.href === current.href;
+  } catch {
+    return false;
+  }
+}
+
+// src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
+import { Fragment as Fragment8, jsx as jsx41, jsxs as jsxs33 } from "react/jsx-runtime";
+function BrowserPageAnnotationTray({
+  browserAnnotations,
+  currentUrl,
+  handleSendBrowserAnnotationsToAgent,
+  browserAnnotationsSending,
+  handleCopyBrowserAnnotations,
+  browserAnnotationsCopied,
+  handleClearBrowserAnnotations,
+  handleDeleteBrowserAnnotation,
+  handleUpdateBrowserAnnotation
+}) {
+  const [editingAnnotationId, setEditingAnnotationId] = useState18(null);
+  const [editComment, setEditComment] = useState18("");
+  const [editIntent, setEditIntent] = useState18("change");
+  useEffect21(() => {
+    if (editingAnnotationId && !browserAnnotations.some((annotation) => annotation.id === editingAnnotationId)) {
+      setEditingAnnotationId(null);
+    }
+  }, [browserAnnotations, editingAnnotationId]);
+  const handleStartEdit = (annotation) => {
+    setEditingAnnotationId(annotation.id);
+    setEditComment(annotation.comment);
+    setEditIntent(annotation.intent);
+  };
+  const handleCancelEdit = () => {
+    setEditingAnnotationId(null);
+  };
+  const handleSaveEdit = () => {
+    const trimmed = editComment.trim();
+    if (!trimmed || !editingAnnotationId) {
+      return;
+    }
+    handleUpdateBrowserAnnotation(editingAnnotationId, trimmed, editIntent);
+    setEditingAnnotationId(null);
+  };
+  return /* @__PURE__ */ jsxs33("div", { className: "absolute right-3 bottom-3 z-30 flex max-h-[45%] w-[min(20rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-[0_10px_24px_rgba(0,0,0,0.18)]", children: [
+    /* @__PURE__ */ jsxs33("div", { className: "flex items-center gap-2 border-b border-border px-3 py-2", children: [
+      /* @__PURE__ */ jsx41(MessageSquarePlus4, { className: "size-4 text-muted-foreground" }),
+      /* @__PURE__ */ jsx41("div", { className: "min-w-0 flex-1 text-sm font-medium", children: browserAnnotations.length === 1 ? translate(
+        "auto.components.browser.pane.BrowserPane.ea6af700da",
+        "{{value0}} annotation",
+        { value0: browserAnnotations.length }
+      ) : translate(
+        "auto.components.browser.pane.BrowserPane.c13693fe27",
+        "{{value0}} annotations",
+        { value0: browserAnnotations.length }
+      ) }),
+      handleSendBrowserAnnotationsToAgent ? /* @__PURE__ */ jsxs33(Tooltip, { children: [
+        /* @__PURE__ */ jsx41(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsxs33(
+          Button,
+          {
+            size: "xs",
+            variant: "outline",
+            className: "gap-1.5",
+            disabled: browserAnnotationsSending,
+            onClick: () => void handleSendBrowserAnnotationsToAgent(),
+            children: [
+              /* @__PURE__ */ jsx41(Send, { className: "size-3" }),
+              translate("auto.components.browser.pane.sendToAgent.annotations", "Send to agent")
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ jsx41(TooltipContent, { side: "bottom", sideOffset: 6, children: translate(
+          "auto.components.browser.pane.BrowserPane.95af781091",
+          "Send feedback to an agent"
+        ) })
+      ] }) : null,
+      /* @__PURE__ */ jsxs33(
+        Button,
+        {
+          size: "xs",
+          variant: "outline",
+          className: "gap-1.5",
+          onClick: handleCopyBrowserAnnotations,
+          children: [
+            browserAnnotationsCopied ? /* @__PURE__ */ jsx41(CircleCheck, { className: "size-3" }) : /* @__PURE__ */ jsx41(Copy3, { className: "size-3" }),
+            browserAnnotationsCopied ? translate("auto.components.browser.pane.BrowserPane.6f4ab3592b", "Copied") : translate("auto.components.browser.pane.BrowserPane.d51ef37351", "Copy")
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxs33(Tooltip, { children: [
+        /* @__PURE__ */ jsx41(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx41(
+          Button,
+          {
+            size: "icon-xs",
+            variant: "ghost",
+            className: "text-muted-foreground hover:text-foreground",
+            onClick: handleClearBrowserAnnotations,
+            "aria-label": translate(
+              "auto.components.browser.pane.BrowserPane.734e4343ec",
+              "Clear browser annotations"
+            ),
+            children: /* @__PURE__ */ jsx41(Trash22, { className: "size-3" })
+          }
+        ) }),
+        /* @__PURE__ */ jsx41(TooltipContent, { side: "bottom", sideOffset: 6, children: translate("auto.components.browser.pane.BrowserPane.11c5084aa2", "Clear annotations") })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsx41("div", { className: "min-h-0 flex-1 overflow-auto p-1.5", children: browserAnnotations.map((annotation, index) => {
+      const isEditing = annotation.id === editingAnnotationId;
+      return /* @__PURE__ */ jsxs33(
+        "div",
+        {
+          className: "group flex gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent focus-within:bg-accent",
+          children: [
+            /* @__PURE__ */ jsx41("div", { className: "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground", children: index + 1 }),
+            isEditing ? /* @__PURE__ */ jsxs33(
+              "div",
+              {
+                className: "min-w-0 flex-1",
+                "data-slot": "annotation-edit",
+                onKeyDown: (event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleCancelEdit();
+                  }
+                },
+                children: [
+                  /* @__PURE__ */ jsx41(
+                    ImeTextarea,
+                    {
+                      value: editComment,
+                      onChange: (event) => setEditComment(event.target.value),
+                      maxLength: GRAB_BUDGET.annotationCommentMaxLength,
+                      className: "h-16 w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring",
+                      autoFocus: true,
+                      "aria-label": translate(
+                        "auto.components.browser.pane.BrowserPane.d2a7092e6e",
+                        "Annotation comment"
+                      ),
+                      onKeyDown: (event) => {
+                        if (isScreenSubmitShortcut(event)) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleSaveEdit();
+                        }
+                      }
+                    }
+                  ),
+                  /* @__PURE__ */ jsx41(
+                    ToggleGroup,
+                    {
+                      type: "single",
+                      size: "sm",
+                      variant: "outline",
+                      value: editIntent,
+                      onValueChange: (value) => {
+                        if (value) {
+                          setEditIntent(value);
+                        }
+                      },
+                      className: "mt-1.5 h-7 w-full [&_[data-slot=toggle-group-item]]:h-7 [&_[data-slot=toggle-group-item]]:flex-1 [&_[data-slot=toggle-group-item]]:px-1.5",
+                      "aria-label": translate(
+                        "auto.components.browser.pane.annotate.browser.page.annotation.tray.449d2c2629",
+                        "Annotation intent"
+                      ),
+                      children: BROWSER_ANNOTATION_INTENT_OPTIONS.map((option) => {
+                        const Icon2 = option.icon;
+                        return /* @__PURE__ */ jsxs33(
+                          ToggleGroupItem,
+                          {
+                            value: option.value,
+                            "aria-label": option.label,
+                            className: "gap-1 text-[11px] data-[state=on]:border-foreground/20 data-[state=on]:bg-foreground/10 data-[state=on]:text-foreground data-[state=on]:shadow-xs data-[state=on]:hover:bg-foreground/15 data-[state=on]:hover:text-foreground",
+                            children: [
+                              /* @__PURE__ */ jsx41(Icon2, { className: "size-3" }),
+                              /* @__PURE__ */ jsx41("span", { children: option.label })
+                            ]
+                          },
+                          option.value
+                        );
+                      })
+                    }
+                  ),
+                  /* @__PURE__ */ jsxs33("div", { className: "mt-1.5 flex justify-end gap-1.5", children: [
+                    /* @__PURE__ */ jsx41(Button, { size: "xs", variant: "ghost", onClick: handleCancelEdit, children: translate(
+                      "auto.components.browser.pane.annotate.browser.page.annotation.tray.024467ceac",
+                      "Cancel"
+                    ) }),
+                    /* @__PURE__ */ jsx41(Button, { size: "xs", disabled: !editComment.trim(), onClick: handleSaveEdit, children: translate(
+                      "auto.components.browser.pane.annotate.browser.page.annotation.tray.c16f932cb3",
+                      "Save"
+                    ) })
+                  ] })
+                ]
+              }
+            ) : /* @__PURE__ */ jsxs33(Fragment8, { children: [
+              /* @__PURE__ */ jsxs33("div", { className: "min-w-0 flex-1", children: [
+                /* @__PURE__ */ jsx41("div", { className: "truncate font-medium text-foreground", children: annotation.payload.target.accessibility.accessibleName || annotation.payload.target.textSnippet || annotation.payload.target.tagName }),
+                /* @__PURE__ */ jsx41("div", { className: "mt-0.5 line-clamp-2 text-muted-foreground", children: annotation.comment }),
+                /* @__PURE__ */ jsxs33("div", { className: "mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground", children: [
+                  /* @__PURE__ */ jsx41("span", { children: annotation.intent }),
+                  currentUrl !== void 0 && !browserAnnotationMatchesPageUrl(
+                    annotation.payload.page.sanitizedUrl,
+                    currentUrl
+                  ) ? /* @__PURE__ */ jsx41("span", { className: "truncate", title: annotation.payload.page.sanitizedUrl, children: annotation.payload.page.sanitizedUrl }) : null
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxs33("div", { className: "flex shrink-0 items-start gap-0.5", children: [
+                /* @__PURE__ */ jsx41(
+                  Button,
+                  {
+                    size: "icon-xs",
+                    variant: "ghost",
+                    className: "can-hover:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100",
+                    onClick: () => handleStartEdit(annotation),
+                    "aria-label": translate(
+                      "auto.components.browser.pane.annotate.browser.page.annotation.tray.09a7c1df70",
+                      "Edit annotation {{value0}}",
+                      { value0: index + 1 }
+                    ),
+                    children: /* @__PURE__ */ jsx41(Pencil, { className: "size-3" })
+                  }
+                ),
+                /* @__PURE__ */ jsx41(
+                  Button,
+                  {
+                    size: "icon-xs",
+                    variant: "ghost",
+                    className: "can-hover:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100",
+                    onClick: () => handleDeleteBrowserAnnotation(annotation.id),
+                    "aria-label": translate(
+                      "auto.components.browser.pane.BrowserPane.f2d0c22d67",
+                      "Delete annotation {{value0}}",
+                      { value0: index + 1 }
+                    ),
+                    children: /* @__PURE__ */ jsx41(Trash22, { className: "size-3" })
+                  }
+                )
+              ] })
+            ] })
+          ]
+        },
+        annotation.id
+      );
+    }) })
+  ] });
+}
+
+// src/renderer/components/browser-pane/annotate/browser-page-grab-toast.tsx
+import { CircleCheck as CircleCheck2, Image as Image2, MessageSquarePlus as MessageSquarePlus5, OctagonX } from "lucide-react";
+import { jsx as jsx42, jsxs as jsxs34 } from "react/jsx-runtime";
+function BrowserPageGrabToast({
+  grabToast,
+  grabToastTimerRef,
+  dismissGrabToast,
+  setGrabToast,
+  onReviewForAgent
+}) {
+  return /* @__PURE__ */ jsxs34(
+    "div",
+    {
+      className: "absolute z-30 flex items-center animate-in fade-in zoom-in-95 duration-150",
+      style: {
+        left: grabToast.x,
+        top: grabToast.y,
+        transform: grabToast.below ? "translate(-50%, 8px)" : "translate(-50%, -100%) translateY(-8px)",
+        flexDirection: grabToast.below ? "column" : "column-reverse"
+      },
+      children: [
+        /* @__PURE__ */ jsx42(
+          "div",
+          {
+            className: "h-2 w-4 shrink-0",
+            style: {
+              clipPath: grabToast.below ? "polygon(50% 0%, 0% 100%, 100% 100%)" : "polygon(0% 0%, 100% 0%, 50% 100%)",
+              background: "white"
+            }
+          }
+        ),
+        /* @__PURE__ */ jsxs34(
+          "div",
+          {
+            className: `flex items-center gap-1.5 rounded-full py-1.5 pl-3 pr-1.5 shadow-lg ${grabToast.type === "success" ? "bg-white text-gray-900" : "bg-white text-red-600"}`,
+            children: [
+              grabToast.type === "success" ? /* @__PURE__ */ jsx42(CircleCheck2, { className: "size-4 fill-blue-600 text-white" }) : /* @__PURE__ */ jsx42(OctagonX, { className: "size-4 text-red-500" }),
+              /* @__PURE__ */ jsx42("span", { className: "text-sm font-semibold", children: grabToast.message }),
+              grabToast.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") || onReviewForAgent && grabToast.payload ? /* @__PURE__ */ jsxs34(
+                DropdownMenu,
+                {
+                  onOpenChange: (open) => {
+                    if (open) {
+                      clearTimeout(grabToastTimerRef.current);
+                    } else {
+                      grabToastTimerRef.current = setTimeout(() => dismissGrabToast(), 1200);
+                    }
+                  },
+                  children: [
+                    /* @__PURE__ */ jsx42(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx42("button", { className: "flex size-6 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-black/10 hover:text-gray-700", children: /* @__PURE__ */ jsx42("span", { className: "text-sm font-bold leading-none", children: "\xB7\xB7\xB7" }) }) }),
+                    /* @__PURE__ */ jsxs34(DropdownMenuContent, { align: "start", sideOffset: 4, children: [
+                      grabToast.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsxs34(
+                        DropdownMenuItem,
+                        {
+                          onSelect: () => {
+                            const dataUrl = grabToast.payload?.screenshot?.dataUrl;
+                            if (dataUrl?.startsWith("data:image/png;base64,")) {
+                              void copyGrabScreenshotToClipboard(dataUrl);
+                              setGrabToast(
+                                (prev) => prev ? {
+                                  ...prev,
+                                  message: translate(
+                                    "auto.components.browser.pane.BrowserPane.f30d2d35a7",
+                                    "Screenshotted"
+                                  )
+                                } : null
+                              );
+                            }
+                          },
+                          children: [
+                            /* @__PURE__ */ jsx42(Image2, { className: "size-3.5" }),
+                            translate(
+                              "auto.components.browser.pane.BrowserPane.1ded0d3168",
+                              "Copy Screenshot"
+                            ),
+                            /* @__PURE__ */ jsx42(DropdownMenuShortcut, { children: "S" })
+                          ]
+                        }
+                      ) : null,
+                      onReviewForAgent && grabToast.payload ? /* @__PURE__ */ jsxs34(
+                        DropdownMenuItem,
+                        {
+                          onSelect: () => {
+                            if (grabToast.payload) {
+                              onReviewForAgent(grabToast.payload);
+                            }
+                          },
+                          children: [
+                            /* @__PURE__ */ jsx42(MessageSquarePlus5, { className: "size-3.5" }),
+                            translate("auto.components.browser.pane.sendToAgent.grab", "Send to agent\u2026")
+                          ]
+                        }
+                      ) : null
+                    ] })
+                  ]
+                }
+              ) : null
+            ]
+          }
+        )
+      ]
+    }
+  );
+}
+
+// src/renderer/components/browser-pane/annotate/pending-browser-annotation-card.tsx
+import { useEffect as useEffect22, useState as useState19 } from "react";
+import { CornerDownLeft, MessageSquarePlus as MessageSquarePlus6 } from "lucide-react";
+import { jsx as jsx43, jsxs as jsxs35 } from "react/jsx-runtime";
+function PendingBrowserAnnotationCard({
+  payload,
+  resolveAnchor,
+  portalContainer,
+  onAdd,
+  onCancel
+}) {
+  const [card, setCard] = useState19(null);
+  const [cardHeight, setCardHeight] = useState19(null);
+  useEffect22(() => {
+    if (!card || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => setCardHeight(card.offsetHeight || null));
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [card]);
+  const anchor = resolveAnchor(cardHeight);
+  const [comment, setComment] = useState19("");
+  const [intent, setIntent] = useState19("change");
+  const trimmed = comment.trim();
+  const submitModifierLabel = getScreenSubmitModifierLabel();
+  return /* @__PURE__ */ jsxs35(
+    Popover,
+    {
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) {
+          onCancel();
+        }
+      },
+      children: [
+        /* @__PURE__ */ jsx43(PopoverAnchor, { asChild: true, children: /* @__PURE__ */ jsx43(
+          "span",
+          {
+            className: "pointer-events-none absolute size-px",
+            style: { left: anchor.x, top: anchor.y }
+          }
+        ) }),
+        /* @__PURE__ */ jsxs35(
+          PopoverContent,
+          {
+            ref: setCard,
+            side: anchor.side,
+            align: "center",
+            sideOffset: 10,
+            collisionBoundary: portalContainer ?? void 0,
+            collisionPadding: 12,
+            portalContainer,
+            className: "z-40 w-[22rem] max-w-[calc(var(--radix-popover-content-available-width)-1rem)] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
+            "aria-label": translate(
+              "auto.components.browser.pane.BrowserPane.b472c5fe03",
+              "Add browser annotation"
+            ),
+            onEscapeKeyDown: (event) => {
+              event.preventDefault();
+              onCancel();
+            },
+            children: [
+              /* @__PURE__ */ jsxs35("div", { className: "mb-2 flex min-w-0 items-center gap-1.5", title: payload.target.selector, children: [
+                /* @__PURE__ */ jsx43("span", { className: "shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground", children: payload.target.tagName }),
+                /* @__PURE__ */ jsx43("span", { className: "truncate text-xs font-medium text-foreground", children: payload.target.accessibility.accessibleName || payload.target.textSnippet || payload.target.selector })
+              ] }),
+              /* @__PURE__ */ jsx43(Label2, { htmlFor: "browser-annotation-comment", className: "sr-only", children: translate("auto.components.browser.pane.BrowserPane.d2a7092e6e", "Annotation comment") }),
+              /* @__PURE__ */ jsx43(
+                ImeTextarea,
+                {
+                  id: "browser-annotation-comment",
+                  value: comment,
+                  onChange: (event) => setComment(event.target.value),
+                  placeholder: translate(
+                    "auto.components.browser.pane.BrowserPane.532bac48c5",
+                    "Describe what the agent should change here..."
+                  ),
+                  maxLength: GRAB_BUDGET.annotationCommentMaxLength,
+                  className: "h-24 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                  autoFocus: true,
+                  onKeyDown: (event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onCancel();
+                      return;
+                    }
+                    if (isScreenSubmitShortcut(event)) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (trimmed) {
+                        onAdd(trimmed, intent);
+                      }
+                    }
+                  }
+                }
+              ),
+              /* @__PURE__ */ jsx43(
+                ToggleGroup,
+                {
+                  type: "single",
+                  size: "sm",
+                  variant: "outline",
+                  value: intent,
+                  onValueChange: (value) => {
+                    if (value) {
+                      setIntent(value);
+                    }
+                  },
+                  className: "mt-2 h-8 w-full [&_[data-slot=toggle-group-item]]:h-8 [&_[data-slot=toggle-group-item]]:flex-1",
+                  "aria-label": translate(
+                    "auto.components.browser.pane.BrowserPane.0cb3bd6221",
+                    "Annotation intent"
+                  ),
+                  children: BROWSER_ANNOTATION_INTENT_OPTIONS.map((option) => {
+                    const Icon2 = option.icon;
+                    return /* @__PURE__ */ jsxs35(
+                      ToggleGroupItem,
+                      {
+                        value: option.value,
+                        "aria-label": option.label,
+                        className: "gap-1.5 text-xs data-[state=on]:border-foreground/20 data-[state=on]:bg-foreground/10 data-[state=on]:text-foreground data-[state=on]:shadow-xs data-[state=on]:hover:bg-foreground/15 data-[state=on]:hover:text-foreground",
+                        children: [
+                          /* @__PURE__ */ jsx43(Icon2, { className: "size-3.5" }),
+                          /* @__PURE__ */ jsx43("span", { children: option.label })
+                        ]
+                      },
+                      option.value
+                    );
+                  })
+                }
+              ),
+              /* @__PURE__ */ jsxs35("div", { className: "mt-3 flex justify-end gap-2", children: [
+                /* @__PURE__ */ jsx43(Button, { size: "sm", variant: "ghost", className: "h-8", onClick: onCancel, children: translate("auto.components.browser.pane.BrowserPane.fa6ea61de3", "Cancel") }),
+                /* @__PURE__ */ jsxs35(
+                  Button,
+                  {
+                    size: "sm",
+                    className: "h-8 gap-1.5",
+                    disabled: !trimmed,
+                    onClick: () => onAdd(trimmed, intent),
+                    children: [
+                      /* @__PURE__ */ jsx43(MessageSquarePlus6, { className: "size-3.5" }),
+                      translate("auto.components.browser.pane.BrowserPane.90d021f2ad", "Add"),
+                      /* @__PURE__ */ jsxs35("span", { className: "ml-1 inline-flex items-center gap-0.5 rounded border border-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none text-current/80", children: [
+                        /* @__PURE__ */ jsx43("span", { children: submitModifierLabel }),
+                        /* @__PURE__ */ jsx43(CornerDownLeft, { className: "size-3" })
+                      ] })
+                    ]
+                  }
+                )
+              ] })
+            ]
+          }
+        )
+      ]
+    }
+  );
+}
+
+// src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
+import { Fragment as Fragment9, jsx as jsx44, jsxs as jsxs36 } from "react/jsx-runtime";
+function BrowserGuestAnnotateOverlays({
+  grab,
+  annotationSend,
+  grabAnnotations,
+  containerRef,
+  webviewRef,
+  browserOverlayViewport,
+  currentUrl
+}) {
+  const {
+    pendingAnnotationPayload,
+    handleAddBrowserAnnotation,
+    handleCancelPendingBrowserAnnotation,
+    grabIntent,
+    grabMenuActionTakenRef,
+    handleGrabCopy,
+    handleGrabCopyScreenshot,
+    handleGrabSendToAgent,
+    grabToast,
+    grabToastTimerRef,
+    dismissGrabToast,
+    setGrabToast
+  } = grabAnnotations;
+  const [grabReviewPayload, setGrabReviewPayload] = useState20(null);
+  const {
+    browserAnnotations,
+    browserAnnotationTrayOpen,
+    browserAnnotationsSending,
+    handleSendBrowserAnnotationsToAgent,
+    handleCopyBrowserAnnotations,
+    browserAnnotationsCopied,
+    handleClearBrowserAnnotations,
+    handleDeleteBrowserAnnotation,
+    handleUpdateBrowserAnnotation
+  } = annotationSend;
+  const closeGrabReview = () => {
+    setGrabReviewPayload(null);
+    if (grab.state === "confirming") {
+      grab.rearm();
+    }
+  };
+  return /* @__PURE__ */ jsxs36(Fragment9, { children: [
+    pendingAnnotationPayload ? /* @__PURE__ */ jsx44(
+      PendingBrowserAnnotationCard,
+      {
+        payload: pendingAnnotationPayload,
+        resolveAnchor: (cardHeight) => getBrowserOverlayAnchor(
+          pendingAnnotationPayload,
+          containerRef.current,
+          webviewRef.current,
+          browserOverlayViewport,
+          cardHeight
+        ),
+        portalContainer: containerRef.current,
+        onAdd: handleAddBrowserAnnotation,
+        onCancel: handleCancelPendingBrowserAnnotation
+      }
+    ) : null,
+    browserAnnotations.length > 0 && browserAnnotationTrayOpen ? /* @__PURE__ */ jsx44(
+      BrowserPageAnnotationTray,
+      {
+        browserAnnotations,
+        currentUrl,
+        handleSendBrowserAnnotationsToAgent,
+        browserAnnotationsSending,
+        handleCopyBrowserAnnotations,
+        browserAnnotationsCopied,
+        handleClearBrowserAnnotations,
+        handleDeleteBrowserAnnotation,
+        handleUpdateBrowserAnnotation
+      }
+    ) : null,
+    /* @__PURE__ */ jsxs36(
+      DropdownMenu,
+      {
+        open: grab.state === "confirming" && grab.contextMenu && grabIntent === "copy" && grabReviewPayload === null,
+        onOpenChange: (open) => {
+          if (!open && grab.state === "confirming") {
+            if (grabMenuActionTakenRef.current) {
+              grabMenuActionTakenRef.current = false;
+              return;
+            }
+            grab.rearm();
+          }
+        },
+        children: [
+          /* @__PURE__ */ jsx44(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx44(
+            "button",
+            {
+              "aria-hidden": true,
+              tabIndex: -1,
+              className: "pointer-events-none absolute size-px opacity-0",
+              style: (() => {
+                if (!grab.payload) {
+                  return { left: 0, top: 0 };
+                }
+                const rect = grab.payload.target.rectViewport;
+                const webview = webviewRef.current;
+                const webviewRect = webview?.getBoundingClientRect();
+                const cRect = containerRef.current?.getBoundingClientRect();
+                const offsetX = (webviewRect?.left ?? 0) - (cRect?.left ?? 0);
+                const offsetY = (webviewRect?.top ?? 0) - (cRect?.top ?? 0);
+                return {
+                  left: offsetX + rect.x + rect.width / 2,
+                  top: offsetY + rect.y + rect.height / 2
+                };
+              })()
+            }
+          ) }),
+          /* @__PURE__ */ jsxs36(DropdownMenuContent, { align: "start", sideOffset: 4, children: [
+            /* @__PURE__ */ jsxs36(DropdownMenuItem, { onSelect: handleGrabCopy, children: [
+              /* @__PURE__ */ jsx44(Copy4, { className: "size-3.5" }),
+              translate("auto.components.browser.pane.BrowserPane.c2ef0359b9", "Copy Contents"),
+              /* @__PURE__ */ jsx44(DropdownMenuShortcut, { children: "C" })
+            ] }),
+            grab.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsxs36(DropdownMenuItem, { onSelect: handleGrabCopyScreenshot, children: [
+              /* @__PURE__ */ jsx44(Image3, { className: "size-3.5" }),
+              translate("auto.components.browser.pane.BrowserPane.1ded0d3168", "Copy Screenshot"),
+              /* @__PURE__ */ jsx44(DropdownMenuShortcut, { children: "S" })
+            ] }) : null,
+            handleGrabSendToAgent && grab.payload ? /* @__PURE__ */ jsxs36(
+              DropdownMenuItem,
+              {
+                onSelect: () => {
+                  grabMenuActionTakenRef.current = true;
+                  setGrabReviewPayload(grab.payload);
+                },
+                children: [
+                  /* @__PURE__ */ jsx44(MessageSquarePlus7, { className: "size-3.5" }),
+                  translate("auto.components.browser.pane.sendToAgent.grab", "Send to agent\u2026")
+                ]
+              }
+            ) : null,
+            /* @__PURE__ */ jsx44(DropdownMenuSeparator, {}),
+            /* @__PURE__ */ jsx44(
+              DropdownMenuItem,
+              {
+                onSelect: () => {
+                  grabMenuActionTakenRef.current = true;
+                  grab.cancel();
+                },
+                children: translate("auto.components.browser.pane.BrowserPane.fa6ea61de3", "Cancel")
+              }
+            )
+          ] })
+        ]
+      }
+    ),
+    grabToast ? /* @__PURE__ */ jsx44(
+      BrowserPageGrabToast,
+      {
+        grabToast,
+        grabToastTimerRef,
+        dismissGrabToast,
+        setGrabToast,
+        onReviewForAgent: handleGrabSendToAgent ? setGrabReviewPayload : null
+      }
+    ) : null,
+    grabReviewPayload && handleGrabSendToAgent ? /* @__PURE__ */ jsx44(
+      GrabConfirmationSheet,
+      {
+        payload: grabReviewPayload,
+        onCopy: () => {
+          void window.browserAPI.writeClipboardText(formatGrabPayloadAsText(grabReviewPayload));
+          closeGrabReview();
+        },
+        onCopyScreenshot: grabReviewPayload.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? () => {
+          void copyGrabScreenshotToClipboard(grabReviewPayload.screenshot.dataUrl);
+          closeGrabReview();
+        } : null,
+        onAttach: () => {
+          void handleGrabSendToAgent(grabReviewPayload).then((sent) => {
+            if (sent) {
+              setGrabReviewPayload(null);
+            }
+          });
+        },
+        onCancel: closeGrabReview
+      }
+    ) : null
+  ] });
+}
+
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
-import { Fragment as Fragment7, jsx as jsx36, jsxs as jsxs30 } from "react/jsx-runtime";
+import { Fragment as Fragment10, jsx as jsx45, jsxs as jsxs37 } from "react/jsx-runtime";
 function BrowserPageViewportOverlays({
   browserZoomIndicatorState,
   browserZoomPercent,
@@ -8088,12 +10591,18 @@ function BrowserPageViewportOverlays({
   onUpdatePageStateRef,
   retryGuestRecoveryRef,
   navigateToUrl,
-  setResourceNotice
+  setResourceNotice,
+  containerRef,
+  browserOverlayViewport,
+  scopeId,
+  grab,
+  annotationSend,
+  grabAnnotations
 }) {
-  return /* @__PURE__ */ jsxs30(Fragment7, { children: [
-    /* @__PURE__ */ jsx36(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
-    /* @__PURE__ */ jsx36(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
-    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx36(
+  return /* @__PURE__ */ jsxs37(Fragment10, { children: [
+    /* @__PURE__ */ jsx45(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
+    /* @__PURE__ */ jsx45(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
+    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx45(
       BrowserLoadFailureOverlay,
       {
         loadError: browserTab.loadError,
@@ -8121,12 +10630,25 @@ function BrowserPageViewportOverlays({
         },
         onOpenExternal: (url) => void window.browserAPI.openExternal({ url })
       }
-    ) : null
+    ) : null,
+    /* @__PURE__ */ jsx45(
+      BrowserGuestAnnotateOverlays,
+      {
+        grab,
+        annotationSend,
+        grabAnnotations,
+        containerRef,
+        webviewRef,
+        browserOverlayViewport,
+        scopeId,
+        currentUrl: browserTab.url
+      }
+    )
   ] });
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
-import { useEffect as useEffect17 } from "react";
+import { useEffect as useEffect23 } from "react";
 function useBrowserPageFindShortcuts({
   browserTabId,
   workspaceId,
@@ -8134,7 +10656,7 @@ function useBrowserPageFindShortcuts({
   chromeShortcutScope,
   setFindOpen
 }) {
-  useEffect17(() => {
+  useEffect23(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -8152,7 +10674,7 @@ function useBrowserPageFindShortcuts({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, setFindOpen, workspaceId]);
-  useEffect17(() => {
+  useEffect23(() => {
     if (!isActive) {
       return;
     }
@@ -8163,7 +10685,7 @@ function useBrowserPageFindShortcuts({
       }
     );
   }, [browserTabId, isActive, setFindOpen, workspaceId]);
-  useEffect17(() => {
+  useEffect23(() => {
     if (!isActive) {
       setFindOpen(false);
     }
@@ -8171,7 +10693,16 @@ function useBrowserPageFindShortcuts({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { jsx as jsx37, jsxs as jsxs31 } from "react/jsx-runtime";
+import { jsx as jsx46, jsxs as jsxs38 } from "react/jsx-runtime";
+function isAnnotateChord(event) {
+  if (event.repeat || event.nativeEvent.isComposing) {
+    return false;
+  }
+  if (getRendererPlatform() === "darwin") {
+    return event.metaKey && event.shiftKey && !event.altKey && !event.ctrlKey && event.code === "KeyC";
+  }
+  return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyN";
+}
 function BrowserPagePane({
   browserTab,
   workspaceId,
@@ -8188,7 +10719,12 @@ function BrowserPagePane({
   const slotViewport = useBrowserPageSlotViewport(workspaceId);
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
   const pageViewportScroller = pageViewport?.scroller ?? null;
-  useLayoutEffect6(() => {
+  const pageViewportContainer = pageViewport?.container ?? null;
+  const containerRef = useRef16(pageViewportContainer);
+  useLayoutEffect9(() => {
+    containerRef.current = pageViewportContainer;
+  }, [pageViewportContainer]);
+  useLayoutEffect9(() => {
     const preset = getBrowserViewportPreset(browserTab.viewportPresetId ?? null);
     setBrowserPageViewportPresetSize(
       browserTab.id,
@@ -8200,7 +10736,7 @@ function BrowserPagePane({
     pageViewportScroller,
     browserTab.viewportPresetId ?? null
   );
-  useEffect18(() => {
+  useEffect24(() => {
     const subscribe = window.browserAPI?.onScrollPage;
     if (!subscribe || !pageViewportScroller || !browserTab.viewportPresetId) {
       return;
@@ -8212,41 +10748,46 @@ function BrowserPagePane({
       scrollBrowserPageViewport(browserTab.id, event.deltaX, event.deltaY);
     });
   }, [browserTab.id, browserTab.viewportPresetId, pageViewportScroller]);
-  const chromeHeaderRef = useRef13(null);
-  const webviewRef = useRef13(null);
-  const addressBarInputRef = useRef13(null);
-  const dismissAddressBarSuggestionsRef = useRef13(null);
-  const addressBarValueRef = useRef13(toDisplayUrl(browserTab.url));
-  const browserTabUrlRef = useRef13(browserTab.url);
-  const lastKnownWebviewUrlRef = useRef13(null);
-  const trackNextLoadingEventRef = useRef13(false);
-  const recoveryNavigationValidationRef = useRef13(
+  const chromeHeaderRef = useRef16(null);
+  const webviewRef = useRef16(null);
+  const addressBarInputRef = useRef16(null);
+  const dismissAddressBarSuggestionsRef = useRef16(null);
+  const addressBarValueRef = useRef16(toDisplayUrl(browserTab.url));
+  const browserTabUrlRef = useRef16(browserTab.url);
+  const lastKnownWebviewUrlRef = useRef16(null);
+  const trackNextLoadingEventRef = useRef16(false);
+  const recoveryNavigationValidationRef = useRef16(
     null
   );
-  const activeLoadFailureRef = useRef13(browserTab.loadError);
-  const retryGuestRecoveryRef = useRef13(() => {
+  const activeLoadFailureRef = useRef16(browserTab.loadError);
+  const retryGuestRecoveryRef = useRef16(() => {
   });
-  const onUpdatePageStateRef = useRef13(onUpdatePageState);
-  const onSetUrlRef = useRef13(onSetUrl);
-  const isActiveRef = useRef13(isActive);
-  useLayoutEffect6(() => {
+  const onUpdatePageStateRef = useRef16(onUpdatePageState);
+  const onSetUrlRef = useRef16(onSetUrl);
+  const isActiveRef = useRef16(isActive);
+  useLayoutEffect9(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  const handleInternalFileDragOverRef = useRef13(() => {
+  const handleInternalFileDragOverRef = useRef16(() => {
   });
-  const handleInternalFileDropRef = useRef13(() => {
+  const handleInternalFileDropRef = useRef16(() => {
   });
-  const [findOpen, setFindOpen] = useState15(false);
+  const [findOpen, setFindOpen] = useState21(false);
+  const [browserOverlayViewport, setBrowserOverlayViewport] = useState21({
+    scrollX: 0,
+    scrollY: 0,
+    version: 0
+  });
   const zoom = useBrowserPageZoomFeedback(browserTab.id);
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
-  const [addressBarValue, setAddressBarValue] = useState15(() => toDisplayUrl(browserTab.url));
-  useEffect18(() => {
+  const [addressBarValue, setAddressBarValue] = useState21(() => toDisplayUrl(browserTab.url));
+  useEffect24(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
     }
     setAddressBarValue(toDisplayUrl(browserTab.url));
   }, [browserTab.url]);
-  useEffect18(() => {
+  useEffect24(() => {
     addressBarValueRef.current = addressBarValue;
   }, [addressBarValue]);
   const guestFocus = useWebviewGuestFocus(webviewRef);
@@ -8262,7 +10803,52 @@ function BrowserPagePane({
     addressBarInputRef,
     guestFocus
   });
-  const navigateToUrl = useCallback13(
+  const annotationSend = useBrowserPageAnnotationSend({ browserTabId: browserTab.id, scopeId });
+  const grab = useGrabMode(browserTab.id);
+  const grabAnnotations = useBrowserPageGrabAnnotations({
+    browserTabId: browserTab.id,
+    isActive,
+    grab,
+    containerRef,
+    trackingContainer: pageViewportContainer,
+    trackingScroller: pageViewportScroller,
+    webviewRef,
+    setBrowserOverlayViewport,
+    browserAnnotationsLength: annotationSend.browserAnnotations.length,
+    setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen
+  });
+  const startGrabIntentRef = useRef16(grabAnnotations.startGrabIntent);
+  const handleGrabActionShortcutRef = useRef16(grabAnnotations.handleGrabActionShortcut);
+  useLayoutEffect9(() => {
+    startGrabIntentRef.current = grabAnnotations.startGrabIntent;
+    handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut;
+  }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent]);
+  const grabIsInteractive = grab.state !== "idle" && grab.state !== "error";
+  useEffect24(() => {
+    return window.browserAPI.onGrabModeToggle((pageId, intent) => {
+      if (pageId === browserTab.id) {
+        startGrabIntentRef.current(intent);
+      }
+    });
+  }, [browserTab.id]);
+  useEffect24(() => {
+    if (!grabIsInteractive) {
+      return;
+    }
+    return window.browserAPI.onGrabActionShortcut(({ browserPageId, key }) => {
+      if (browserPageId === browserTab.id) {
+        handleGrabActionShortcutRef.current(key);
+      }
+    });
+  }, [browserTab.id, grabIsInteractive]);
+  const handlePaneKeyDown = (event) => {
+    if (!isActive || chromeShortcutScope === "inactive" || !isAnnotateChord(event) || !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)) {
+      return;
+    }
+    event.preventDefault();
+    startGrabIntentRef.current("annotate");
+  };
+  const navigateToUrl = useCallback16(
     (url) => {
       navigateBrowserPageToUrl({
         url,
@@ -8384,21 +10970,21 @@ function BrowserPagePane({
     feedbackVisible: zoom.browserZoomFeedbackVisible,
     isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
   });
-  useEffect18(() => {
+  useEffect24(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.pointerEvents = inputLocked ? "none" : "auto";
   }, [inputLocked]);
-  useEffect18(() => {
+  useEffect24(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.display = showFailureOverlay ? "none" : "flex";
   }, [showFailureOverlay]);
-  return /* @__PURE__ */ jsxs31(
+  return /* @__PURE__ */ jsxs38(
     "div",
     {
       "data-browser-page-pane-id": browserTab.id,
@@ -8408,8 +10994,9 @@ function BrowserPagePane({
       ),
       inert: !isActive,
       "aria-hidden": !isActive,
+      onKeyDown: handlePaneKeyDown,
       children: [
-        /* @__PURE__ */ jsx37(
+        /* @__PURE__ */ jsx46(
           BrowserPageContextMenu,
           {
             browserPageId: browserTab.id,
@@ -8420,7 +11007,7 @@ function BrowserPagePane({
             onReload: () => reload.reloadWebviewOrRecoverGuest(false)
           }
         ),
-        /* @__PURE__ */ jsx37(
+        /* @__PURE__ */ jsx46(
           BrowserPageChromeHeader,
           {
             chromeHeaderRef,
@@ -8435,12 +11022,16 @@ function BrowserPagePane({
             submitAddressBar,
             navigateToUrl,
             currentUrl: liveBrowserUrl,
+            grab,
+            grabAnnotations,
+            annotationSend,
+            isBlankTab,
             resourceNotice,
             setResourceNotice
           }
         ),
         pageViewport?.container ? createPortal2(
-          /* @__PURE__ */ jsx37(
+          /* @__PURE__ */ jsx46(
             BrowserPageViewportOverlays,
             {
               browserZoomIndicatorState,
@@ -8455,7 +11046,13 @@ function BrowserPagePane({
               onUpdatePageStateRef,
               retryGuestRecoveryRef,
               navigateToUrl,
-              setResourceNotice
+              setResourceNotice,
+              containerRef,
+              browserOverlayViewport,
+              scopeId,
+              grab,
+              annotationSend,
+              grabAnnotations
             }
           ),
           pageViewport.container
@@ -8466,26 +11063,26 @@ function BrowserPagePane({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/DeferredBrowserContent.tsx
-import { useLayoutEffect as useLayoutEffect7, useState as useState16 } from "react";
-import { Fragment as Fragment8, jsx as jsx38 } from "react/jsx-runtime";
+import { useLayoutEffect as useLayoutEffect10, useState as useState22 } from "react";
+import { Fragment as Fragment11, jsx as jsx47 } from "react/jsx-runtime";
 function DeferredBrowserContent({
   mountEligible,
   retainMounted = true,
   children
 }) {
-  const [hasCommittedMount, setHasCommittedMount] = useState16(false);
-  useLayoutEffect7(() => {
+  const [hasCommittedMount, setHasCommittedMount] = useState22(false);
+  useLayoutEffect10(() => {
     if (!retainMounted) {
       setHasCommittedMount(false);
     } else if (mountEligible && !hasCommittedMount) {
       setHasCommittedMount(true);
     }
   }, [hasCommittedMount, mountEligible, retainMounted]);
-  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx38(Fragment8, { children }) : null;
+  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx47(Fragment11, { children }) : null;
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { jsx as jsx39, jsxs as jsxs32 } from "react/jsx-runtime";
+import { jsx as jsx48, jsxs as jsxs39 } from "react/jsx-runtime";
 function BrowserScopePane({
   scopeId,
   isActive
@@ -8497,10 +11094,10 @@ function BrowserScopePane({
   const setActiveBrowserPage = useBrowserStore((s) => s.setActiveBrowserPage);
   const closeBrowserPage = useBrowserStore((s) => s.closeBrowserPage);
   const activeBrowserPage = browserPages.find((page) => page.id === activePageId) ?? browserPages[0] ?? null;
-  const browserPageIds = useMemo6(() => browserPages.map((page) => page.id), [browserPages]);
+  const browserPageIds = useMemo8(() => browserPages.map((page) => page.id), [browserPages]);
   const hasAdmittedPage = useAnyBrowserPageMountAdmission(browserPageIds);
-  return /* @__PURE__ */ jsxs32("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
-    browserPages.length >= 2 ? /* @__PURE__ */ jsx39(
+  return /* @__PURE__ */ jsxs39("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
+    browserPages.length >= 2 ? /* @__PURE__ */ jsx48(
       BrowserPageStrip,
       {
         pages: browserPages,
@@ -8509,14 +11106,14 @@ function BrowserScopePane({
         onClose: closeBrowserPage
       }
     ) : null,
-    /* @__PURE__ */ jsx39("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx39(
+    /* @__PURE__ */ jsx48("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx48(
       DeferredBrowserContent,
       {
         retainMounted: isActive,
         mountEligible: isBrowserPagePanePaintable({
           isActive: isActive && page.id === activeBrowserPage?.id || hasAdmittedPage && isBrowserPageMountAdmitted(page.id)
         }),
-        children: /* @__PURE__ */ jsx39(
+        children: /* @__PURE__ */ jsx48(
           BrowserPagePane,
           {
             browserTab: page,
@@ -8539,19 +11136,19 @@ function BrowserScopePane({
 var browser_workspace_pane_default = BrowserScopePane;
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { Fragment as Fragment9, jsx as jsx40, jsxs as jsxs33 } from "react/jsx-runtime";
+import { Fragment as Fragment12, jsx as jsx49, jsxs as jsxs40 } from "react/jsx-runtime";
 var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
   scopeId
 }) {
   const isActive = useBrowserStore((state) => state.paneMountByScope[scopeId]?.active === true);
-  const setSlotViewportRef = useCallback14(
+  const setSlotViewportRef = useCallback17(
     (node) => {
       registerBrowserOverlaySlotViewport(scopeId, node);
     },
     [scopeId]
   );
   const anchorName = browserScopeAnchorName(scopeId);
-  const style = useMemo7(
+  const style = useMemo9(
     () => ({
       position: "fixed",
       positionAnchor: anchorName,
@@ -8564,7 +11161,7 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
     }),
     [anchorName, isActive]
   );
-  return /* @__PURE__ */ jsxs33(
+  return /* @__PURE__ */ jsxs40(
     "div",
     {
       style,
@@ -8573,21 +11170,21 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
       "data-orca-browser-anchor": anchorName,
       "data-browser-overlay-tab-id": scopeId,
       children: [
-        /* @__PURE__ */ jsx40("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
-        /* @__PURE__ */ jsx40(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx40(browser_workspace_pane_default, { scopeId, isActive }) })
+        /* @__PURE__ */ jsx49("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
+        /* @__PURE__ */ jsx49(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx49(browser_workspace_pane_default, { scopeId, isActive }) })
       ]
     }
   );
 });
 var BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer2() {
   const scopeIds = useBrowserStore(useShallow((state) => Object.keys(state.pagesByScope)));
-  return /* @__PURE__ */ jsx40(Fragment9, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx40(BrowserOverlaySlot, { scopeId }, scopeId)) });
+  return /* @__PURE__ */ jsx49(Fragment12, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx49(BrowserOverlaySlot, { scopeId }, scopeId)) });
 });
 
 // src/renderer/ipc/browser-state-ipc-bridge.ts
-import { useEffect as useEffect19 } from "react";
+import { useEffect as useEffect25 } from "react";
 function useBrowserStateIpcBridge() {
-  useEffect19(() => {
+  useEffect25(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -8600,7 +11197,7 @@ function useBrowserStateIpcBridge() {
       useBrowserStore.getState().createBrowserPage(scopeId, url, { activate: activate ?? true });
     });
   }, []);
-  useEffect19(() => {
+  useEffect25(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -8614,7 +11211,7 @@ function useBrowserStateIpcBridge() {
       });
     });
   }, []);
-  useEffect19(() => {
+  useEffect25(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -8641,17 +11238,17 @@ function useBrowserStateIpcBridge() {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { jsx as jsx41, jsxs as jsxs34 } from "react/jsx-runtime";
+import { jsx as jsx50, jsxs as jsxs41 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
-  useEffect20(() => {
+  useEffect26(() => {
     setBrowserRendererHost(host);
     return () => clearBrowserRendererHost(host);
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  useEffect20(() => {
+  useEffect26(() => {
     if (!hasBrowserApi) {
       return;
     }
@@ -8660,9 +11257,9 @@ function BrowserPluginProvider(props) {
     void state.fetchBrowserSessionProfiles();
     void state.loadIdentity();
   }, [hasBrowserApi]);
-  return /* @__PURE__ */ jsxs34(BrowserRendererHostContext.Provider, { value: host, children: [
+  return /* @__PURE__ */ jsxs41(BrowserRendererHostContext.Provider, { value: host, children: [
     children,
-    hasBrowserApi ? /* @__PURE__ */ jsx41(BrowserPaneOverlayLayer, {}) : null
+    hasBrowserApi ? /* @__PURE__ */ jsx50(BrowserPaneOverlayLayer, {}) : null
   ] });
 }
 export {

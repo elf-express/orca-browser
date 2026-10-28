@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 import { translate } from '../../../i18n'
+import { getRendererPlatform } from '../../../lib/platform'
 import { TooltipProvider } from '../../../ui/tooltip'
 import type { BrowserReloadTrigger } from '../navigate/browser-reload-action'
 import { getOpenableExternalUrl } from '../describe-page/browser-page-url-display'
@@ -10,6 +11,8 @@ import { BrowserImportHintButton } from './BrowserImportHintButton'
 import { BrowserToolbarMenu } from './BrowserToolbarMenu'
 import { destroyPersistentWebview } from '../host-guest/webview-registry'
 import type { BrowserPage } from '../../../../shared/browser-workspace-types'
+import type { GrabModeHook } from '../annotate/useGrabMode'
+import type { GrabIntent } from '../describe-page/browser-page-types'
 
 /** Binds the shared browser chrome to a browsing page: an editable address bar and the page tools. */
 export function BrowserPageToolbar({
@@ -32,7 +35,12 @@ export function BrowserPageToolbar({
   submitAddressBar,
   navigateToUrl,
   addressBarInputRef,
-  dismissAddressBarSuggestionsRef
+  dismissAddressBarSuggestionsRef,
+  grab,
+  grabIntent,
+  startGrabIntent,
+  browserAnnotationsLength,
+  isBlankTab
 }: {
   page: BrowserPage
   isActive: boolean
@@ -55,9 +63,15 @@ export function BrowserPageToolbar({
   navigateToUrl: (url: string) => void
   addressBarInputRef: RefObject<HTMLInputElement | null>
   dismissAddressBarSuggestionsRef: RefObject<(() => void) | null>
+  grab: GrabModeHook
+  grabIntent: GrabIntent
+  startGrabIntent: (intent: GrabIntent) => void
+  browserAnnotationsLength: number
+  isBlankTab: boolean
 }): React.JSX.Element {
   const browserPageId = page.id
   const externalUrl = getOpenableExternalUrl(currentUrl)
+  const isMac = getRendererPlatform() === 'darwin'
 
   return (
     <TooltipProvider>
@@ -98,6 +112,14 @@ export function BrowserPageToolbar({
         importControl={(compact) => (
           <BrowserImportHintButton profileId={page.sessionProfileId} compact={compact} />
         )}
+        elementTools={{
+          activeIntent: grab.state !== 'idle' ? grabIntent : null,
+          onStartIntent: startGrabIntent,
+          disabled: isBlankTab,
+          grabShortcutLabel: isMac ? '⌘C' : 'Ctrl+C',
+          annotateShortcutLabel: isMac ? '⌘⇧C' : 'Alt+Shift+N',
+          annotationCount: browserAnnotationsLength
+        }}
         overflowMenu={(overflow) => (
           <BrowserToolbarMenu
             currentProfileId={page.sessionProfileId}

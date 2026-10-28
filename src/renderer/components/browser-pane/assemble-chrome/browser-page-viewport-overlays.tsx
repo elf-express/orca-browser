@@ -1,4 +1,4 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react'
 import { translate } from '../../../i18n'
 import { toHttpsRecoveryUrl } from '../../../../shared/browser-url'
 import type { BrowserPage as BrowserPageState } from '../../../../shared/browser-workspace-types'
@@ -8,6 +8,11 @@ import { retryBrowserTabLoad, toDisplayUrl } from '../describe-page/browser-page
 import type { BrowserTabPageState } from '../describe-page/browser-page-types'
 import { BrowserPageZoomIndicator } from './browser-page-zoom-indicator'
 import BrowserFind from './BrowserFind'
+import { BrowserGuestAnnotateOverlays } from '../annotate/browser-guest-annotate-overlays'
+import type { useBrowserPageAnnotationSend } from '../annotate/use-browser-page-annotation-send'
+import type { useBrowserPageGrabAnnotations } from '../annotate/use-browser-page-grab-annotations'
+import type { GrabModeHook } from '../annotate/useGrabMode'
+import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 
 export function BrowserPageViewportOverlays({
   browserZoomIndicatorState,
@@ -22,7 +27,13 @@ export function BrowserPageViewportOverlays({
   onUpdatePageStateRef,
   retryGuestRecoveryRef,
   navigateToUrl,
-  setResourceNotice
+  setResourceNotice,
+  containerRef,
+  browserOverlayViewport,
+  scopeId,
+  grab,
+  annotationSend,
+  grabAnnotations
 }: {
   browserZoomIndicatorState: { ariaHidden: boolean; opacityClassName: string }
   browserZoomPercent: number
@@ -37,6 +48,12 @@ export function BrowserPageViewportOverlays({
   retryGuestRecoveryRef: MutableRefObject<() => void>
   navigateToUrl: (url: string) => void
   setResourceNotice: Dispatch<SetStateAction<string | null>>
+  containerRef: RefObject<HTMLDivElement | null>
+  browserOverlayViewport: BrowserOverlayViewport
+  scopeId: string
+  grab: GrabModeHook
+  annotationSend: ReturnType<typeof useBrowserPageAnnotationSend>
+  grabAnnotations: ReturnType<typeof useBrowserPageGrabAnnotations>
 }): React.JSX.Element {
   return (
     <>
@@ -70,6 +87,16 @@ export function BrowserPageViewportOverlays({
           onOpenExternal={(url) => void window.browserAPI!.openExternal({ url })}
         />
       ) : null}
+      <BrowserGuestAnnotateOverlays
+        grab={grab}
+        annotationSend={annotationSend}
+        grabAnnotations={grabAnnotations}
+        containerRef={containerRef}
+        webviewRef={webviewRef}
+        browserOverlayViewport={browserOverlayViewport}
+        scopeId={scopeId}
+        currentUrl={browserTab.url}
+      />
     </>
   )
 }

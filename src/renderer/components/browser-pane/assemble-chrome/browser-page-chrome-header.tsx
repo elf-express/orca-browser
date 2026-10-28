@@ -3,6 +3,9 @@ import type { BrowserPage as BrowserPageState } from '../../../../shared/browser
 import { translate } from '../../../i18n'
 import { BrowserPageToolbar } from './browser-page-toolbar'
 import type { useBrowserPageReloadActions } from '../navigate/use-browser-page-reload-actions'
+import type { useBrowserPageAnnotationSend } from '../annotate/use-browser-page-annotation-send'
+import type { useBrowserPageGrabAnnotations } from '../annotate/use-browser-page-grab-annotations'
+import type { GrabModeHook } from '../annotate/useGrabMode'
 
 export function BrowserPageChromeHeader({
   chromeHeaderRef,
@@ -17,6 +20,10 @@ export function BrowserPageChromeHeader({
   submitAddressBar,
   navigateToUrl,
   currentUrl,
+  grab,
+  grabAnnotations,
+  annotationSend,
+  isBlankTab,
   resourceNotice,
   setResourceNotice
 }: {
@@ -32,6 +39,10 @@ export function BrowserPageChromeHeader({
   submitAddressBar: () => void
   navigateToUrl: (url: string) => void
   currentUrl: string
+  grab: GrabModeHook
+  grabAnnotations: ReturnType<typeof useBrowserPageGrabAnnotations>
+  annotationSend: ReturnType<typeof useBrowserPageAnnotationSend>
+  isBlankTab: boolean
   resourceNotice: string | null
   setResourceNotice: Dispatch<SetStateAction<string | null>>
 }): React.JSX.Element {
@@ -58,6 +69,11 @@ export function BrowserPageChromeHeader({
         navigateToUrl={navigateToUrl}
         addressBarInputRef={addressBarInputRef}
         dismissAddressBarSuggestionsRef={dismissAddressBarSuggestionsRef}
+        grab={grab}
+        grabIntent={grabAnnotations.grabIntent}
+        startGrabIntent={grabAnnotations.startGrabIntent}
+        browserAnnotationsLength={annotationSend.browserAnnotations.length}
+        isBlankTab={isBlankTab}
       />
       {resourceNotice ? (
         <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">

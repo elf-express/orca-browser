@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GrabModeHook } from '../annotate/useGrabMode'
 import { BrowserChromeToolbar } from './browser-chrome-toolbar'
 import { BrowserPageToolbar } from './browser-page-toolbar'
 
@@ -19,6 +20,17 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
+
+const idleGrab: GrabModeHook = {
+  state: 'idle',
+  payload: null,
+  error: null,
+  contextMenu: false,
+  toggle: vi.fn(),
+  cancel: vi.fn(),
+  rearm: vi.fn(),
+  exit: vi.fn()
+}
 
 function renderToolbar(currentUrl = 'https://a.test/'): void {
   render(
@@ -57,6 +69,11 @@ function renderToolbar(currentUrl = 'https://a.test/'): void {
       navigateToUrl={vi.fn()}
       addressBarInputRef={createRef<HTMLInputElement>()}
       dismissAddressBarSuggestionsRef={createRef<(() => void) | null>()}
+      grab={idleGrab}
+      grabIntent="copy"
+      startGrabIntent={vi.fn()}
+      browserAnnotationsLength={0}
+      isBlankTab={false}
     />
   )
 }
