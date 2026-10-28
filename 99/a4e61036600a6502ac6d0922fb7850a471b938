@@ -1,0 +1,86 @@
+src/renderer/components/browser-pane/annotate/use-browser-page-annotation-send.ts
+  s_aa47a447e01641::t_6e000007b2754b 1-156
+  s_aa47a447e01641::t_2c08d351c6a160 157-162
+src/renderer/store/browser-annotation-store.test.ts
+  s_aa47a447e01641::t_92e5e18b379ac9 1-170
+  s_aa47a447e01641::t_b37297079b26e6 171-175
+src/renderer/components/browser-pane/annotate/use-browser-page-annotation-send.test.tsx
+  s_aa47a447e01641::t_f0f8f0ce6fbe3b 1-218
+  s_aa47a447e01641::t_905657a3243630 219-222
+src/renderer/store/browser-annotation-store.ts
+  s_aa47a447e01641::t_a7c07b014bc1bf 1-207
+dist/i18n-keys.json
+  s_aa47a447e01641::t_c3f4a7df9218ca 4-7,27,30,33,39-41,45-46,49-50,53-57,59,61-62,64-66,104-110,112,114-115
+dist/renderer/index.js
+  s_aa47a447e01641::t_b839c6fd40af24 26,499-506,885-1086,1109,1178,1321,1324,1328,1452,1456,1468,1629-1639,2728-2731,2778-2780,3712,4179-4246,4248,4253,4263,4273,4289-4290,4298-4323,4342,4349,4360-4376,4384,4397-4399,4422,4425,4430-4431,4433,4435,4437,4566,4568-4573,4577,4590,4592,4595,4601,4625,4631-4632,4636-4638,4650-4652,4665,4672,4687,4695,4705,4722,4753,4765,4774-4776,4815,4829-4831,4843,4845,4861,4863,4866,4874,4886,4899,4912-4913,4923,4933,4943,4948,4951,4960,4966,4974,4980,4986,4991-4994,4999,5005-5006,5020,5089,5095-5098,5100,5102-5103,5112,5120,5125,5127-5128,5133,5141,5154-5156,5161,5180,5182,5193,5197-5199,5203,5209-5211,5220,5228-5232,5237-5238,5242-5243,5257,5271,5297,5299,5323-5324,5340-5341,5344-5347,5349,5354,5380-5381,5388-5389,5396,5401,5404-5405,5409,5477,5591-5593,5605,5613-5615,5619-5620,5625-5627,5641,5643-5644,5649,5657,5670-5671,5675,5678,5690,5705,5789,5805-5806,5817,5820,5827,5836,5841,5847-5848,5854-5856,5859-5860,5869,5874,5882,5884-5885,5890,5898,5911-5912,5916,5921-5924,5930,5936,5940-5941,5946-5948,5961,5974-5975,5984-5986,5990,5995-5997,6002-6003,6007,6015,6029-6031,6055,6201-6202,6220-6221,6243,6264-6269,6273-6274,6286,6297,6312-6321,6358,6372-6375,6379-6380,6402-6407,6410-6412,7816,7821,7825-7854,7856-7858,7860-7863,7865-9257,9281-9283,9295-9296,9313,9331,9343,9345-9346,9358,9360,9373,9386,9398-9399,9417,9429-9430,9451-9452,9477-9479,9482-9485,9494-9495,9498,9506,9511,9519,9529,9534,9553-9554,9566,9573-9578,9580,9593,9603,9610,9617,9625,9651,9673,9689-10138,10141-10147,10149-10150,10152-10156,10159-10160,10162-10225,10227-10270,10272-10273,10275-10277,10279-10386,10394-10578,10580,10594-10600,10602-10605,10633-10646,10651,10659,10677,10688,10696-10705,10722-10727,10739,10751-10759,10762-10763,10765-10768,10771,10773-10779,10783-10784,10790,10806-10851,10973,10980,10987,10997,10999,11010,11025-11028,11034,11049-11055,11066-11067,11073-11074,11081,11085,11097,11099-11100,11109,11116,11139,11144,11151,11164,11173-11174,11181,11185,11187,11200,11214,11241,11245,11251,11260,11262
+src/renderer/components/browser-pane/annotate/browser-grab-toast-owner-cleanup.test.tsx
+  s_aa47a447e01641::t_140170249f8111 1-391
+src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
+  s_aa47a447e01641::t_98a06a0ecd17fe 1-235
+src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.test.tsx
+  s_aa47a447e01641::t_1d56f1761c0cd6 1-225
+src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
+  s_aa47a447e01641::t_6a8bc29d3b5400 1-299
+src/renderer/components/browser-pane/annotate/browser-page-grab-action.ts
+  s_aa47a447e01641::t_add3c8b2500199 1-110
+src/renderer/components/browser-pane/annotate/browser-page-grab-toast.tsx
+  s_aa47a447e01641::t_e8040ddfe04cf8 1-125
+src/renderer/components/browser-pane/annotate/pending-browser-annotation-card.tsx
+  s_aa47a447e01641::t_6744eb5ec49935 1-180
+src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.test.tsx
+  s_aa47a447e01641::t_5decad7479e83d 1-305
+src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
+  s_aa47a447e01641::t_a6e606dc08d280 1-359
+src/renderer/components/browser-pane/annotate/useGrabMode.test.ts
+  s_aa47a447e01641::t_688a8d89ec947e 1-365
+src/renderer/components/browser-pane/annotate/useGrabMode.ts
+  s_aa47a447e01641::t_436702b4c394be 1-274
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-element-tool-buttons.tsx
+  s_aa47a447e01641::t_5cc918a05cacef 1-109
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.tsx
+  s_aa47a447e01641::t_3928c7b24c4afc 2,19-23,69,82-83,95,104-105,114-139,159,178-185,201-204
+src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
+  s_aa47a447e01641::t_9341fcd4e2523a 6-8,23-26,42-45,72-76
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_1510ef891d3d27 2,9,33-37,48-60,89-93,143-147,177-232,393,417-420,440-445
+src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.test.tsx
+  s_aa47a447e01641::t_4645df72053d77 5,24-34,72-76
+src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
+  s_aa47a447e01641::t_860070a0257f52 3,14-15,38-43,66-70,74,115-122
+src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
+  s_aa47a447e01641::t_030a8c2594707c 1,11-15,30-36,51-56,90-99
+src/renderer/components/browser-pane/describe-page/browser-page-types.ts
+  s_aa47a447e01641::t_3b1f976e6a37e2 1-2,4-5,22-23,32-59
+src/renderer/lib/browser-uuid.ts
+  s_aa47a447e01641::t_f0389014ba7dbe 1-3
+src/renderer/lib/screen-submit-shortcut.ts
+  s_aa47a447e01641::t_c57523ecf1ff2a 1-39
+src/renderer/store/browser-store.test.ts
+  s_aa47a447e01641::t_abdf77036b0052 10-11,106-120
+src/renderer/store/browser-store.ts
+  s_aa47a447e01641::t_ad8f7948fd38d8 19,162
+src/renderer/ui/toggle-group.tsx
+  s_aa47a447e01641::t_afb7613617aea3 1-82
+src/renderer/ui/toggle.tsx
+  s_aa47a447e01641::t_32402d1633750f 1-44
+src/shared/non-secure-context-uuid.ts
+  s_aa47a447e01641::t_4324ccd251813b 1-38
+vitest.config.ts
+  s_aa47a447e01641::t_7a968e7a78afab 17-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "99a4e61036600a6502ac6d0922fb7850a471b938",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
