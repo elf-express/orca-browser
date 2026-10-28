@@ -1,0 +1,70 @@
+src/main/browser/__mocks__/browser-session-registry-persistence-fixture.ts
+  s_aa47a447e01641::t_87413e2a6e975e 16
+  s_aa47a447e01641::t_ecf23f08bf3909 13-15
+  s_aa47a447e01641::t_1a5ca998c07ea5 17-19
+  s_681732d696a229::t_5f5bced0033e3b 1-12,20-175
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_f8712bb5b45eaf 143-158,513
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_05eb14a2428d31 143-158,513
+src/main/browser/browser-identity-mode-record.test.ts
+  s_aa47a447e01641::t_9a07b5eac3f93a 1-91
+src/main/browser/browser-identity-mode-record.ts
+  s_aa47a447e01641::t_955489c860717d 1-130
+src/main/browser/browser-identity-mode-store.test.ts
+  s_aa47a447e01641::t_d620fda78e72b7 1-203
+src/main/browser/browser-identity-mode-store.ts
+  s_aa47a447e01641::t_a265d0e6e24b9f 1-258
+src/main/browser/browser-session-cookie-staging.ts
+  s_aa47a447e01641::t_063ad1f2aed7f6 1-218
+src/main/browser/browser-session-meta-store.ts
+  s_aa47a447e01641::t_7f1a7016c86735 1-89
+src/main/browser/browser-session-partition-policies.test.ts
+  s_aa47a447e01641::t_c46eb25531ee91 1-142
+src/main/browser/browser-session-partition-policies.ts
+  s_aa47a447e01641::t_61a8a87a078ecb 1-65
+src/main/browser/browser-session-persisted-profile-validation.ts
+  s_aa47a447e01641::t_d1e344cbbede0f 1-76
+src/main/browser/browser-session-profile-retirement.ts
+  s_aa47a447e01641::t_53e3a7bf89fae1 1-13
+src/main/browser/browser-session-registry-identity.persistence.test.ts
+  s_aa47a447e01641::t_861267a5a7538c 1-223
+src/main/browser/browser-session-registry.persistence.test.ts
+  s_aa47a447e01641::t_08a5e4d08a79ba 1-270
+src/main/browser/browser-session-registry.test.ts
+  s_aa47a447e01641::t_46b1dfa724752c 1-423
+src/main/browser/browser-session-registry.ts
+  s_aa47a447e01641::t_b5da0b70472d91 1-316
+src/main/browser/browser-session-startup.ts
+  s_aa47a447e01641::t_74d8974a93aaa4 1-17
+src/main/durable-file-write.ts
+  s_aa47a447e01641::t_1ab8cffee0ccdb 1-66
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_e6ea7023b4d564 83-96
+src/shared/orca-profiles.ts
+  s_aa47a447e01641::t_d86aaa87bce137 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91ce9a772abd088fc644c79fbfd2ef371fc1ec3d",
+  "prompts": {},
+  "sessions": {
+    "s_681732d696a229": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a72d3e53d6d5f09cb",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
