@@ -1146,7 +1146,7 @@ import { useCallback as useCallback9, useEffect as useEffect9, useLayoutEffect a
 // src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.ts
 function resolveBrowserAddressBarSubmission(rawValue, options) {
   const url = normalizeBrowserNavigationUrl(rawValue, DEFAULT_SEARCH_ENGINE);
-  const fileUrlUnsupported = options?.allowFileUrls === false && Boolean(url) && url.startsWith("file:");
+  const fileUrlUnsupported = options?.allowFileUrls !== true && Boolean(url) && url.startsWith("file:");
   if (url && !fileUrlUnsupported) {
     return { status: "navigate", url };
   }
@@ -1438,6 +1438,9 @@ function navigateBrowserPageToUrl({
   focusWebviewNow
 }) {
   const navigateBrowserUrl = (targetUrl) => {
+    if (targetUrl.trim().toLowerCase().startsWith("file:")) {
+      return;
+    }
     const browserModelUrl = redactKagiSessionToken(targetUrl);
     const normalizedBrowserModelUrl = normalizeBrowserNavigationUrl(browserModelUrl) ?? browserModelUrl;
     const recoveryLoadError = activeLoadFailureRef.current?.code === BROWSER_GUEST_RECOVERY_ERROR_CODE ? activeLoadFailureRef.current : null;
@@ -1798,7 +1801,7 @@ function useBrowserPageWebviewUrlSync({
       return;
     }
     const normalizedUrl = normalizeBrowserNavigationUrl(browserTabUrl);
-    if (!normalizedUrl) {
+    if (!normalizedUrl || normalizedUrl.toLowerCase().startsWith("file:")) {
       return;
     }
     if (lastKnownWebviewUrlRef.current === normalizedUrl) {

@@ -40,11 +40,14 @@ describe('resolveBrowserAddressBarSubmission', () => {
     expect(resolveBrowserAddressBarSubmission('   ')).toMatchObject({ status: 'navigate' })
   })
 
-  it('keeps file URLs navigable for the local browser pane', () => {
-    expect(resolveBrowserAddressBarSubmission('/tmp/report.html')).toMatchObject({
-      status: 'navigate',
-      url: 'file:///tmp/report.html'
-    })
+  it.each([
+    String.raw`C:\Users\a\x.txt`,
+    '/etc/passwd',
+    'file:///etc/passwd',
+    String.raw`\\host\share`
+  ])('never turns %s into a file: navigation from the address bar', (input) => {
+    const result = resolveBrowserAddressBarSubmission(input)
+    expect(result.status === 'navigate' ? result.url.startsWith('file:') : false).toBe(false)
   })
 
   it('explains the refusal instead of blanking the tab when a client-hosted page gets a file URL', () => {

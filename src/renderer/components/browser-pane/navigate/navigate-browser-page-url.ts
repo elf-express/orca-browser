@@ -43,6 +43,10 @@ export function navigateBrowserPageToUrl({
   focusWebviewNow
 }: NavigateBrowserPageToUrlArgs): void {
   const navigateBrowserUrl = (targetUrl: string): void => {
+    // Why: the in-app browser must not read local files, even from a suggestion or history row.
+    if (targetUrl.trim().toLowerCase().startsWith('file:')) {
+      return
+    }
     const browserModelUrl = redactKagiSessionToken(targetUrl)
     const normalizedBrowserModelUrl =
       normalizeBrowserNavigationUrl(browserModelUrl) ?? browserModelUrl

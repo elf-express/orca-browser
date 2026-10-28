@@ -100,7 +100,8 @@ export function useBrowserPageWebviewUrlSync({
       return
     }
     const normalizedUrl = normalizeBrowserNavigationUrl(browserTabUrl)
-    if (!normalizedUrl) {
+    // Why: the in-app browser must not read local files; leave the webview where it is.
+    if (!normalizedUrl || normalizedUrl.toLowerCase().startsWith('file:')) {
       return
     }
     // Why: navigation events set both the store URL and this ref; a match means the change came from navigation, so skip to avoid a redirect infinite loop.

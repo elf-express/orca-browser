@@ -25,7 +25,7 @@ export function resolveBrowserAddressBarSubmission(
   // Why: client-hosted guests refuse file: by design (a remote page must not probe
   // this machine's disk). Saying so beats the blank tab that refusal used to produce.
   const fileUrlUnsupported =
-    options?.allowFileUrls === false && Boolean(url) && url!.startsWith('file:')
+    options?.allowFileUrls !== true && Boolean(url) && url!.startsWith('file:')
   if (url && !fileUrlUnsupported) {
     return { status: 'navigate', url }
   }
