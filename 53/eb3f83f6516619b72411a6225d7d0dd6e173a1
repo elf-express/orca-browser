@@ -1,0 +1,19 @@
+docs/superpowers/state/E-458.yaml
+  s_7de0d02b84038f::t_78c8c925cd116e 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53eb3f83f6516619b72411a6225d7d0dd6e173a1",
+  "prompts": {},
+  "sessions": {
+    "s_7de0d02b84038f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_7de0d02b84038f",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
