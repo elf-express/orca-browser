@@ -1,0 +1,6 @@
+export { BrowserPane } from './BrowserPane'
+export { BrowserPluginProvider } from './BrowserPluginProvider'
+export { useBrowserRendererHost } from './host-context'
+export type { BrowserRendererHost } from './host-context'
+export type { BrowserAgentPayload } from '../shared'
+export { BrowserSettingsPanel } from './components/settings/BrowserSettingsPanel'
