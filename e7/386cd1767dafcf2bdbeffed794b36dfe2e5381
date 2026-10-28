@@ -1,0 +1,43 @@
+dist/i18n-keys.json
+  s_fcfd9882abbd31::t_b66ae6f60795cb 17,31
+dist/renderer/index.js
+  s_fcfd9882abbd31::t_b5edc2b0a57c3b 313-335,855,919,940-943,976-978,1013-1015,3570,5210,5233,5243
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-default-overflow-menu.test.tsx
+  s_aa47a447e01641::t_db3cd43cb41668 1-23
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-folded-tools.tsx
+  s_aa47a447e01641::t_2c1555ab9e3fef 138
+src/renderer/components/browser-pane/navigate/browser-notices.test.ts
+  s_aa47a447e01641::t_5447090756e144 18,25,36,46,62,73,99
+src/renderer/components/browser-pane/navigate/browser-notices.ts
+  s_aa47a447e01641::t_51fc7db2619d9b 37,61,72
+src/renderer/ipc/browser-state-ipc-bridge.test.ts
+  s_aa47a447e01641::t_eaaa5152755d14 126-130,150
+src/renderer/store/browser-store.test.ts
+  s_aa47a447e01641::t_12ed9f812973f0 4-8,73-95
+src/renderer/store/browser-store.ts
+  s_aa47a447e01641::t_c359428fc6f867 9-13,55-58,131,156-159,195-197,236-238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7386cd1767dafcf2bdbeffed794b36dfe2e5381",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_fcfd9882abbd31": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8a5af50-f269-4dd5-a274-2943a8358e46",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
