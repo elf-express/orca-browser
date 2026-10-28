@@ -16,3 +16,17 @@ export type BrowserPage = {
   loadError: BrowserLoadError | null
   createdAt: number
 }
+
+export type BrowserViewportOverride = {
+  width: number
+  height: number
+  deviceScaleFactor: number
+  mobile: boolean
+}
+
+export type BrowserViewportScrollState = {
+  scrollLeft: number
+  scrollTop: number
+  maxScrollLeft: number
+  maxScrollTop: number
+}
