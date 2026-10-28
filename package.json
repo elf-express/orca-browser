@@ -11,22 +11,30 @@
   "sideEffects": false,
   "exports": {
     "./shared": {
-      "types": "./dist/shared/index.d.ts",
-      "import": "./dist/shared/index.js",
-      "require": "./dist/shared/index.cjs"
+      "import": {
+        "types": "./dist/shared/index.d.ts",
+        "default": "./dist/shared/index.js"
+      },
+      "require": {
+        "types": "./dist/shared/index.d.cts",
+        "default": "./dist/shared/index.cjs"
+      }
     },
     "./main": {
       "types": "./dist/main/index.d.cts",
-      "require": "./dist/main/index.cjs"
+      "require": "./dist/main/index.cjs",
+      "default": "./dist/main/index.cjs"
     },
     "./preload": {
       "types": "./dist/preload/index.d.cts",
-      "require": "./dist/preload/index.cjs"
+      "require": "./dist/preload/index.cjs",
+      "default": "./dist/preload/index.cjs"
     },
     "./renderer": {
       "types": "./dist/renderer/index.d.ts",
       "import": "./dist/renderer/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
@@ -68,5 +76,10 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@10.28.2"
+  "packageManager": "pnpm@10.28.2",
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ]
+  }
 }
