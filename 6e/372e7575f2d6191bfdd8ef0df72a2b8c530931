@@ -1,0 +1,27 @@
+src/main/browser-profiles-installer.test.ts
+  s_aa47a447e01641::t_94586111c18341 28-33,61,188-220
+src/main/browser-profiles-installer.ts
+  s_aa47a447e01641::t_8c99567cb6459f 4,8,27
+src/main/browser/browser-process-user-agent.test.ts
+  s_aa47a447e01641::t_15bd246bd00f7d 66-81
+src/main/browser/browser-process-user-agent.ts
+  s_aa47a447e01641::t_ca8cd09a8dcba3 3-6,58-66,68-72,77-89
+dist/main/index.cjs
+  s_aa47a447e01641::t_56aac79e2b33c4 852-865,867-881,883-889,892-894,896-897,899-905,908-910,912-914,916-930,934-941,943-994,997-1003,1005-1020,1022-1030,1032-1034,1036-1040,1042-1043,1045-1049,1051-1052,1055-1277,6699
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e372e7575f2d6191bfdd8ef0df72a2b8c530931",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
