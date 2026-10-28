@@ -156,3 +156,62 @@ describe('BrowserPane keep-alive overlay', () => {
     expect(document.querySelector('[data-orca-browser-scope-slot]')).toBeNull()
   })
 })
+
+describe('BrowserPane chrome shortcuts', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (X11; Linux x86_64)'
+    })
+    resetStore()
+    window.browserAPI = createBrowserApiStub()
+  })
+
+  afterEach(() => {
+    cleanup()
+    delete window.browserAPI
+    resetStore()
+  })
+
+  function pressFocusAddressBar(target: Element): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', {
+      key: 'l',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true
+    })
+    act(() => {
+      target.dispatchEvent(event)
+    })
+    return event
+  }
+
+  it('leaves chrome chords alone when the keystroke comes from outside the browser slot', () => {
+    render(
+      <BrowserPluginProvider host={host}>
+        <input data-testid="outside" />
+        <BrowserPane scopeId="ws-1" active />
+      </BrowserPluginProvider>
+    )
+    const outside = document.querySelector<HTMLInputElement>('[data-testid="outside"]')!
+    outside.focus()
+
+    const event = pressFocusAddressBar(outside)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(document.activeElement).toBe(outside)
+  })
+
+  it('handles the chord when the keystroke comes from inside the browser slot', () => {
+    render(
+      <BrowserPluginProvider host={host}>
+        <BrowserPane scopeId="ws-1" active />
+      </BrowserPluginProvider>
+    )
+    const addressBar = slotOf('ws-1')!.querySelector<HTMLInputElement>('input')!
+
+    const event = pressFocusAddressBar(addressBar)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+})

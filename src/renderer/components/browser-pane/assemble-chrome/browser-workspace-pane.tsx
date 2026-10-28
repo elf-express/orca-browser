@@ -57,7 +57,7 @@ export function BrowserScopePane({
               sessionPartition={null}
               isActive={isActive && page.id === activeBrowserPage?.id}
               chromeShortcutScope={
-                isActive && page.id === activeBrowserPage?.id ? 'focused' : 'inactive'
+                isActive && page.id === activeBrowserPage?.id ? 'owned-target' : 'inactive'
               }
               inputLocked={false}
               onUpdatePageState={updateBrowserPageState}

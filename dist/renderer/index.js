@@ -6320,7 +6320,7 @@ function BrowserScopePane({
             sessionProfileId: null,
             sessionPartition: null,
             isActive: isActive && page.id === activeBrowserPage?.id,
-            chromeShortcutScope: isActive && page.id === activeBrowserPage?.id ? "focused" : "inactive",
+            chromeShortcutScope: isActive && page.id === activeBrowserPage?.id ? "owned-target" : "inactive",
             inputLocked: false,
             onUpdatePageState: updateBrowserPageState,
             onSetUrl: setBrowserPageUrl
