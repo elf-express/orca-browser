@@ -1,0 +1,227 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type DragEvent,
+  type MutableRefObject,
+  type RefObject,
+  type SetStateAction
+} from 'react'
+import { useBrowserStore } from '../../../store/browser-store'
+import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
+import { getBrowserDisplayTitle } from '../describe-page/browser-page-url-display'
+import { attachBrowserPageWebview } from './attach-browser-page-webview'
+import { setBrowserPageWebviewInputLock } from './browser-page-webview'
+import type {
+  BrowserPageRecoveryNavigationValidation,
+  BrowserPageUrlSetter,
+  BrowserTabPageState
+} from '../describe-page/browser-page-types'
+
+export function useBrowserPageWebviewLifecycle({
+  browserTabId,
+  browserTabUrl,
+  browserTabLoading,
+  browserTabLoadError,
+  workspaceId,
+  scopeId,
+  sessionProfileId,
+  webviewPartition,
+  isActive,
+  isPaintable,
+  slotViewport,
+  addressBarInputRef,
+  addressBarValueRef,
+  browserTabUrlRef,
+  keepAddressBarFocusRef,
+  handleInternalFileDragOverRef,
+  handleInternalFileDropRef,
+  dismissAddressBarSuggestionsRef,
+  onUpdatePageState,
+  onSetUrl,
+  setAddressBarValue,
+  setFindOpen,
+  focusAddressBarNow,
+  focusWebviewNow,
+  paneZoomLevelRef,
+  setBrowserZoomPercent,
+  inputLocked,
+  faviconUrl,
+  webviewRef,
+  lastKnownWebviewUrlRef,
+  trackNextLoadingEventRef,
+  recoveryNavigationValidationRef,
+  activeLoadFailureRef,
+  retryGuestRecoveryRef,
+  onUpdatePageStateRef,
+  onSetUrlRef
+}: {
+  browserTabId: string
+  browserTabUrl: string
+  browserTabLoading: boolean
+  browserTabLoadError: BrowserLoadError | null
+  workspaceId: string
+  scopeId: string
+  sessionProfileId: string | null
+  webviewPartition: string
+  isActive: boolean
+  isPaintable: boolean
+  slotViewport: HTMLDivElement | null
+  addressBarInputRef: RefObject<HTMLInputElement | null>
+  addressBarValueRef: MutableRefObject<string>
+  browserTabUrlRef: MutableRefObject<string>
+  keepAddressBarFocusRef: MutableRefObject<boolean>
+  handleInternalFileDragOverRef: MutableRefObject<(event: DragEvent<HTMLDivElement>) => void>
+  handleInternalFileDropRef: MutableRefObject<(event: DragEvent<HTMLDivElement>) => void>
+  dismissAddressBarSuggestionsRef: MutableRefObject<(() => void) | null>
+  onUpdatePageState: (tabId: string, updates: BrowserTabPageState) => void
+  onSetUrl: BrowserPageUrlSetter
+  setAddressBarValue: Dispatch<SetStateAction<string>>
+  setFindOpen: Dispatch<SetStateAction<boolean>>
+  focusAddressBarNow: () => boolean
+  focusWebviewNow: () => boolean
+  paneZoomLevelRef: MutableRefObject<number>
+  setBrowserZoomPercent: Dispatch<SetStateAction<number>>
+  inputLocked: boolean
+  faviconUrl: string | null
+  webviewRef: MutableRefObject<Electron.WebviewTag | null>
+  lastKnownWebviewUrlRef: MutableRefObject<string | null>
+  trackNextLoadingEventRef: MutableRefObject<boolean>
+  recoveryNavigationValidationRef: MutableRefObject<BrowserPageRecoveryNavigationValidation | null>
+  activeLoadFailureRef: MutableRefObject<BrowserLoadError | null>
+  retryGuestRecoveryRef: MutableRefObject<() => void>
+  onUpdatePageStateRef: MutableRefObject<(tabId: string, updates: BrowserTabPageState) => void>
+  onSetUrlRef: MutableRefObject<BrowserPageUrlSetter>
+}): void {
+  const [guestRecoveryGeneration, setGuestRecoveryGeneration] = useState(0)
+  const guestRecoveryPendingRef = useRef(false)
+  const validateVisibleGuestRegistrationRef = useRef<() => void>(() => {})
+  const wasPaintableForGuestValidationRef = useRef(isPaintable)
+  const browserTabLoadingRef = useRef(browserTabLoading)
+  const inputLockedRef = useRef(inputLocked)
+  const faviconUrlRef = useRef<string | null>(faviconUrl)
+  const initialBrowserUrlRef = useRef(browserTabUrl)
+  const addBrowserHistoryEntry = useBrowserStore((s) => s.addBrowserHistoryEntry)
+  const addBrowserHistoryEntryRef = useRef(addBrowserHistoryEntry)
+  const isPaintableRef = useRef(isPaintable)
+
+  useLayoutEffect(() => {
+    browserTabLoadingRef.current = browserTabLoading
+    inputLockedRef.current = inputLocked
+    isPaintableRef.current = isPaintable
+  }, [browserTabLoading, inputLocked, isPaintable])
+
+  useLayoutEffect(() => {
+    const webview = webviewRef.current
+    if (webview) {
+      setBrowserPageWebviewInputLock(webview, inputLocked)
+    }
+  }, [inputLocked, webviewRef])
+
+  useEffect(() => {
+    initialBrowserUrlRef.current = browserTabUrl
+  }, [browserTabId, browserTabUrl])
+
+  useEffect(() => {
+    browserTabUrlRef.current = browserTabUrl
+  }, [browserTabUrl, browserTabUrlRef])
+
+  useEffect(() => {
+    activeLoadFailureRef.current = browserTabLoadError
+  }, [activeLoadFailureRef, browserTabLoadError])
+
+  useEffect(() => {
+    onUpdatePageStateRef.current = onUpdatePageState
+    onSetUrlRef.current = onSetUrl
+    addBrowserHistoryEntryRef.current = addBrowserHistoryEntry
+  }, [onSetUrl, onUpdatePageState, addBrowserHistoryEntry, onSetUrlRef, onUpdatePageStateRef])
+
+  const syncNavigationState = useCallback(
+    (webview: Electron.WebviewTag): void => {
+      try {
+        // Parked panes miss guest events; only reconcile isLoading when the store already knows
+        // a navigation is active so an attach-time transient cannot flash a loading indicator.
+        const loading = browserTabLoadingRef.current ? webview.isLoading() : undefined
+        onUpdatePageStateRef.current(browserTabId, {
+          title: getBrowserDisplayTitle(
+            webview.getTitle(),
+            webview.getURL() || browserTabUrlRef.current
+          ),
+          ...(loading === undefined ? {} : { loading }),
+          canGoBack: webview.canGoBack(),
+          canGoForward: webview.canGoForward()
+        })
+      } catch {
+        // Why: these getters only exist after the guest fully attaches; ignore the transient failure during attach.
+      }
+    },
+    [browserTabId, browserTabUrlRef, onUpdatePageStateRef]
+  )
+
+  // Why: browserTab.url excluded from deps (changes every navigation → would destroy/recreate the webview); URL logic reads browserTabUrlRef.
+  useEffect(() => {
+    return attachBrowserPageWebview({
+      browserTabId,
+      browserTabUrl,
+      workspaceId,
+      scopeId,
+      sessionProfileId,
+      webviewPartition,
+      isActive,
+      isPaintable,
+      inputLockedRef,
+      webviewRef,
+      handleInternalFileDragOverRef,
+      handleInternalFileDropRef,
+      dismissAddressBarSuggestionsRef,
+      isPaintableRef,
+      guestRecoveryPendingRef,
+      browserTabUrlRef,
+      addressBarValueRef,
+      activeLoadFailureRef,
+      recoveryNavigationValidationRef,
+      keepAddressBarFocusRef,
+      paneZoomLevelRef,
+      onUpdatePageStateRef,
+      setGuestRecoveryGeneration,
+      setBrowserZoomPercent,
+      focusAddressBarNow,
+      syncNavigationState,
+      faviconUrlRef,
+      addressBarInputRef,
+      lastKnownWebviewUrlRef,
+      trackNextLoadingEventRef,
+      onSetUrlRef,
+      setAddressBarValue,
+      addBrowserHistoryEntryRef,
+      initialBrowserUrlRef,
+      validateVisibleGuestRegistrationRef,
+      retryGuestRecoveryRef,
+      setFindOpen
+    })
+    // Why: wire listeners once per tab identity. browserTab.url is excluded (re-running would detach/reattach and cancel navigations; callbacks use refs).
+    // webviewPartition IS included: Electron can't change a webview's partition after creation, so a profile switch must recreate it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    browserTabId,
+    guestRecoveryGeneration,
+    workspaceId,
+    slotViewport,
+    webviewPartition,
+    scopeId,
+    focusAddressBarNow,
+    focusWebviewNow,
+    syncNavigationState
+  ])
+
+  useEffect(() => {
+    const becamePaintable = isPaintable && !wasPaintableForGuestValidationRef.current
+    wasPaintableForGuestValidationRef.current = isPaintable
+    if (becamePaintable) {
+      validateVisibleGuestRegistrationRef.current()
+    }
+  }, [isPaintable])
+}
