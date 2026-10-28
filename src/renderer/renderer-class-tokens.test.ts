@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const RENDERER_ROOT = __dirname
-const BANNED = /\b(text-2xs|text-3xs|text-chat-code|scrollbar-sleek)\b/g
+const BANNED = /\b(text-2xs|text-3xs|text-chat-code|scrollbar-sleek|can-hover)\b/g
 
 function listSourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

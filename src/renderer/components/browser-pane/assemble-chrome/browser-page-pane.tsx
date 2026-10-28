@@ -35,6 +35,7 @@ import { useBrowserPageGrabAnnotations } from '../annotate/use-browser-page-grab
 import { useGrabMode } from '../annotate/useGrabMode'
 import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 import { getRendererPlatform } from '../../../lib/platform'
+import { isAnnotateChord } from '../annotate/browser-annotate-chord'
 import { BrowserPageContextMenu } from './browser-page-context-menu'
 import { BrowserPageViewportOverlays } from './browser-page-viewport-overlays'
 import { useBrowserPageFindShortcuts } from './use-browser-page-find-shortcuts'
@@ -44,19 +45,6 @@ import type {
   BrowserPageUrlSetter,
   BrowserTabPageState
 } from '../describe-page/browser-page-types'
-
-/** The Annotate chord: Cmd+Shift+C on macOS, Alt+Shift+N elsewhere. */
-function isAnnotateChord(event: KeyboardEvent): boolean {
-  if (event.repeat || event.nativeEvent.isComposing) {
-    return false
-  }
-  if (getRendererPlatform() === 'darwin') {
-    return (
-      event.metaKey && event.shiftKey && !event.altKey && !event.ctrlKey && event.code === 'KeyC'
-    )
-  }
-  return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyN'
-}
 
 export function BrowserPagePane({
   browserTab,
@@ -194,16 +182,18 @@ export function BrowserPagePane({
     startGrabIntentRef.current = grabAnnotations.startGrabIntent
     handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut
   }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent])
+  // Seam for the markup tool: while its overlay is open the picker must not start behind it.
+  const markupIsActive = false
   const grabIsInteractive = grab.state !== 'idle' && grab.state !== 'error'
 
   // A focused guest keeps its key events; main forwards the grab and annotate chords with their intent.
   useEffect(() => {
     return window.browserAPI!.onGrabModeToggle((pageId, intent) => {
-      if (pageId === browserTab.id) {
+      if (pageId === browserTab.id && !markupIsActive) {
         startGrabIntentRef.current(intent)
       }
     })
-  }, [browserTab.id])
+  }, [browserTab.id, markupIsActive])
   useEffect(() => {
     if (!grabIsInteractive) {
       return
@@ -221,7 +211,8 @@ export function BrowserPagePane({
     if (
       !isActive ||
       chromeShortcutScope === 'inactive' ||
-      !isAnnotateChord(event) ||
+      markupIsActive ||
+      !isAnnotateChord(event, getRendererPlatform()) ||
       !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)
     ) {
       return
@@ -283,12 +274,15 @@ export function BrowserPagePane({
     onUpdatePageState,
     onSetUrl,
     setAddressBarValue,
+    cancelPendingBrowserCapture: grabAnnotations.cancelPendingBrowserCapture,
+    setBrowserOverlayViewport,
     setFindOpen,
     focusAddressBarNow,
     focusWebviewNow,
     paneZoomLevelRef: zoom.paneZoomLevelRef,
     viewportPresetId: browserTab.viewportPresetId ?? null,
     setBrowserZoomPercent: zoom.setBrowserZoomPercent,
+    pendingAnnotationPayload: grabAnnotations.pendingAnnotationPayload,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,
     webviewRef,

@@ -4,6 +4,8 @@ import {
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
 import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
+import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
+import { consumeBrowserAnnotationViewportMessage } from '../annotate/browser-annotation-viewport-message'
 import { BROWSER_GUEST_RECOVERY_ERROR_CODE } from './browser-page-guest-recovery'
 import { rememberLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
 import {
@@ -29,6 +31,7 @@ export type BrowserPageWebviewNavigationHandlersArgs = {
   recoveryNavigationValidationRef: MutableRefObject<BrowserPageRecoveryNavigationValidation | null>
   activeLoadFailureRef: MutableRefObject<BrowserLoadError | null>
   lastKnownWebviewUrlRef: MutableRefObject<string | null>
+  invalidateBrowserAnnotationDocumentRef: MutableRefObject<() => void>
   addressBarInputRef: RefObject<HTMLInputElement | null>
   onSetUrlRef: MutableRefObject<BrowserPageUrlSetter>
   onUpdatePageStateRef: MutableRefObject<(tabId: string, updates: BrowserTabPageState) => void>
@@ -37,6 +40,8 @@ export type BrowserPageWebviewNavigationHandlersArgs = {
   >
   faviconUrlRef: MutableRefObject<string | null>
   setAddressBarValue: Dispatch<SetStateAction<string>>
+  annotationViewportBridgeTokenRef: MutableRefObject<string>
+  setBrowserOverlayViewport: Dispatch<SetStateAction<BrowserOverlayViewport>>
 }
 
 export type BrowserPageWebviewNavigationHandlers = {
@@ -46,6 +51,7 @@ export type BrowserPageWebviewNavigationHandlers = {
   handleDidNavigateInPage: (event: BrowserPageNavigateEvent) => void
   handleTitleUpdate: (event: { title?: string }) => void
   handleFaviconUpdate: (event: { favicons?: string[] }) => void
+  handleAnnotationViewportMessage: (event: { message?: string }) => void
 }
 
 export function createBrowserPageWebviewNavigationHandlers({
@@ -55,12 +61,15 @@ export function createBrowserPageWebviewNavigationHandlers({
   recoveryNavigationValidationRef,
   activeLoadFailureRef,
   lastKnownWebviewUrlRef,
+  invalidateBrowserAnnotationDocumentRef,
   addressBarInputRef,
   onSetUrlRef,
   onUpdatePageStateRef,
   addBrowserHistoryEntryRef,
   faviconUrlRef,
-  setAddressBarValue
+  setAddressBarValue,
+  annotationViewportBridgeTokenRef,
+  setBrowserOverlayViewport
 }: BrowserPageWebviewNavigationHandlersArgs): BrowserPageWebviewNavigationHandlers {
   const clearFaviconIfOriginChanges = (
     event: Electron.DidStartNavigationEvent | Electron.DidRedirectNavigationEvent
@@ -85,6 +94,9 @@ export function createBrowserPageWebviewNavigationHandlers({
   }
 
   const handleDidStartNavigation = (event: Electron.DidStartNavigationEvent): void => {
+    if (event.isMainFrame && event.url) {
+      invalidateBrowserAnnotationDocumentRef.current()
+    }
     if (!event.isMainFrame || event.isInPlace || !event.url) {
       return
     }
@@ -119,6 +131,9 @@ export function createBrowserPageWebviewNavigationHandlers({
     const browserModelUrl = redactKagiSessionToken(currentUrl)
     const normalizedBrowserModelUrl =
       normalizeBrowserNavigationUrl(browserModelUrl) ?? browserModelUrl
+    if (lastKnownWebviewUrlRef.current !== normalizedBrowserModelUrl) {
+      invalidateBrowserAnnotationDocumentRef.current()
+    }
     lastKnownWebviewUrlRef.current = normalizedBrowserModelUrl
     rememberLiveBrowserUrl(browserTabId, browserModelUrl)
     // Why: don't overwrite in-progress typing (see above).
@@ -168,12 +183,21 @@ export function createBrowserPageWebviewNavigationHandlers({
     onUpdatePageStateRef.current(browserTabId, { faviconUrl: faviconUrlRef.current })
   }
 
+  const handleAnnotationViewportMessage = (event: { message?: string }): void => {
+    consumeBrowserAnnotationViewportMessage(
+      event,
+      annotationViewportBridgeTokenRef.current,
+      setBrowserOverlayViewport
+    )
+  }
+
   return {
     handleDidStartNavigation,
     handleDidRedirectNavigation,
     handleFullDidNavigate,
     handleDidNavigateInPage,
     handleTitleUpdate,
-    handleFaviconUpdate
+    handleFaviconUpdate,
+    handleAnnotationViewportMessage
   }
 }

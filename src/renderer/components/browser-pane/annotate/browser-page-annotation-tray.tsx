@@ -264,7 +264,7 @@ export function BrowserPageAnnotationTray({
                     <Button
                       size="icon-xs"
                       variant="ghost"
-                      className="can-hover:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100"
+                      className="[@media(hover:hover)]:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100"
                       onClick={() => handleStartEdit(annotation)}
                       aria-label={translate(
                         'auto.components.browser.pane.annotate.browser.page.annotation.tray.09a7c1df70',
@@ -277,7 +277,7 @@ export function BrowserPageAnnotationTray({
                     <Button
                       size="icon-xs"
                       variant="ghost"
-                      className="can-hover:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100"
+                      className="[@media(hover:hover)]:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100"
                       onClick={() => handleDeleteBrowserAnnotation(annotation.id)}
                       aria-label={translate(
                         'auto.components.browser.pane.BrowserPane.f2d0c22d67',

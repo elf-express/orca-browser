@@ -121,13 +121,16 @@ export default function GrabConfirmationSheet({
   onCopy,
   onCopyScreenshot,
   onAttach,
-  onCancel
+  onCancel,
+  busy = false
 }: {
   payload: BrowserGrabPayload
   onCopy: () => void
   onCopyScreenshot: (() => void) | null
   onAttach: () => void
   onCancel: () => void
+  /** True while a send is in flight; Attach and Cancel are disabled. */
+  busy?: boolean
 }): React.JSX.Element {
   const { target, page, nearbyText } = payload
   const nearbyTextRows = getNearbyTextRows(nearbyText)
@@ -147,7 +150,7 @@ export default function GrabConfirmationSheet({
             )}
           </span>
         </div>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCancel}>
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCancel} disabled={busy}>
           <X className="size-4" />
         </Button>
       </div>
@@ -273,7 +276,7 @@ export default function GrabConfirmationSheet({
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-2 border-t border-border/70 px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           {translate('auto.components.browser.pane.GrabConfirmationSheet.87d97bdd6d', 'Cancel')}
         </Button>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={onCopy}>
@@ -289,7 +292,7 @@ export default function GrabConfirmationSheet({
             )}
           </Button>
         ) : null}
-        <Button size="sm" className="gap-1.5" onClick={onAttach}>
+        <Button size="sm" className="gap-1.5" onClick={onAttach} disabled={busy}>
           <MessageSquarePlus className="size-3.5" />
           {translate('auto.components.browser.pane.sendToAgent.attach', 'Send to agent')}
         </Button>

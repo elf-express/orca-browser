@@ -4,6 +4,7 @@ import {
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
 import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
+import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
 import { translate } from '../../../i18n'
 import { BROWSER_GUEST_RECOVERY_ERROR_CODE } from './browser-page-guest-recovery'
@@ -34,8 +35,10 @@ export type BrowserPageWebviewLoadingHandlersArgs = {
   trackNextLoadingEventRef: MutableRefObject<boolean>
   keepAddressBarFocusRef: MutableRefObject<boolean>
   recoveryNavigationValidationRef: MutableRefObject<BrowserPageRecoveryNavigationValidation | null>
+  invalidateBrowserAnnotationDocumentRef: MutableRefObject<() => void>
   onUpdatePageStateRef: MutableRefObject<(tabId: string, updates: BrowserTabPageState) => void>
   onSetUrlRef: MutableRefObject<BrowserPageUrlSetter>
+  setBrowserOverlayViewport: Dispatch<SetStateAction<BrowserOverlayViewport>>
   setAddressBarValue: Dispatch<SetStateAction<string>>
   focusAddressBarNow: () => boolean
 }
@@ -58,12 +61,17 @@ export function createBrowserPageWebviewLoadingHandlers({
   trackNextLoadingEventRef,
   keepAddressBarFocusRef,
   recoveryNavigationValidationRef,
+  invalidateBrowserAnnotationDocumentRef,
   onUpdatePageStateRef,
   onSetUrlRef,
+  setBrowserOverlayViewport,
   setAddressBarValue,
   focusAddressBarNow
 }: BrowserPageWebviewLoadingHandlersArgs): BrowserPageWebviewLoadingHandlers {
   const handleDidStartLoading = (): void => {
+    // A reload replaces geometry even when the URL stays the same.
+    invalidateBrowserAnnotationDocumentRef.current()
+    setBrowserOverlayViewport({ scrollX: 0, scrollY: 0, version: 0 })
     if (!trackNextLoadingEventRef.current) {
       return
     }

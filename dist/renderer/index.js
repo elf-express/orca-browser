@@ -1449,7 +1449,7 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback16, useEffect as useEffect24, useLayoutEffect as useLayoutEffect9, useRef as useRef16, useState as useState21 } from "react";
+import { useCallback as useCallback16, useEffect as useEffect24, useLayoutEffect as useLayoutEffect9, useRef as useRef17, useState as useState21 } from "react";
 import { createPortal as createPortal2 } from "react-dom";
 
 // src/renderer/store/browser-session-store.ts
@@ -6720,6 +6720,186 @@ import {
   useState as useState10
 } from "react";
 
+// src/shared/non-secure-context-uuid.ts
+function createNonSecureContextUuid() {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof cryptoApi?.getRandomValues === "function") {
+    cryptoApi.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  return bytesToUuid(bytes);
+}
+function bytesToUuid(bytes) {
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
+
+// src/renderer/components/browser-pane/describe-page/browser-annotation-geometry.ts
+import { MessageCircleQuestionMark, PencilLine } from "lucide-react";
+var BROWSER_ANNOTATION_INTENT_OPTIONS = [
+  {
+    value: "change",
+    get label() {
+      return translate("auto.components.browser.pane.BrowserPane.143204e423", "Change");
+    },
+    icon: PencilLine
+  },
+  {
+    value: "question",
+    get label() {
+      return translate("auto.components.browser.pane.BrowserPane.b5ba6085de", "Question");
+    },
+    icon: MessageCircleQuestionMark
+  }
+];
+var DEFAULT_BROWSER_ANNOTATION_PRIORITY = "important";
+var EMPTY_BROWSER_ANNOTATIONS = [];
+var PENDING_ANNOTATION_CARD_HEIGHT = 240;
+var PENDING_ANNOTATION_CARD_WIDTH = 352;
+var PENDING_ANNOTATION_CARD_MARGIN = 22;
+function createBrowserAnnotationId() {
+  return `browser-annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function createBrowserAnnotationPayload(payload) {
+  return {
+    ...payload,
+    // Why: annotations are persisted; screenshot data is a transient copy payload that can be megabytes per selection.
+    screenshot: null
+  };
+}
+var BROWSER_OVERLAY_SIDES = ["bottom", "top", "right", "left"];
+function pickBrowserOverlaySide(space, cardHeight) {
+  const vertical = cardHeight + PENDING_ANNOTATION_CARD_MARGIN;
+  const horizontal = PENDING_ANNOTATION_CARD_WIDTH + PENDING_ANNOTATION_CARD_MARGIN;
+  const room = {
+    bottom: space.bottom / vertical,
+    top: space.top / vertical,
+    right: space.right / horizontal,
+    left: space.left / horizontal
+  };
+  const fitting = BROWSER_OVERLAY_SIDES.find((side) => room[side] >= 1);
+  return fitting ?? (room.bottom >= room.top ? "bottom" : "top");
+}
+function getBrowserOverlayAnchor(payload, container, webview, viewport, cardHeight = null) {
+  const containerRect = container?.getBoundingClientRect();
+  const webviewRect = webview?.getBoundingClientRect();
+  const rect = getLiveBrowserAnnotationRect(payload, viewport);
+  const guestWidth = viewport.viewportWidth ?? payload.page.viewportWidth;
+  const scale = webviewRect && webviewRect.width > 0 && guestWidth > 0 ? webviewRect.width / guestWidth : 1;
+  const offsetX = (webviewRect?.left ?? 0) - (containerRect?.left ?? 0);
+  const offsetY = (webviewRect?.top ?? 0) - (containerRect?.top ?? 0);
+  const containerWidth = containerRect?.width ?? 0;
+  const containerHeight = containerRect?.height ?? 0;
+  const width = rect.width * scale;
+  const height = rect.height * scale;
+  const elementLeft = offsetX + rect.x * scale;
+  const elementRight = elementLeft + width;
+  const elementTop = offsetY + rect.y * scale;
+  const elementBottom = elementTop + height;
+  const side = pickBrowserOverlaySide(
+    {
+      top: elementTop,
+      bottom: containerHeight - elementBottom,
+      left: elementLeft,
+      right: containerWidth - elementRight
+    },
+    cardHeight ?? PENDING_ANNOTATION_CARD_HEIGHT
+  );
+  const edge = {
+    top: { x: elementLeft + width / 2, y: elementTop },
+    bottom: { x: elementLeft + width / 2, y: elementBottom },
+    left: { x: elementLeft, y: elementTop + height / 2 },
+    right: { x: elementRight, y: elementTop + height / 2 }
+  }[side];
+  return {
+    x: clampNumber(edge.x, 12, Math.max(12, containerWidth - 12)),
+    y: clampNumber(edge.y, 12, Math.max(12, containerHeight - 12)),
+    side
+  };
+}
+function clampNumber(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+function getLiveBrowserAnnotationRect(payload, viewport) {
+  if (viewport.target) {
+    return viewport.target;
+  }
+  if (payload.target.isFixed) {
+    return payload.target.rectViewport;
+  }
+  const scrollX = viewport.version === 0 ? payload.page.scrollX : viewport.scrollX;
+  const scrollY = viewport.version === 0 ? payload.page.scrollY : viewport.scrollY;
+  return {
+    ...payload.target.rectViewport,
+    x: payload.target.rectPage.x - scrollX,
+    y: payload.target.rectPage.y - scrollY
+  };
+}
+function applyBrowserAnnotationViewportReport(current, report) {
+  const unchanged = current.scrollX === report.scrollX && current.scrollY === report.scrollY && current.viewportWidth === report.viewportWidth && sameRect(current.target, report.target);
+  if (unchanged) {
+    return current.version === 0 ? { ...current, version: 1 } : current;
+  }
+  return { ...report, version: current.version + 1 };
+}
+function sameRect(a, b) {
+  return a === b || !!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+// src/renderer/components/browser-pane/annotate/browser-annotation-page-url.ts
+function browserAnnotationMatchesPageUrl(capturedUrl, currentUrl) {
+  try {
+    const captured = new URL(capturedUrl);
+    const current = new URL(currentUrl);
+    current.search = "";
+    current.hash = "";
+    return captured.href === current.href;
+  } catch {
+    return false;
+  }
+}
+
+// src/renderer/components/browser-pane/annotate/guest-annotation-viewport-bridge.ts
+function syncGuestAnnotationViewportBridge({
+  toolTargetId,
+  annotations,
+  currentDocument,
+  pendingPayload,
+  surfaceActive,
+  token
+}) {
+  const eligibleIds = currentDocument ? new Set(currentDocument.markerIds) : null;
+  const markers = annotations.flatMap(
+    (annotation, index) => currentDocument && (!eligibleIds?.has(annotation.id) || !browserAnnotationMatchesPageUrl(annotation.payload.page.sanitizedUrl, currentDocument.url)) ? [] : [
+      {
+        id: annotation.id,
+        index,
+        isFixed: annotation.payload.target.isFixed === true,
+        rectPage: annotation.payload.target.rectPage,
+        rectViewport: annotation.payload.target.rectViewport
+      }
+    ]
+  );
+  void window.browserAPI.setAnnotationViewportBridge({
+    browserPageId: toolTargetId,
+    emitViewport: pendingPayload !== null,
+    enabled: surfaceActive && (pendingPayload !== null || markers.length > 0),
+    markers,
+    selectionId: pendingPayload?.page.capturedAt,
+    token
+  }).catch(() => {
+  });
+}
+
 // src/shared/browser-guest-web-preferences.ts
 var ORCA_BROWSER_GUEST_WEB_PREFERENCES_ATTRIBUTE = "disableHtmlFullscreenWindowResize=true";
 
@@ -6835,7 +7015,8 @@ function createBrowserPageWebviewGuestSession({
   setGuestRecoveryGeneration,
   setBrowserZoomPercent,
   focusAddressBarNow,
-  syncNavigationState
+  syncNavigationState,
+  syncBrowserAnnotationViewportBridge
 }) {
   let registrationInFlight = null;
   const readWebContentsId = () => {
@@ -6949,6 +7130,7 @@ function createBrowserPageWebviewGuestSession({
       if (registered === true) {
         guestRecovery.confirmRegistration();
       }
+      syncBrowserAnnotationViewportBridge();
     });
   };
   const handleDomReady = () => {
@@ -6961,8 +7143,8 @@ function createBrowserPageWebviewGuestSession({
       liveWebContentsId = webview.getWebContentsId();
     } catch {
     }
-    const needsGuestRegistration = liveWebContentsId === null || registeredWebContentsIds.get(browserTabId) !== liveWebContentsId;
-    if (needsGuestRegistration) {
+    const queuedAnnotationViewportBridgeSync = liveWebContentsId === null || registeredWebContentsIds.get(browserTabId) !== liveWebContentsId;
+    if (queuedAnnotationViewportBridgeSync) {
       void registerGuest(liveWebContentsId).then((registered) => {
         if (!ownsGuest(liveWebContentsId)) {
           return;
@@ -6975,6 +7157,7 @@ function createBrowserPageWebviewGuestSession({
         if (registered === null || completedRecovery || validateRecoveryAfterNavigation) {
           guestRecovery.validateAfterResume();
         }
+        syncBrowserAnnotationViewportBridge();
       });
     } else {
       const completedRecovery = guestRecovery.finish();
@@ -6985,6 +7168,9 @@ function createBrowserPageWebviewGuestSession({
     syncNavigationState(webview);
     if (keepAddressBarFocusRef.current) {
       focusAddressBarNow();
+    }
+    if (!queuedAnnotationViewportBridgeSync) {
+      syncBrowserAnnotationViewportBridge();
     }
     const appliedLevel = setBrowserPageZoomLevel(webview, paneZoomLevelRef.current);
     if (appliedLevel !== null) {
@@ -7035,12 +7221,16 @@ function createBrowserPageWebviewLoadingHandlers({
   trackNextLoadingEventRef,
   keepAddressBarFocusRef,
   recoveryNavigationValidationRef,
+  invalidateBrowserAnnotationDocumentRef,
   onUpdatePageStateRef,
   onSetUrlRef,
+  setBrowserOverlayViewport,
   setAddressBarValue,
   focusAddressBarNow
 }) {
   const handleDidStartLoading = () => {
+    invalidateBrowserAnnotationDocumentRef.current();
+    setBrowserOverlayViewport({ scrollX: 0, scrollY: 0, version: 0 });
     if (!trackNextLoadingEventRef.current) {
       return;
     }
@@ -7144,6 +7334,50 @@ function createBrowserPageWebviewLoadingHandlers({
   };
 }
 
+// src/shared/browser-annotation-viewport-report.ts
+function isValidBrowserGrabRect(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const rect = value;
+  return typeof rect.x === "number" && Number.isFinite(rect.x) && typeof rect.y === "number" && Number.isFinite(rect.y) && typeof rect.width === "number" && Number.isFinite(rect.width) && rect.width >= 0 && typeof rect.height === "number" && Number.isFinite(rect.height) && rect.height >= 0;
+}
+var finiteOr = (value, fallback) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
+function parseBrowserAnnotationViewportReport(json) {
+  let next;
+  try {
+    next = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!next || typeof next !== "object") {
+    return null;
+  }
+  const viewportWidth = finiteOr(next.viewportWidth, 0);
+  return {
+    scrollX: finiteOr(next.scrollX, 0),
+    scrollY: finiteOr(next.scrollY, 0),
+    ...viewportWidth > 0 ? { viewportWidth } : {},
+    ...isValidBrowserGrabRect(next.target) ? { target: next.target } : {}
+  };
+}
+
+// src/shared/browser-annotation-viewport-bridge.ts
+var BROWSER_ANNOTATION_VIEWPORT_MESSAGE_PREFIX = "__orca_annotation_viewport__:";
+
+// src/renderer/components/browser-pane/annotate/browser-annotation-viewport-message.ts
+function consumeBrowserAnnotationViewportMessage(event, token, setViewport) {
+  const message = typeof event.message === "string" ? event.message : "";
+  const prefix = `${BROWSER_ANNOTATION_VIEWPORT_MESSAGE_PREFIX}${token}:`;
+  if (!message.startsWith(prefix)) {
+    return;
+  }
+  const report = parseBrowserAnnotationViewportReport(message.slice(prefix.length));
+  if (report) {
+    setViewport((current) => applyBrowserAnnotationViewportReport(current, report));
+  }
+}
+
 // src/renderer/components/browser-pane/host-guest/browser-page-webview-navigation-handlers.ts
 function createBrowserPageWebviewNavigationHandlers({
   webview,
@@ -7152,12 +7386,15 @@ function createBrowserPageWebviewNavigationHandlers({
   recoveryNavigationValidationRef,
   activeLoadFailureRef,
   lastKnownWebviewUrlRef,
+  invalidateBrowserAnnotationDocumentRef,
   addressBarInputRef,
   onSetUrlRef,
   onUpdatePageStateRef,
   addBrowserHistoryEntryRef,
   faviconUrlRef,
-  setAddressBarValue
+  setAddressBarValue,
+  annotationViewportBridgeTokenRef,
+  setBrowserOverlayViewport
 }) {
   const clearFaviconIfOriginChanges = (event) => {
     if (!event.isMainFrame || event.isInPlace || !event.url) {
@@ -7176,6 +7413,9 @@ function createBrowserPageWebviewNavigationHandlers({
     }
   };
   const handleDidStartNavigation = (event) => {
+    if (event.isMainFrame && event.url) {
+      invalidateBrowserAnnotationDocumentRef.current();
+    }
     if (!event.isMainFrame || event.isInPlace || !event.url) {
       return;
     }
@@ -7200,6 +7440,9 @@ function createBrowserPageWebviewNavigationHandlers({
     }
     const browserModelUrl = redactKagiSessionToken(currentUrl);
     const normalizedBrowserModelUrl = normalizeBrowserNavigationUrl(browserModelUrl) ?? browserModelUrl;
+    if (lastKnownWebviewUrlRef.current !== normalizedBrowserModelUrl) {
+      invalidateBrowserAnnotationDocumentRef.current();
+    }
     lastKnownWebviewUrlRef.current = normalizedBrowserModelUrl;
     rememberLiveBrowserUrl(browserTabId, browserModelUrl);
     if (document.activeElement !== addressBarInputRef.current) {
@@ -7240,13 +7483,21 @@ function createBrowserPageWebviewNavigationHandlers({
     faviconUrlRef.current = pickDisplayableFaviconUrl(event.favicons);
     onUpdatePageStateRef.current(browserTabId, { faviconUrl: faviconUrlRef.current });
   };
+  const handleAnnotationViewportMessage = (event) => {
+    consumeBrowserAnnotationViewportMessage(
+      event,
+      annotationViewportBridgeTokenRef.current,
+      setBrowserOverlayViewport
+    );
+  };
   return {
     handleDidStartNavigation,
     handleDidRedirectNavigation,
     handleFullDidNavigate,
     handleDidNavigateInPage,
     handleTitleUpdate,
-    handleFaviconUpdate
+    handleFaviconUpdate,
+    handleAnnotationViewportMessage
   };
 }
 
@@ -7284,13 +7535,17 @@ function bindBrowserPageWebviewListeners({
     setBrowserZoomPercent,
     focusAddressBarNow,
     syncNavigationState,
+    syncBrowserAnnotationViewportBridge,
     faviconUrlRef,
     addressBarInputRef,
     lastKnownWebviewUrlRef,
     trackNextLoadingEventRef,
+    invalidateBrowserAnnotationDocumentRef,
     onSetUrlRef,
+    setBrowserOverlayViewport,
     setAddressBarValue,
     addBrowserHistoryEntryRef,
+    annotationViewportBridgeTokenRef,
     initialBrowserUrlRef,
     validateVisibleGuestRegistrationRef,
     retryGuestRecoveryRef,
@@ -7315,7 +7570,8 @@ function bindBrowserPageWebviewListeners({
     setGuestRecoveryGeneration,
     setBrowserZoomPercent,
     focusAddressBarNow,
-    syncNavigationState
+    syncNavigationState,
+    syncBrowserAnnotationViewportBridge
   });
   const { handleDidStartLoading, handleDidStopLoading, handleFailLoad } = createBrowserPageWebviewLoadingHandlers({
     webview,
@@ -7329,8 +7585,10 @@ function bindBrowserPageWebviewListeners({
     trackNextLoadingEventRef,
     keepAddressBarFocusRef,
     recoveryNavigationValidationRef,
+    invalidateBrowserAnnotationDocumentRef,
     onUpdatePageStateRef,
     onSetUrlRef,
+    setBrowserOverlayViewport,
     setAddressBarValue,
     focusAddressBarNow
   });
@@ -7340,7 +7598,8 @@ function bindBrowserPageWebviewListeners({
     handleFullDidNavigate,
     handleDidNavigateInPage,
     handleTitleUpdate,
-    handleFaviconUpdate
+    handleFaviconUpdate,
+    handleAnnotationViewportMessage
   } = createBrowserPageWebviewNavigationHandlers({
     webview,
     browserTabId,
@@ -7348,12 +7607,15 @@ function bindBrowserPageWebviewListeners({
     recoveryNavigationValidationRef,
     activeLoadFailureRef,
     lastKnownWebviewUrlRef,
+    invalidateBrowserAnnotationDocumentRef,
     addressBarInputRef,
     onSetUrlRef,
     onUpdatePageStateRef,
     addBrowserHistoryEntryRef,
     faviconUrlRef,
-    setAddressBarValue
+    setAddressBarValue,
+    annotationViewportBridgeTokenRef,
+    setBrowserOverlayViewport
   });
   const unsubscribeSystemResumed2 = subscribeBrowserSystemResume(guestRecovery.validateAfterResume);
   validateVisibleGuestRegistrationRef.current = guestRecovery.validateAfterResume;
@@ -7376,6 +7638,7 @@ function bindBrowserPageWebviewListeners({
   webview.addEventListener("page-title-updated", handleTitleUpdate);
   webview.addEventListener("page-favicon-updated", handleFaviconUpdate);
   webview.addEventListener("did-fail-load", handleFailLoad);
+  webview.addEventListener("console-message", handleAnnotationViewportMessage);
   if (needsInitialNavigation) {
     const initialUrl = resolveInitialWebviewUrl(initialBrowserUrlRef.current);
     trackNextLoadingEventRef.current = initialUrl !== ORCA_BROWSER_BLANK_URL;
@@ -7404,6 +7667,7 @@ function bindBrowserPageWebviewListeners({
     webview.removeEventListener("page-title-updated", handleTitleUpdate);
     webview.removeEventListener("page-favicon-updated", handleFaviconUpdate);
     webview.removeEventListener("did-fail-load", handleFailLoad);
+    webview.removeEventListener("console-message", handleAnnotationViewportMessage);
     container.removeEventListener("dragover", onContainerDragOver);
     container.removeEventListener("drop", onContainerDrop);
     unsubscribeSystemResumed2();
@@ -7462,6 +7726,7 @@ function attachBrowserPageWebview(args) {
   if (!container || !webviewContainer) {
     return;
   }
+  args.invalidateBrowserAnnotationDocumentRef.current();
   const webview = ensuredWebview.webview;
   const needsInitialNavigation = ensuredWebview.created;
   seedLiveBrowserUrl(browserTabId, redactKagiSessionToken(browserTabUrlRef.current));
@@ -7516,12 +7781,15 @@ function useBrowserPageWebviewLifecycle({
   onUpdatePageState,
   onSetUrl,
   setAddressBarValue,
+  cancelPendingBrowserCapture,
+  setBrowserOverlayViewport,
   setFindOpen,
   focusAddressBarNow,
   focusWebviewNow,
   paneZoomLevelRef,
   viewportPresetId,
   setBrowserZoomPercent,
+  pendingAnnotationPayload,
   inputLocked,
   faviconUrl,
   webviewRef,
@@ -7546,12 +7814,34 @@ function useBrowserPageWebviewLifecycle({
   const addBrowserHistoryEntry = useBrowserStore((s) => s.addBrowserHistoryEntry);
   const addBrowserHistoryEntryRef = useRef9(addBrowserHistoryEntry);
   const isPaintableRef = useRef9(isPaintable);
+  const annotationViewportBridgeTokenRef = useRef9(void 0);
+  annotationViewportBridgeTokenRef.current ??= createNonSecureContextUuid().replaceAll("-", "");
+  const isActiveRef = useRef9(isActive);
+  const pendingAnnotationPayloadRef = useRef9(pendingAnnotationPayload);
+  const browserAnnotations = useBrowserAnnotationStore(
+    (s) => s.browserAnnotationsByPageId[browserTabId] ?? EMPTY_BROWSER_ANNOTATIONS
+  );
+  const browserAnnotationMarkerIds = useBrowserAnnotationStore(
+    (s) => s.browserAnnotationMarkerIdsByPageId[browserTabId]
+  );
+  const invalidatePendingCaptureRef = useRef9(cancelPendingBrowserCapture);
   useLayoutEffect4(() => {
     browserTabLoadingRef.current = browserTabLoading;
     inputLockedRef.current = inputLocked;
     viewportPresetIdRef.current = viewportPresetId;
+    isActiveRef.current = isActive;
+    pendingAnnotationPayloadRef.current = pendingAnnotationPayload;
+    invalidatePendingCaptureRef.current = cancelPendingBrowserCapture;
     isPaintableRef.current = isPaintable;
-  }, [browserTabLoading, inputLocked, isPaintable, viewportPresetId]);
+  }, [
+    browserTabLoading,
+    cancelPendingBrowserCapture,
+    inputLocked,
+    isActive,
+    isPaintable,
+    pendingAnnotationPayload,
+    viewportPresetId
+  ]);
   useLayoutEffect4(() => {
     const webview = webviewRef.current;
     if (webview) {
@@ -7590,6 +7880,30 @@ function useBrowserPageWebviewLifecycle({
     },
     [browserTabId, browserTabUrlRef, onUpdatePageStateRef]
   );
+  const syncBrowserAnnotationViewportBridge = useCallback9(() => {
+    const state = useBrowserAnnotationStore.getState();
+    syncGuestAnnotationViewportBridge({
+      toolTargetId: browserTabId,
+      annotations: state.browserAnnotationsByPageId[browserTabId] ?? EMPTY_BROWSER_ANNOTATIONS,
+      currentDocument: {
+        markerIds: state.browserAnnotationMarkerIdsByPageId[browserTabId] ?? [],
+        url: browserTabUrlRef.current
+      },
+      pendingPayload: pendingAnnotationPayloadRef.current,
+      surfaceActive: isActiveRef.current,
+      token: annotationViewportBridgeTokenRef.current
+    });
+  }, [browserTabId, browserTabUrlRef]);
+  const invalidateBrowserAnnotationDocument = useCallback9(() => {
+    useBrowserAnnotationStore.getState().invalidateBrowserPageAnnotationGeometry(browserTabId);
+    invalidatePendingCaptureRef.current();
+    pendingAnnotationPayloadRef.current = null;
+    syncBrowserAnnotationViewportBridge();
+  }, [browserTabId, syncBrowserAnnotationViewportBridge]);
+  const invalidateBrowserAnnotationDocumentRef = useRef9(invalidateBrowserAnnotationDocument);
+  useLayoutEffect4(() => {
+    invalidateBrowserAnnotationDocumentRef.current = invalidateBrowserAnnotationDocument;
+  }, [invalidateBrowserAnnotationDocument]);
   useEffect12(() => {
     return attachBrowserPageWebview({
       browserTabId,
@@ -7619,13 +7933,17 @@ function useBrowserPageWebviewLifecycle({
       setBrowserZoomPercent,
       focusAddressBarNow,
       syncNavigationState,
+      syncBrowserAnnotationViewportBridge,
       faviconUrlRef,
       addressBarInputRef,
       lastKnownWebviewUrlRef,
       trackNextLoadingEventRef,
+      invalidateBrowserAnnotationDocumentRef,
       onSetUrlRef,
+      setBrowserOverlayViewport,
       setAddressBarValue,
       addBrowserHistoryEntryRef,
+      annotationViewportBridgeTokenRef,
       initialBrowserUrlRef,
       validateVisibleGuestRegistrationRef,
       retryGuestRecoveryRef,
@@ -7640,7 +7958,8 @@ function useBrowserPageWebviewLifecycle({
     scopeId,
     focusAddressBarNow,
     focusWebviewNow,
-    syncNavigationState
+    syncNavigationState,
+    syncBrowserAnnotationViewportBridge
   ]);
   useEffect12(() => {
     const becamePaintable = isPaintable && !wasPaintableForGuestValidationRef.current;
@@ -7649,6 +7968,20 @@ function useBrowserPageWebviewLifecycle({
       validateVisibleGuestRegistrationRef.current();
     }
   }, [isPaintable]);
+  useEffect12(() => {
+    syncBrowserAnnotationViewportBridge();
+  }, [
+    browserAnnotations,
+    browserAnnotationMarkerIds,
+    browserTabId,
+    browserTabUrl,
+    isActive,
+    pendingAnnotationPayload,
+    syncBrowserAnnotationViewportBridge
+  ]);
+  return {
+    syncBrowserAnnotationViewportBridge
+  };
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-partition.ts
@@ -8187,7 +8520,8 @@ function GrabConfirmationSheet({
   onCopy,
   onCopyScreenshot,
   onAttach,
-  onCancel
+  onCancel,
+  busy = false
 }) {
   const { target, page, nearbyText } = payload;
   const nearbyTextRows = getNearbyTextRows(nearbyText);
@@ -8200,7 +8534,7 @@ function GrabConfirmationSheet({
           "Review before attaching. Captured page context may include visible site content."
         ) })
       ] }),
-      /* @__PURE__ */ jsx35(Button, { size: "icon", variant: "ghost", className: "h-7 w-7", onClick: onCancel, children: /* @__PURE__ */ jsx35(X2, { className: "size-4" }) })
+      /* @__PURE__ */ jsx35(Button, { size: "icon", variant: "ghost", className: "h-7 w-7", onClick: onCancel, disabled: busy, children: /* @__PURE__ */ jsx35(X2, { className: "size-4" }) })
     ] }),
     /* @__PURE__ */ jsx35(ScrollArea, { className: "flex-1 p-4", children: /* @__PURE__ */ jsxs28("div", { className: "space-y-4", children: [
       payload.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsx35("div", { className: "overflow-hidden rounded-lg border border-border/60", children: /* @__PURE__ */ jsx35(
@@ -8274,7 +8608,7 @@ function GrabConfirmationSheet({
       ] }) : null
     ] }) }),
     /* @__PURE__ */ jsxs28("div", { className: "flex items-center justify-end gap-2 border-t border-border/70 px-4 py-3", children: [
-      /* @__PURE__ */ jsx35(Button, { variant: "ghost", size: "sm", onClick: onCancel, children: translate("auto.components.browser.pane.GrabConfirmationSheet.87d97bdd6d", "Cancel") }),
+      /* @__PURE__ */ jsx35(Button, { variant: "ghost", size: "sm", onClick: onCancel, disabled: busy, children: translate("auto.components.browser.pane.GrabConfirmationSheet.87d97bdd6d", "Cancel") }),
       /* @__PURE__ */ jsxs28(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopy, children: [
         /* @__PURE__ */ jsx35(Copy, { className: "size-3.5" }),
         translate("auto.components.browser.pane.GrabConfirmationSheet.26fd87f4df", "Copy")
@@ -8286,7 +8620,7 @@ function GrabConfirmationSheet({
           "Copy Screenshot"
         )
       ] }) : null,
-      /* @__PURE__ */ jsxs28(Button, { size: "sm", className: "gap-1.5", onClick: onAttach, children: [
+      /* @__PURE__ */ jsxs28(Button, { size: "sm", className: "gap-1.5", onClick: onAttach, disabled: busy, children: [
         /* @__PURE__ */ jsx35(MessageSquarePlus3, { className: "size-3.5" }),
         translate("auto.components.browser.pane.sendToAgent.attach", "Send to agent")
       ] })
@@ -8333,108 +8667,6 @@ function useSendToAgent() {
   }
   return async (payload) => {
     await host.onSendToAgent(payload);
-  };
-}
-
-// src/renderer/components/browser-pane/describe-page/browser-annotation-geometry.ts
-import { MessageCircleQuestionMark, PencilLine } from "lucide-react";
-var BROWSER_ANNOTATION_INTENT_OPTIONS = [
-  {
-    value: "change",
-    get label() {
-      return translate("auto.components.browser.pane.BrowserPane.143204e423", "Change");
-    },
-    icon: PencilLine
-  },
-  {
-    value: "question",
-    get label() {
-      return translate("auto.components.browser.pane.BrowserPane.b5ba6085de", "Question");
-    },
-    icon: MessageCircleQuestionMark
-  }
-];
-var DEFAULT_BROWSER_ANNOTATION_PRIORITY = "important";
-var EMPTY_BROWSER_ANNOTATIONS = [];
-var PENDING_ANNOTATION_CARD_HEIGHT = 240;
-var PENDING_ANNOTATION_CARD_WIDTH = 352;
-var PENDING_ANNOTATION_CARD_MARGIN = 22;
-function createBrowserAnnotationId() {
-  return `browser-annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-function createBrowserAnnotationPayload(payload) {
-  return {
-    ...payload,
-    // Why: annotations are persisted; screenshot data is a transient copy payload that can be megabytes per selection.
-    screenshot: null
-  };
-}
-var BROWSER_OVERLAY_SIDES = ["bottom", "top", "right", "left"];
-function pickBrowserOverlaySide(space, cardHeight) {
-  const vertical = cardHeight + PENDING_ANNOTATION_CARD_MARGIN;
-  const horizontal = PENDING_ANNOTATION_CARD_WIDTH + PENDING_ANNOTATION_CARD_MARGIN;
-  const room = {
-    bottom: space.bottom / vertical,
-    top: space.top / vertical,
-    right: space.right / horizontal,
-    left: space.left / horizontal
-  };
-  const fitting = BROWSER_OVERLAY_SIDES.find((side) => room[side] >= 1);
-  return fitting ?? (room.bottom >= room.top ? "bottom" : "top");
-}
-function getBrowserOverlayAnchor(payload, container, webview, viewport, cardHeight = null) {
-  const containerRect = container?.getBoundingClientRect();
-  const webviewRect = webview?.getBoundingClientRect();
-  const rect = getLiveBrowserAnnotationRect(payload, viewport);
-  const guestWidth = viewport.viewportWidth ?? payload.page.viewportWidth;
-  const scale = webviewRect && webviewRect.width > 0 && guestWidth > 0 ? webviewRect.width / guestWidth : 1;
-  const offsetX = (webviewRect?.left ?? 0) - (containerRect?.left ?? 0);
-  const offsetY = (webviewRect?.top ?? 0) - (containerRect?.top ?? 0);
-  const containerWidth = containerRect?.width ?? 0;
-  const containerHeight = containerRect?.height ?? 0;
-  const width = rect.width * scale;
-  const height = rect.height * scale;
-  const elementLeft = offsetX + rect.x * scale;
-  const elementRight = elementLeft + width;
-  const elementTop = offsetY + rect.y * scale;
-  const elementBottom = elementTop + height;
-  const side = pickBrowserOverlaySide(
-    {
-      top: elementTop,
-      bottom: containerHeight - elementBottom,
-      left: elementLeft,
-      right: containerWidth - elementRight
-    },
-    cardHeight ?? PENDING_ANNOTATION_CARD_HEIGHT
-  );
-  const edge = {
-    top: { x: elementLeft + width / 2, y: elementTop },
-    bottom: { x: elementLeft + width / 2, y: elementBottom },
-    left: { x: elementLeft, y: elementTop + height / 2 },
-    right: { x: elementRight, y: elementTop + height / 2 }
-  }[side];
-  return {
-    x: clampNumber(edge.x, 12, Math.max(12, containerWidth - 12)),
-    y: clampNumber(edge.y, 12, Math.max(12, containerHeight - 12)),
-    side
-  };
-}
-function clampNumber(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-function getLiveBrowserAnnotationRect(payload, viewport) {
-  if (viewport.target) {
-    return viewport.target;
-  }
-  if (payload.target.isFixed) {
-    return payload.target.rectViewport;
-  }
-  const scrollX = viewport.version === 0 ? payload.page.scrollX : viewport.scrollX;
-  const scrollY = viewport.version === 0 ? payload.page.scrollY : viewport.scrollY;
-  return {
-    ...payload.target.rectViewport,
-    x: payload.target.rectPage.x - scrollX,
-    y: payload.target.rectPage.y - scrollY
   };
 }
 
@@ -8812,8 +9044,6 @@ function useBrowserPageGrabAnnotations({
   });
   const startGrabIntent = useCallback12(
     (nextIntent) => {
-      if (nextIntent === "annotate") {
-      }
       setGrabIntent(nextIntent);
       if (nextIntent === "copy") {
         setPendingAnnotationPayload(null);
@@ -8865,7 +9095,7 @@ function useBrowserPageGrabAnnotations({
     grab.rearm();
   }, [grab, showGrabToast]);
   const handleGrabSendToAgent = useCallback12(
-    async (payload) => {
+    async (payload, options) => {
       const send = sendToAgentRef.current;
       if (!send || grabSendInFlightRef.current) {
         return false;
@@ -8884,7 +9114,9 @@ function useBrowserPageGrabAnnotations({
         } catch {
         }
         await send(buildGrabAgentPayload({ ...payload, screenshot }));
-        grabRef.current.exit();
+        if (options?.isReviewOpen?.() ?? true) {
+          grabRef.current.exit();
+        }
         return true;
       } catch (error) {
         if (!isSendToAgentCanceled(error)) {
@@ -9145,6 +9377,17 @@ function useGrabMode(browserPageId) {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [state, cancel]);
   return { state, payload, error, contextMenu, toggle, cancel, rearm, exit };
+}
+
+// src/renderer/components/browser-pane/annotate/browser-annotate-chord.ts
+function isAnnotateChord(event, platform) {
+  if (event.repeat || event.nativeEvent.isComposing || isEditableKeyboardTarget(event.target)) {
+    return false;
+  }
+  if (platform === "darwin") {
+    return event.metaKey && event.shiftKey && !event.altKey && !event.ctrlKey && event.code === "KeyC";
+  }
+  return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyN";
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
@@ -9756,7 +9999,7 @@ function BrowserFind({
 }
 
 // src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
-import { useState as useState20 } from "react";
+import { useRef as useRef16, useState as useState20 } from "react";
 import { Copy as Copy4, Image as Image3, MessageSquarePlus as MessageSquarePlus7 } from "lucide-react";
 
 // src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
@@ -9868,19 +10111,6 @@ function isScreenSubmitShortcut(event) {
 }
 function getScreenSubmitModifierLabel() {
   return getRendererPlatform() === "darwin" ? "\u2318" : "Ctrl";
-}
-
-// src/renderer/components/browser-pane/annotate/browser-annotation-page-url.ts
-function browserAnnotationMatchesPageUrl(capturedUrl, currentUrl) {
-  try {
-    const captured = new URL(capturedUrl);
-    const current = new URL(currentUrl);
-    current.search = "";
-    current.hash = "";
-    return captured.href === current.href;
-  } catch {
-    return false;
-  }
 }
 
 // src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
@@ -10090,7 +10320,7 @@ function BrowserPageAnnotationTray({
                   {
                     size: "icon-xs",
                     variant: "ghost",
-                    className: "can-hover:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100",
+                    className: "[@media(hover:hover)]:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100",
                     onClick: () => handleStartEdit(annotation),
                     "aria-label": translate(
                       "auto.components.browser.pane.annotate.browser.page.annotation.tray.09a7c1df70",
@@ -10105,7 +10335,7 @@ function BrowserPageAnnotationTray({
                   {
                     size: "icon-xs",
                     variant: "ghost",
-                    className: "can-hover:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100",
+                    className: "[@media(hover:hover)]:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100",
                     onClick: () => handleDeleteBrowserAnnotation(annotation.id),
                     "aria-label": translate(
                       "auto.components.browser.pane.BrowserPane.f2d0c22d67",
@@ -10416,7 +10646,13 @@ function BrowserGuestAnnotateOverlays({
     dismissGrabToast,
     setGrabToast
   } = grabAnnotations;
-  const [grabReviewPayload, setGrabReviewPayload] = useState20(null);
+  const [grabReviewPayload, setGrabReviewPayloadState] = useState20(null);
+  const [grabReviewSending, setGrabReviewSending] = useState20(false);
+  const grabReviewOpenRef = useRef16(false);
+  const setGrabReviewPayload = (next) => {
+    grabReviewOpenRef.current = next !== null;
+    setGrabReviewPayloadState(next);
+  };
   const {
     browserAnnotations,
     browserAnnotationTrayOpen,
@@ -10564,13 +10800,20 @@ function BrowserGuestAnnotateOverlays({
           closeGrabReview();
         } : null,
         onAttach: () => {
-          void handleGrabSendToAgent(grabReviewPayload).then((sent) => {
+          if (grabReviewSending) {
+            return;
+          }
+          setGrabReviewSending(true);
+          void handleGrabSendToAgent(grabReviewPayload, {
+            isReviewOpen: () => grabReviewOpenRef.current
+          }).then((sent) => {
             if (sent) {
               setGrabReviewPayload(null);
             }
-          });
+          }).finally(() => setGrabReviewSending(false));
         },
-        onCancel: closeGrabReview
+        onCancel: closeGrabReview,
+        busy: grabReviewSending
       }
     ) : null
   ] });
@@ -10694,15 +10937,6 @@ function useBrowserPageFindShortcuts({
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
 import { jsx as jsx46, jsxs as jsxs38 } from "react/jsx-runtime";
-function isAnnotateChord(event) {
-  if (event.repeat || event.nativeEvent.isComposing) {
-    return false;
-  }
-  if (getRendererPlatform() === "darwin") {
-    return event.metaKey && event.shiftKey && !event.altKey && !event.ctrlKey && event.code === "KeyC";
-  }
-  return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyN";
-}
 function BrowserPagePane({
   browserTab,
   workspaceId,
@@ -10720,7 +10954,7 @@ function BrowserPagePane({
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
   const pageViewportScroller = pageViewport?.scroller ?? null;
   const pageViewportContainer = pageViewport?.container ?? null;
-  const containerRef = useRef16(pageViewportContainer);
+  const containerRef = useRef17(pageViewportContainer);
   useLayoutEffect9(() => {
     containerRef.current = pageViewportContainer;
   }, [pageViewportContainer]);
@@ -10748,29 +10982,29 @@ function BrowserPagePane({
       scrollBrowserPageViewport(browserTab.id, event.deltaX, event.deltaY);
     });
   }, [browserTab.id, browserTab.viewportPresetId, pageViewportScroller]);
-  const chromeHeaderRef = useRef16(null);
-  const webviewRef = useRef16(null);
-  const addressBarInputRef = useRef16(null);
-  const dismissAddressBarSuggestionsRef = useRef16(null);
-  const addressBarValueRef = useRef16(toDisplayUrl(browserTab.url));
-  const browserTabUrlRef = useRef16(browserTab.url);
-  const lastKnownWebviewUrlRef = useRef16(null);
-  const trackNextLoadingEventRef = useRef16(false);
-  const recoveryNavigationValidationRef = useRef16(
+  const chromeHeaderRef = useRef17(null);
+  const webviewRef = useRef17(null);
+  const addressBarInputRef = useRef17(null);
+  const dismissAddressBarSuggestionsRef = useRef17(null);
+  const addressBarValueRef = useRef17(toDisplayUrl(browserTab.url));
+  const browserTabUrlRef = useRef17(browserTab.url);
+  const lastKnownWebviewUrlRef = useRef17(null);
+  const trackNextLoadingEventRef = useRef17(false);
+  const recoveryNavigationValidationRef = useRef17(
     null
   );
-  const activeLoadFailureRef = useRef16(browserTab.loadError);
-  const retryGuestRecoveryRef = useRef16(() => {
+  const activeLoadFailureRef = useRef17(browserTab.loadError);
+  const retryGuestRecoveryRef = useRef17(() => {
   });
-  const onUpdatePageStateRef = useRef16(onUpdatePageState);
-  const onSetUrlRef = useRef16(onSetUrl);
-  const isActiveRef = useRef16(isActive);
+  const onUpdatePageStateRef = useRef17(onUpdatePageState);
+  const onSetUrlRef = useRef17(onSetUrl);
+  const isActiveRef = useRef17(isActive);
   useLayoutEffect9(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  const handleInternalFileDragOverRef = useRef16(() => {
+  const handleInternalFileDragOverRef = useRef17(() => {
   });
-  const handleInternalFileDropRef = useRef16(() => {
+  const handleInternalFileDropRef = useRef17(() => {
   });
   const [findOpen, setFindOpen] = useState21(false);
   const [browserOverlayViewport, setBrowserOverlayViewport] = useState21({
@@ -10817,20 +11051,21 @@ function BrowserPagePane({
     browserAnnotationsLength: annotationSend.browserAnnotations.length,
     setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen
   });
-  const startGrabIntentRef = useRef16(grabAnnotations.startGrabIntent);
-  const handleGrabActionShortcutRef = useRef16(grabAnnotations.handleGrabActionShortcut);
+  const startGrabIntentRef = useRef17(grabAnnotations.startGrabIntent);
+  const handleGrabActionShortcutRef = useRef17(grabAnnotations.handleGrabActionShortcut);
   useLayoutEffect9(() => {
     startGrabIntentRef.current = grabAnnotations.startGrabIntent;
     handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut;
   }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent]);
+  const markupIsActive = false;
   const grabIsInteractive = grab.state !== "idle" && grab.state !== "error";
   useEffect24(() => {
     return window.browserAPI.onGrabModeToggle((pageId, intent) => {
-      if (pageId === browserTab.id) {
+      if (pageId === browserTab.id && !markupIsActive) {
         startGrabIntentRef.current(intent);
       }
     });
-  }, [browserTab.id]);
+  }, [browserTab.id, markupIsActive]);
   useEffect24(() => {
     if (!grabIsInteractive) {
       return;
@@ -10842,7 +11077,7 @@ function BrowserPagePane({
     });
   }, [browserTab.id, grabIsInteractive]);
   const handlePaneKeyDown = (event) => {
-    if (!isActive || chromeShortcutScope === "inactive" || !isAnnotateChord(event) || !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)) {
+    if (!isActive || chromeShortcutScope === "inactive" || markupIsActive || !isAnnotateChord(event, getRendererPlatform()) || !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)) {
       return;
     }
     event.preventDefault();
@@ -10899,12 +11134,15 @@ function BrowserPagePane({
     onUpdatePageState,
     onSetUrl,
     setAddressBarValue,
+    cancelPendingBrowserCapture: grabAnnotations.cancelPendingBrowserCapture,
+    setBrowserOverlayViewport,
     setFindOpen,
     focusAddressBarNow,
     focusWebviewNow,
     paneZoomLevelRef: zoom.paneZoomLevelRef,
     viewportPresetId: browserTab.viewportPresetId ?? null,
     setBrowserZoomPercent: zoom.setBrowserZoomPercent,
+    pendingAnnotationPayload: grabAnnotations.pendingAnnotationPayload,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,
     webviewRef,

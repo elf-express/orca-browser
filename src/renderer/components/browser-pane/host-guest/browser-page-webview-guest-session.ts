@@ -46,6 +46,7 @@ export type BrowserPageWebviewGuestSessionArgs = {
   setBrowserZoomPercent: Dispatch<SetStateAction<number>>
   focusAddressBarNow: () => boolean
   syncNavigationState: (webview: Electron.WebviewTag) => void
+  syncBrowserAnnotationViewportBridge: () => void
 }
 
 export type BrowserPageWebviewGuestSession = {
@@ -74,7 +75,8 @@ export function createBrowserPageWebviewGuestSession({
   setGuestRecoveryGeneration,
   setBrowserZoomPercent,
   focusAddressBarNow,
-  syncNavigationState
+  syncNavigationState,
+  syncBrowserAnnotationViewportBridge
 }: BrowserPageWebviewGuestSessionArgs): BrowserPageWebviewGuestSession {
   let registrationInFlight: {
     webContentsId: number
@@ -207,6 +209,7 @@ export function createBrowserPageWebviewGuestSession({
       if (registered === true) {
         guestRecovery.confirmRegistration()
       }
+      syncBrowserAnnotationViewportBridge()
     })
   }
 
@@ -222,9 +225,9 @@ export function createBrowserPageWebviewGuestSession({
     } catch {
       // Why: the guest can detach between dom-ready and registration.
     }
-    const needsGuestRegistration =
+    const queuedAnnotationViewportBridgeSync =
       liveWebContentsId === null || registeredWebContentsIds.get(browserTabId) !== liveWebContentsId
-    if (needsGuestRegistration) {
+    if (queuedAnnotationViewportBridgeSync) {
       void registerGuest(liveWebContentsId).then((registered) => {
         if (!ownsGuest(liveWebContentsId)) {
           return
@@ -237,6 +240,7 @@ export function createBrowserPageWebviewGuestSession({
         if (registered === null || completedRecovery || validateRecoveryAfterNavigation) {
           guestRecovery.validateAfterResume()
         }
+        syncBrowserAnnotationViewportBridge()
       })
     } else {
       const completedRecovery = guestRecovery.finish()
@@ -247,6 +251,9 @@ export function createBrowserPageWebviewGuestSession({
     syncNavigationState(webview)
     if (keepAddressBarFocusRef.current) {
       focusAddressBarNow()
+    }
+    if (!queuedAnnotationViewportBridgeSync) {
+      syncBrowserAnnotationViewportBridge()
     }
     // Why: Chromium restores per-origin zoom on reload/navigation, so reassert THIS pane's level after
     // every guest load. Uses the pane-local level, not the shared setting, so reloading one tab never

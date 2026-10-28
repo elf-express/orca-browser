@@ -75,7 +75,12 @@ export function useBrowserPageGrabAnnotations({
   handleGrabCopy: () => void
   handleGrabCopyScreenshot: () => void
   /** Null when the host does not provide onSendToAgent. Resolves true once the host accepted the payload. */
-  handleGrabSendToAgent: ((payload: BrowserGrabPayload) => Promise<boolean>) | null
+  handleGrabSendToAgent:
+    | ((
+        payload: BrowserGrabPayload,
+        options?: { isReviewOpen?: () => boolean }
+      ) => Promise<boolean>)
+    | null
   grabMenuActionTakenRef: MutableRefObject<boolean>
   handleAddBrowserAnnotation: (comment: string, intent: BrowserAnnotationIntent) => void
   handleCancelPendingBrowserAnnotation: () => void
@@ -203,8 +208,6 @@ export function useBrowserPageGrabAnnotations({
 
   const startGrabIntent = useCallback(
     (nextIntent: GrabIntent): void => {
-      if (nextIntent === 'annotate') {
-      }
       setGrabIntent(nextIntent)
       if (nextIntent === 'copy') {
         setPendingAnnotationPayload(null)
@@ -261,7 +264,10 @@ export function useBrowserPageGrabAnnotations({
   }, [grab, showGrabToast])
 
   const handleGrabSendToAgent = useCallback(
-    async (payload: BrowserGrabPayload): Promise<boolean> => {
+    async (
+      payload: BrowserGrabPayload,
+      options?: { isReviewOpen?: () => boolean }
+    ): Promise<boolean> => {
       const send = sendToAgentRef.current
       if (!send || grabSendInFlightRef.current) {
         return false
@@ -281,7 +287,10 @@ export function useBrowserPageGrabAnnotations({
           // A destroyed guest still allows a text-only send.
         }
         await send(buildGrabAgentPayload({ ...payload, screenshot }))
-        grabRef.current.exit()
+        // A review closed while the send was on its way must not tear down a picker the user resumed.
+        if (options?.isReviewOpen?.() ?? true) {
+          grabRef.current.exit()
+        }
         return true
       } catch (error) {
         if (!isSendToAgentCanceled(error)) {

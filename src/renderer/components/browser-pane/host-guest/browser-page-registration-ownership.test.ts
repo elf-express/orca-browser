@@ -37,6 +37,7 @@ type RegistrationTestPage = {
   webview: Electron.WebviewTag
   webviewRef: { current: Electron.WebviewTag | null }
   session: BrowserPageWebviewGuestSession
+  sync: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
   pending: { current: boolean }
   paintable: { current: boolean }
@@ -67,6 +68,7 @@ function createSession(
   const ref = <T>(current: T) => ({ current })
   const webviewRef = previous?.webviewRef ?? ref<Electron.WebviewTag | null>(webview)
   webviewRef.current = webview
+  const sync = vi.fn()
   const update = vi.fn()
   const pending = ref(false)
   const paintable = ref(true)
@@ -90,13 +92,15 @@ function createSession(
     setGuestRecoveryGeneration: vi.fn(),
     setBrowserZoomPercent: vi.fn(),
     focusAddressBarNow: () => false,
-    syncNavigationState: vi.fn()
+    syncNavigationState: vi.fn(),
+    syncBrowserAnnotationViewportBridge: sync
   })
   const result = {
     id,
     webview,
     webviewRef,
     session,
+    sync,
     update,
     pending,
     paintable,
@@ -158,6 +162,7 @@ describe('renderer registration completion ownership', () => {
     await flush()
     expect(webviewRegistry.size).toBe(0)
     expect(registeredWebContentsIds.size).toBe(0)
+    expect(sessions.reduce((count, page) => count + page.sync.mock.calls.length, 0)).toBe(0)
     expect(unregister).toHaveBeenCalledTimes(1000)
   })
 
@@ -173,6 +178,8 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.get('page')).toBe(2)
+    expect(old.sync).not.toHaveBeenCalled()
+    expect(replacement.sync).toHaveBeenCalledOnce()
     expect(unregister).toHaveBeenCalledOnce()
   })
 
@@ -186,6 +193,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.get('page')).toBe(2)
+    expect(page.sync).toHaveBeenCalledOnce()
     expect(unregister).not.toHaveBeenCalled()
   })
 
@@ -204,6 +212,7 @@ describe('renderer registration completion ownership', () => {
     replies[1].resolve(true)
     await flush()
     expect(registeredWebContentsIds.get('page')).toBe(1)
+    expect(old.sync).not.toHaveBeenCalled()
     expect(unregister).not.toHaveBeenCalled()
   })
 
@@ -216,6 +225,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.has('page')).toBe(false)
+    expect(old.sync).not.toHaveBeenCalled()
     expect(replacement.pending.current).toBe(true)
   })
 
@@ -229,6 +239,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.get('page')).toBe(1)
+    expect(page.sync).toHaveBeenCalledOnce()
     expect(unregister).not.toHaveBeenCalled()
   })
 
@@ -244,6 +255,7 @@ describe('renderer registration completion ownership', () => {
       }
       await flush()
       expect(registeredWebContentsIds.has('page')).toBe(false)
+      expect(page.sync).toHaveBeenCalledOnce()
       expect(unregister).not.toHaveBeenCalled()
     }
   )
@@ -255,6 +267,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.has('page')).toBe(false)
+    expect(page.sync).not.toHaveBeenCalled()
   })
 
   it('does not restore metadata when the current listener ref has moved', async () => {
@@ -264,6 +277,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.has('page')).toBe(false)
+    expect(page.sync).not.toHaveBeenCalled()
     expect(webviewRegistry.get('page')).toBe(page.webview)
     expect(unregister).not.toHaveBeenCalled()
   })
@@ -275,6 +289,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.get('page')).toBe(1)
+    expect(page.sync).toHaveBeenCalledOnce()
     expect(unregister).not.toHaveBeenCalled()
   })
 
@@ -287,6 +302,7 @@ describe('renderer registration completion ownership', () => {
     replies[0].resolve(true)
     await flush()
     expect(registeredWebContentsIds.has('page')).toBe(false)
+    expect(page.sync).not.toHaveBeenCalled()
   })
 
   it('does not issue repair after a pending validation outlives its owner', async () => {

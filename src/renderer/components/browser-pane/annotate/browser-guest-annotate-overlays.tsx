@@ -1,4 +1,4 @@
-import { useState, type MutableRefObject, type RefObject } from 'react'
+import { useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import { Copy, Image, MessageSquarePlus } from 'lucide-react'
 import {
   DropdownMenu,
@@ -62,7 +62,13 @@ export function BrowserGuestAnnotateOverlays({
     dismissGrabToast,
     setGrabToast
   } = grabAnnotations
-  const [grabReviewPayload, setGrabReviewPayload] = useState<BrowserGrabPayload | null>(null)
+  const [grabReviewPayload, setGrabReviewPayloadState] = useState<BrowserGrabPayload | null>(null)
+  const [grabReviewSending, setGrabReviewSending] = useState(false)
+  const grabReviewOpenRef = useRef(false)
+  const setGrabReviewPayload = (next: BrowserGrabPayload | null): void => {
+    grabReviewOpenRef.current = next !== null
+    setGrabReviewPayloadState(next)
+  }
   const {
     browserAnnotations,
     browserAnnotationTrayOpen,
@@ -221,13 +227,22 @@ export function BrowserGuestAnnotateOverlays({
               : null
           }
           onAttach={() => {
-            void handleGrabSendToAgent(grabReviewPayload).then((sent) => {
-              if (sent) {
-                setGrabReviewPayload(null)
-              }
+            if (grabReviewSending) {
+              return
+            }
+            setGrabReviewSending(true)
+            void handleGrabSendToAgent(grabReviewPayload, {
+              isReviewOpen: () => grabReviewOpenRef.current
             })
+              .then((sent) => {
+                if (sent) {
+                  setGrabReviewPayload(null)
+                }
+              })
+              .finally(() => setGrabReviewSending(false))
           }}
           onCancel={closeGrabReview}
+          busy={grabReviewSending}
         />
       ) : null}
     </>

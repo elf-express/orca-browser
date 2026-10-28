@@ -302,4 +302,44 @@ describe('sending a grab to the agent', () => {
     const { view } = mountSend(vi.fn())
     expect(view.result.current.handleGrabSendToAgent).toBeNull()
   })
+
+  it('ignores a second send while the first is still on its way', async () => {
+    let finish!: () => void
+    const send = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)))
+    onSendToAgent = send
+    const { grab, view } = mountSend(vi.fn().mockResolvedValue({ ok: false, reason: 'fixture' }))
+    let first!: Promise<boolean>
+    let second: boolean | undefined
+    await act(async () => {
+      first = view.result.current.handleGrabSendToAgent!(grabPayload())
+      second = await view.result.current.handleGrabSendToAgent!(grabPayload())
+    })
+    expect(second).toBe(false)
+    await act(async () => {
+      finish()
+      await first
+    })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(grab.exit).toHaveBeenCalledOnce()
+  })
+
+  it('does not exit the picker when the review was closed before the send resolved', async () => {
+    let finish!: () => void
+    onSendToAgent = () => new Promise<void>((resolve) => (finish = resolve))
+    const { grab, view } = mountSend(vi.fn().mockResolvedValue({ ok: false, reason: 'fixture' }))
+    let pending!: Promise<boolean>
+    await act(async () => {
+      pending = view.result.current.handleGrabSendToAgent!(grabPayload(), {
+        isReviewOpen: () => false
+      })
+      await Promise.resolve()
+    })
+    let sent: boolean | undefined
+    await act(async () => {
+      finish()
+      sent = await pending
+    })
+    expect(sent).toBe(true)
+    expect(grab.exit).not.toHaveBeenCalled()
+  })
 })

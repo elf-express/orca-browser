@@ -19,6 +19,7 @@ function createHandlers(
     recoveryNavigationValidationRef: { current: null },
     activeLoadFailureRef: { current: null },
     lastKnownWebviewUrlRef: { current: null },
+    invalidateBrowserAnnotationDocumentRef: { current: () => {} },
     addressBarInputRef: { current: null },
     onSetUrlRef: { current: () => {} },
     onUpdatePageStateRef: { current: () => {} },
@@ -27,7 +28,9 @@ function createHandlers(
         useBrowserStore.getState().addBrowserHistoryEntry(url, title, faviconUrl)
     },
     faviconUrlRef: { current: null },
-    setAddressBarValue: () => {}
+    setAddressBarValue: () => {},
+    annotationViewportBridgeTokenRef: { current: 'token' },
+    setBrowserOverlayViewport: () => {}
   })
 }
 
