@@ -22,6 +22,10 @@
     "./preload": {
       "types": "./dist/preload/index.d.cts",
       "require": "./dist/preload/index.cjs"
+    },
+    "./renderer": {
+      "types": "./dist/renderer/index.d.ts",
+      "import": "./dist/renderer/index.js"
     }
   },
   "scripts": {

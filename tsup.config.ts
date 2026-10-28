@@ -29,5 +29,16 @@ export default defineConfig([
     target: 'node22',
     clean: false,
     sourcemap: false
+  },
+  {
+    entry: { 'renderer/index': 'src/renderer/index.ts' },
+    format: ['esm'],
+    external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'zustand'],
+    dts: true,
+    outDir: 'dist',
+    target: 'es2022',
+    platform: 'browser',
+    clean: false,
+    sourcemap: false
   }
 ])
