@@ -15,7 +15,13 @@ import { useBrowserPageChromeFocus } from './use-browser-page-chrome-focus'
 import { useWebviewGuestFocus } from './browser-page-guest-focus'
 import type { BrowserPage as BrowserPageState } from '../../../../shared/browser-workspace-types'
 import { getBrowserPageZoomIndicatorState } from '../host-guest/browser-page-zoom'
-import { ensureBrowserPageViewport } from '../host-guest/browser-page-viewport'
+import {
+  ensureBrowserPageViewport,
+  scrollBrowserPageViewport,
+  setBrowserPageViewportPresetSize
+} from '../host-guest/browser-page-viewport'
+import { getBrowserViewportPreset } from '../../../../shared/browser-viewport-presets'
+import { useBrowserPageViewportScrollReporting } from '../host-guest/use-browser-page-viewport-scroll-reporting'
 import { isBrowserPagePanePaintable } from '../host-guest/browser-page-paintability'
 import { useBrowserPageSlotViewport } from '../host-guest/use-browser-page-slot-viewport'
 import { useBrowserPageWebviewLifecycle } from '../host-guest/use-browser-page-webview-lifecycle'
@@ -60,6 +66,31 @@ export function BrowserPagePane({
   const slotViewport = useBrowserPageSlotViewport(workspaceId)
   // Creating the viewport during render makes it exist before the lifecycle effect attaches the guest.
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId)
+  const pageViewportScroller = pageViewport?.scroller ?? null
+  useLayoutEffect(() => {
+    const preset = getBrowserViewportPreset(browserTab.viewportPresetId ?? null)
+    setBrowserPageViewportPresetSize(
+      browserTab.id,
+      preset ? { width: preset.width, height: preset.height } : null
+    )
+  }, [browserTab.id, browserTab.viewportPresetId])
+  useBrowserPageViewportScrollReporting(
+    browserTab.id,
+    pageViewportScroller,
+    browserTab.viewportPresetId ?? null
+  )
+  useEffect(() => {
+    const subscribe = window.browserAPI?.onScrollPage
+    if (!subscribe || !pageViewportScroller || !browserTab.viewportPresetId) {
+      return
+    }
+    return subscribe((event) => {
+      if (event.browserPageId !== browserTab.id) {
+        return
+      }
+      scrollBrowserPageViewport(browserTab.id, event.deltaX, event.deltaY)
+    })
+  }, [browserTab.id, browserTab.viewportPresetId, pageViewportScroller])
 
   const chromeHeaderRef = useRef<HTMLDivElement | null>(null)
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
@@ -171,6 +202,7 @@ export function BrowserPagePane({
     focusAddressBarNow,
     focusWebviewNow,
     paneZoomLevelRef: zoom.paneZoomLevelRef,
+    viewportPresetId: browserTab.viewportPresetId ?? null,
     setBrowserZoomPercent: zoom.setBrowserZoomPercent,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,

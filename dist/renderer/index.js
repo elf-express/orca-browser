@@ -476,6 +476,26 @@ function setBrowserPageViewportPresetSize(browserPageId, size) {
 function clearBrowserPageViewportPresetSize(browserPageId) {
   setBrowserPageViewportPresetSize(browserPageId, null);
 }
+function scrollBrowserPageViewport(browserPageId, deltaX, deltaY) {
+  const scroller = browserPageViewports.get(browserPageId)?.scroller;
+  if (!scroller) {
+    return;
+  }
+  scroller.scrollLeft += deltaX;
+  scroller.scrollTop += deltaY;
+}
+function getBrowserPageViewportScrollState(browserPageId) {
+  const scroller = browserPageViewports.get(browserPageId)?.scroller;
+  if (!scroller) {
+    return null;
+  }
+  return {
+    scrollLeft: Math.max(0, scroller.scrollLeft),
+    scrollTop: Math.max(0, scroller.scrollTop),
+    maxScrollLeft: Math.max(0, scroller.scrollWidth - scroller.clientWidth),
+    maxScrollTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+  };
+}
 function removeBrowserPageViewport(browserPageId) {
   const viewport = browserPageViewports.get(browserPageId);
   if (viewport) {
@@ -1087,7 +1107,7 @@ function BrowserPane(props) {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { useEffect as useEffect19 } from "react";
+import { useEffect as useEffect20 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
 import { memo, useCallback as useCallback14, useMemo as useMemo7 } from "react";
@@ -1218,7 +1238,7 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback13, useEffect as useEffect17, useLayoutEffect as useLayoutEffect6, useRef as useRef13, useState as useState15 } from "react";
+import { useCallback as useCallback13, useEffect as useEffect18, useLayoutEffect as useLayoutEffect6, useRef as useRef13, useState as useState15 } from "react";
 import { createPortal as createPortal2 } from "react-dom";
 
 // src/renderer/store/browser-session-store.ts
@@ -6280,6 +6300,48 @@ function useWebviewGuestFocus(webviewRef) {
   );
 }
 
+// src/renderer/components/browser-pane/host-guest/use-browser-page-viewport-scroll-reporting.ts
+import { useEffect as useEffect11 } from "react";
+function useBrowserPageViewportScrollReporting(browserPageId, scroller, viewportPresetId) {
+  useEffect11(() => {
+    let reportFrame = null;
+    const send = () => {
+      reportFrame = null;
+      const state = getBrowserPageViewportScrollState(browserPageId);
+      if (state) {
+        window.browserAPI?.reportViewportScrollState?.({ browserPageId, state });
+      }
+    };
+    const report = () => {
+      if (typeof requestAnimationFrame === "undefined") {
+        send();
+        return;
+      }
+      if (reportFrame === null) {
+        reportFrame = requestAnimationFrame(send);
+      }
+    };
+    report();
+    if (!scroller) {
+      return () => {
+        if (reportFrame !== null && typeof cancelAnimationFrame !== "undefined") {
+          cancelAnimationFrame(reportFrame);
+        }
+      };
+    }
+    scroller.addEventListener("scroll", report, { passive: true });
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(report);
+    resizeObserver?.observe(scroller);
+    return () => {
+      scroller.removeEventListener("scroll", report);
+      resizeObserver?.disconnect();
+      if (reportFrame !== null && typeof cancelAnimationFrame !== "undefined") {
+        cancelAnimationFrame(reportFrame);
+      }
+    };
+  }, [browserPageId, scroller, viewportPresetId]);
+}
+
 // src/renderer/components/browser-pane/host-guest/browser-page-paintability.ts
 function isBrowserPagePanePaintable({ isActive }) {
   return isActive;
@@ -6299,7 +6361,7 @@ function useBrowserPageSlotViewport(workspaceId) {
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
 import {
   useCallback as useCallback9,
-  useEffect as useEffect11,
+  useEffect as useEffect12,
   useLayoutEffect as useLayoutEffect4,
   useRef as useRef9,
   useState as useState10
@@ -6415,6 +6477,7 @@ function createBrowserPageWebviewGuestSession({
   recoveryNavigationValidationRef,
   keepAddressBarFocusRef,
   paneZoomLevelRef,
+  viewportPresetIdRef,
   onUpdatePageStateRef,
   setGuestRecoveryGeneration,
   setBrowserZoomPercent,
@@ -6574,6 +6637,11 @@ function createBrowserPageWebviewGuestSession({
     if (appliedLevel !== null) {
       setBrowserZoomPercent(browserPageZoomLevelToPercent(appliedLevel));
     }
+    const preset = getBrowserViewportPreset(viewportPresetIdRef.current);
+    void window.browserAPI.setViewportOverride({
+      browserPageId: browserTabId,
+      override: preset ? browserViewportPresetToOverride(preset) : null
+    });
   };
   const handleGuestDestroyed = () => {
     if (webview.isConnected) {
@@ -6857,6 +6925,7 @@ function bindBrowserPageWebviewListeners({
     recoveryNavigationValidationRef,
     keepAddressBarFocusRef,
     paneZoomLevelRef,
+    viewportPresetIdRef,
     onUpdatePageStateRef,
     setGuestRecoveryGeneration,
     setBrowserZoomPercent,
@@ -6888,6 +6957,7 @@ function bindBrowserPageWebviewListeners({
     recoveryNavigationValidationRef,
     keepAddressBarFocusRef,
     paneZoomLevelRef,
+    viewportPresetIdRef,
     onUpdatePageStateRef,
     setGuestRecoveryGeneration,
     setBrowserZoomPercent,
@@ -7097,6 +7167,7 @@ function useBrowserPageWebviewLifecycle({
   focusAddressBarNow,
   focusWebviewNow,
   paneZoomLevelRef,
+  viewportPresetId,
   setBrowserZoomPercent,
   inputLocked,
   faviconUrl,
@@ -7118,30 +7189,32 @@ function useBrowserPageWebviewLifecycle({
   const inputLockedRef = useRef9(inputLocked);
   const faviconUrlRef = useRef9(faviconUrl);
   const initialBrowserUrlRef = useRef9(browserTabUrl);
+  const viewportPresetIdRef = useRef9(viewportPresetId);
   const addBrowserHistoryEntry = useBrowserStore((s) => s.addBrowserHistoryEntry);
   const addBrowserHistoryEntryRef = useRef9(addBrowserHistoryEntry);
   const isPaintableRef = useRef9(isPaintable);
   useLayoutEffect4(() => {
     browserTabLoadingRef.current = browserTabLoading;
     inputLockedRef.current = inputLocked;
+    viewportPresetIdRef.current = viewportPresetId;
     isPaintableRef.current = isPaintable;
-  }, [browserTabLoading, inputLocked, isPaintable]);
+  }, [browserTabLoading, inputLocked, isPaintable, viewportPresetId]);
   useLayoutEffect4(() => {
     const webview = webviewRef.current;
     if (webview) {
       setBrowserPageWebviewInputLock(webview, inputLocked);
     }
   }, [inputLocked, webviewRef]);
-  useEffect11(() => {
+  useEffect12(() => {
     initialBrowserUrlRef.current = browserTabUrl;
   }, [browserTabId, browserTabUrl]);
-  useEffect11(() => {
+  useEffect12(() => {
     browserTabUrlRef.current = browserTabUrl;
   }, [browserTabUrl, browserTabUrlRef]);
-  useEffect11(() => {
+  useEffect12(() => {
     activeLoadFailureRef.current = browserTabLoadError;
   }, [activeLoadFailureRef, browserTabLoadError]);
-  useEffect11(() => {
+  useEffect12(() => {
     onUpdatePageStateRef.current = onUpdatePageState;
     onSetUrlRef.current = onSetUrl;
     addBrowserHistoryEntryRef.current = addBrowserHistoryEntry;
@@ -7164,7 +7237,7 @@ function useBrowserPageWebviewLifecycle({
     },
     [browserTabId, browserTabUrlRef, onUpdatePageStateRef]
   );
-  useEffect11(() => {
+  useEffect12(() => {
     return attachBrowserPageWebview({
       browserTabId,
       browserTabUrl,
@@ -7187,6 +7260,7 @@ function useBrowserPageWebviewLifecycle({
       recoveryNavigationValidationRef,
       keepAddressBarFocusRef,
       paneZoomLevelRef,
+      viewportPresetIdRef,
       onUpdatePageStateRef,
       setGuestRecoveryGeneration,
       setBrowserZoomPercent,
@@ -7215,7 +7289,7 @@ function useBrowserPageWebviewLifecycle({
     focusWebviewNow,
     syncNavigationState
   ]);
-  useEffect11(() => {
+  useEffect12(() => {
     const becamePaintable = isPaintable && !wasPaintableForGuestValidationRef.current;
     wasPaintableForGuestValidationRef.current = isPaintable;
     if (becamePaintable) {
@@ -7233,7 +7307,7 @@ function useBrowserPageWebviewPartition(args) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-zoom-feedback.ts
-import { useCallback as useCallback10, useEffect as useEffect12, useRef as useRef10, useState as useState11 } from "react";
+import { useCallback as useCallback10, useEffect as useEffect13, useRef as useRef10, useState as useState11 } from "react";
 var BROWSER_PAGE_ZOOM_FEEDBACK_MS = 1400;
 var noopSetDefaultZoomLevel = () => {
 };
@@ -7248,7 +7322,7 @@ function useBrowserPageZoomFeedback(browserTabId) {
   );
   const [browserZoomFeedbackVisible, setBrowserZoomFeedbackVisible] = useState11(false);
   const browserZoomFeedbackTimerRef = useRef10(void 0);
-  useEffect12(() => {
+  useEffect13(() => {
     return () => {
       clearTimeout(browserZoomFeedbackTimerRef.current);
     };
@@ -7273,7 +7347,7 @@ function useBrowserPageZoomFeedback(browserTabId) {
 }
 
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
-import { useEffect as useEffect13, useState as useState12 } from "react";
+import { useEffect as useEffect14, useState as useState12 } from "react";
 
 // src/renderer/components/browser-pane/navigate/browser-notices.ts
 function humanizePermission(permission) {
@@ -7357,14 +7431,14 @@ function formatLoadFailureRecoveryHint(meta, loadError) {
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
 function useBrowserPageResourceNotices(browserTabId) {
   const [resourceNotice, setResourceNotice] = useState12(null);
-  useEffect13(() => {
+  useEffect14(() => {
     if (!resourceNotice) {
       return;
     }
     const timer = setTimeout(() => setResourceNotice(null), 1e4);
     return () => clearTimeout(timer);
   }, [resourceNotice]);
-  useEffect13(() => {
+  useEffect14(() => {
     return window.browserAPI.onPermissionDenied((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -7372,7 +7446,7 @@ function useBrowserPageResourceNotices(browserTabId) {
       setResourceNotice(formatPermissionNotice(event));
     });
   }, [browserTabId]);
-  useEffect13(() => {
+  useEffect14(() => {
     return window.browserAPI.onPopup((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -7389,7 +7463,7 @@ function useBrowserPageResourceNotices(browserTabId) {
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
 import {
   useCallback as useCallback11,
-  useEffect as useEffect14,
+  useEffect as useEffect15,
   useLayoutEffect as useLayoutEffect5,
   useRef as useRef11,
   useState as useState13
@@ -7408,7 +7482,7 @@ function BrowserPageContextMenu({
   const createBrowserPage = useBrowserStore((s) => s.createBrowserPage);
   const [contextMenu, setContextMenu] = useState13(null);
   const contextMenuRef = useRef11(null);
-  useEffect14(() => {
+  useEffect15(() => {
     return window.browserAPI.onContextMenuRequested((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -7424,7 +7498,7 @@ function BrowserPageContextMenu({
       });
     });
   }, [browserPageId]);
-  useEffect14(() => {
+  useEffect15(() => {
     return window.browserAPI.onContextMenuDismissed((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -7446,7 +7520,7 @@ function BrowserPageContextMenu({
     }
     return [...el.querySelectorAll('[role="menuitem"]:not(:disabled)')];
   }, []);
-  useEffect14(() => {
+  useEffect15(() => {
     if (!contextMenu) {
       return;
     }
@@ -7459,7 +7533,7 @@ function BrowserPageContextMenu({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [closeMenu, contextMenu]);
-  useEffect14(() => {
+  useEffect15(() => {
     if (!contextMenu) {
       return;
     }
@@ -7789,7 +7863,7 @@ function BrowserPageZoomIndicator({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { useCallback as useCallback12, useEffect as useEffect15, useRef as useRef12, useState as useState14 } from "react";
+import { useCallback as useCallback12, useEffect as useEffect16, useRef as useRef12, useState as useState14 } from "react";
 import { ChevronUp, ChevronDown, X as X2 } from "lucide-react";
 
 // src/renderer/lib/find-query-bounds.ts
@@ -7853,7 +7927,7 @@ function BrowserFind({
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  useEffect15(() => {
+  useEffect16(() => {
     if (isOpen) {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -7861,7 +7935,7 @@ function BrowserFind({
       safeStopFindInPage();
     }
   }, [isOpen, safeStopFindInPage]);
-  useEffect15(() => {
+  useEffect16(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
     if (!isOpen) {
@@ -7887,7 +7961,7 @@ function BrowserFind({
     const id = window.setTimeout(runFind, 200);
     return () => window.clearTimeout(id);
   }, [isOpen, requestQuery, safeFindInPage, safeStopFindInPage]);
-  useEffect15(() => {
+  useEffect16(() => {
     const webview = webviewRef.current;
     if (!webview || !isOpen) {
       return;
@@ -8047,7 +8121,7 @@ function BrowserPageViewportOverlays({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
-import { useEffect as useEffect16 } from "react";
+import { useEffect as useEffect17 } from "react";
 function useBrowserPageFindShortcuts({
   browserTabId,
   workspaceId,
@@ -8055,7 +8129,7 @@ function useBrowserPageFindShortcuts({
   chromeShortcutScope,
   setFindOpen
 }) {
-  useEffect16(() => {
+  useEffect17(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -8073,7 +8147,7 @@ function useBrowserPageFindShortcuts({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, setFindOpen, workspaceId]);
-  useEffect16(() => {
+  useEffect17(() => {
     if (!isActive) {
       return;
     }
@@ -8084,7 +8158,7 @@ function useBrowserPageFindShortcuts({
       }
     );
   }, [browserTabId, isActive, setFindOpen, workspaceId]);
-  useEffect16(() => {
+  useEffect17(() => {
     if (!isActive) {
       setFindOpen(false);
     }
@@ -8108,6 +8182,31 @@ function BrowserPagePane({
   const isPaintable = isBrowserPagePanePaintable({ isActive });
   const slotViewport = useBrowserPageSlotViewport(workspaceId);
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
+  const pageViewportScroller = pageViewport?.scroller ?? null;
+  useLayoutEffect6(() => {
+    const preset = getBrowserViewportPreset(browserTab.viewportPresetId ?? null);
+    setBrowserPageViewportPresetSize(
+      browserTab.id,
+      preset ? { width: preset.width, height: preset.height } : null
+    );
+  }, [browserTab.id, browserTab.viewportPresetId]);
+  useBrowserPageViewportScrollReporting(
+    browserTab.id,
+    pageViewportScroller,
+    browserTab.viewportPresetId ?? null
+  );
+  useEffect18(() => {
+    const subscribe = window.browserAPI?.onScrollPage;
+    if (!subscribe || !pageViewportScroller || !browserTab.viewportPresetId) {
+      return;
+    }
+    return subscribe((event) => {
+      if (event.browserPageId !== browserTab.id) {
+        return;
+      }
+      scrollBrowserPageViewport(browserTab.id, event.deltaX, event.deltaY);
+    });
+  }, [browserTab.id, browserTab.viewportPresetId, pageViewportScroller]);
   const chromeHeaderRef = useRef13(null);
   const webviewRef = useRef13(null);
   const addressBarInputRef = useRef13(null);
@@ -8136,13 +8235,13 @@ function BrowserPagePane({
   const zoom = useBrowserPageZoomFeedback(browserTab.id);
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
   const [addressBarValue, setAddressBarValue] = useState15(() => toDisplayUrl(browserTab.url));
-  useEffect17(() => {
+  useEffect18(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
     }
     setAddressBarValue(toDisplayUrl(browserTab.url));
   }, [browserTab.url]);
-  useEffect17(() => {
+  useEffect18(() => {
     addressBarValueRef.current = addressBarValue;
   }, [addressBarValue]);
   const guestFocus = useWebviewGuestFocus(webviewRef);
@@ -8213,6 +8312,7 @@ function BrowserPagePane({
     focusAddressBarNow,
     focusWebviewNow,
     paneZoomLevelRef: zoom.paneZoomLevelRef,
+    viewportPresetId: browserTab.viewportPresetId ?? null,
     setBrowserZoomPercent: zoom.setBrowserZoomPercent,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,
@@ -8279,14 +8379,14 @@ function BrowserPagePane({
     feedbackVisible: zoom.browserZoomFeedbackVisible,
     isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
   });
-  useEffect17(() => {
+  useEffect18(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.pointerEvents = inputLocked ? "none" : "auto";
   }, [inputLocked]);
-  useEffect17(() => {
+  useEffect18(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
@@ -8480,9 +8580,9 @@ var BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer2() {
 });
 
 // src/renderer/ipc/browser-state-ipc-bridge.ts
-import { useEffect as useEffect18 } from "react";
+import { useEffect as useEffect19 } from "react";
 function useBrowserStateIpcBridge() {
-  useEffect18(() => {
+  useEffect19(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -8495,7 +8595,7 @@ function useBrowserStateIpcBridge() {
       useBrowserStore.getState().createBrowserPage(scopeId, url, { activate: activate ?? true });
     });
   }, []);
-  useEffect18(() => {
+  useEffect19(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -8509,7 +8609,7 @@ function useBrowserStateIpcBridge() {
       });
     });
   }, []);
-  useEffect18(() => {
+  useEffect19(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -8540,13 +8640,13 @@ import { jsx as jsx41, jsxs as jsxs34 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
-  useEffect19(() => {
+  useEffect20(() => {
     setBrowserRendererHost(host);
     return () => clearBrowserRendererHost(host);
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  useEffect19(() => {
+  useEffect20(() => {
     if (!hasBrowserApi) {
       return;
     }

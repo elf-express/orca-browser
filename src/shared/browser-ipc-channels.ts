@@ -23,6 +23,7 @@ export const BROWSER_EVENT_CHANNELS = [
   'browser:findInPage',
   'browser:historyNavigate',
   'browser:zoomPage',
+  'browser:scrollPage',
   'browser:systemResumed'
 ] as const
 
@@ -40,3 +41,6 @@ export const BROWSER_PROFILE_INVOKE_CHANNELS = [
   'browser:settings:get',
   'browser:settings:set'
 ] as const
+
+// Fire-and-forget renderer-to-main messages (ipcRenderer.send), not invoke handlers.
+export const BROWSER_SEND_CHANNELS = ['browser:reportViewportScrollState'] as const

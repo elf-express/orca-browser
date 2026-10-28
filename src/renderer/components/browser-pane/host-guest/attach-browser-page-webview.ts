@@ -3,7 +3,10 @@ import {
   normalizeBrowserNavigationUrl,
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
-import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
+import type {
+  BrowserLoadError,
+  BrowserViewportPresetId
+} from '../../../../shared/browser-workspace-types'
 import { ensureBrowserPageWebview } from './browser-page-webview'
 import { applyBrowserPageViewportLayout, ensureBrowserPageViewport } from './browser-page-viewport'
 import { seedLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
@@ -36,6 +39,7 @@ export type AttachBrowserPageWebviewArgs = {
   recoveryNavigationValidationRef: MutableRefObject<BrowserPageRecoveryNavigationValidation | null>
   keepAddressBarFocusRef: MutableRefObject<boolean>
   paneZoomLevelRef: MutableRefObject<number>
+  viewportPresetIdRef: MutableRefObject<BrowserViewportPresetId | null>
   onUpdatePageStateRef: MutableRefObject<(tabId: string, updates: BrowserTabPageState) => void>
   setGuestRecoveryGeneration: Dispatch<SetStateAction<number>>
   setBrowserZoomPercent: Dispatch<SetStateAction<number>>

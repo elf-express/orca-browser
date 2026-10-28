@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
+  send: vi.fn(),
   on: vi.fn(),
   removeListener: vi.fn()
 }))
 
 vi.mock('electron', () => ({
-  ipcRenderer: { invoke: mocks.invoke, on: mocks.on, removeListener: mocks.removeListener }
+  ipcRenderer: {
+    invoke: mocks.invoke,
+    send: mocks.send,
+    on: mocks.on,
+    removeListener: mocks.removeListener
+  }
 }))
 
 import { createBrowserApi } from './browser-api'
@@ -33,6 +39,8 @@ const API_METHODS = [
   'onFindInPage',
   'onHistoryNavigate',
   'onZoomPage',
+  'onScrollPage',
+  'reportViewportScrollState',
   'onSystemResumed',
   'session',
   'identity',
@@ -48,6 +56,16 @@ beforeEach(() => {
 describe('createBrowserApi', () => {
   it('exposes exactly the api surface', () => {
     expect(Object.keys(createBrowserApi()).sort()).toEqual(['apiVersion', ...API_METHODS].sort())
+  })
+
+  it('sends viewport scroll state to main without waiting for a reply', () => {
+    const args = {
+      browserPageId: 'p1',
+      state: { scrollLeft: 0, scrollTop: 4, maxScrollLeft: 10, maxScrollTop: 20 }
+    }
+    createBrowserApi().reportViewportScrollState(args)
+
+    expect(mocks.send).toHaveBeenCalledWith('browser:reportViewportScrollState', args)
   })
 
   it('notifies main of the active page', async () => {

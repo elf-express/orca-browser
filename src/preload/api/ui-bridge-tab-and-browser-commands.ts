@@ -42,6 +42,14 @@ export const browserUiCommandApi = {
     ipcRenderer.on('browser:zoomPage', listener)
     return () => ipcRenderer.removeListener('browser:zoomPage', listener)
   },
+  onScrollPage: (callback) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: Parameters<typeof callback>[0]
+    ): void => callback(payload)
+    ipcRenderer.on('browser:scrollPage', listener)
+    return () => ipcRenderer.removeListener('browser:scrollPage', listener)
+  },
   onSystemResumed: (callback) => {
     const listener = (): void => callback()
     ipcRenderer.on('browser:systemResumed', listener)

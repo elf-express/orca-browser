@@ -8,6 +8,8 @@ export const browserGuestRegistrationApi = {
   repairGuestRegistration: (args) => ipcRenderer.invoke('browser:repairGuestRegistration', args),
   unregisterGuest: (args) => ipcRenderer.invoke('browser:unregisterGuest', args),
   openDevTools: (args) => ipcRenderer.invoke('browser:openDevTools', args),
+  reportViewportScrollState: (args): void =>
+    ipcRenderer.send('browser:reportViewportScrollState', args),
   setViewportOverride: (args: {
     browserPageId: string
     override: BrowserViewportOverride | null

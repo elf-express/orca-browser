@@ -11,7 +11,10 @@ import {
   type SetStateAction
 } from 'react'
 import { useBrowserStore } from '../../../store/browser-store'
-import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
+import type {
+  BrowserLoadError,
+  BrowserViewportPresetId
+} from '../../../../shared/browser-workspace-types'
 import { getBrowserDisplayTitle } from '../describe-page/browser-page-url-display'
 import { attachBrowserPageWebview } from './attach-browser-page-webview'
 import { setBrowserPageWebviewInputLock } from './browser-page-webview'
@@ -47,6 +50,7 @@ export function useBrowserPageWebviewLifecycle({
   focusAddressBarNow,
   focusWebviewNow,
   paneZoomLevelRef,
+  viewportPresetId,
   setBrowserZoomPercent,
   inputLocked,
   faviconUrl,
@@ -84,6 +88,7 @@ export function useBrowserPageWebviewLifecycle({
   focusAddressBarNow: () => boolean
   focusWebviewNow: () => boolean
   paneZoomLevelRef: MutableRefObject<number>
+  viewportPresetId: BrowserViewportPresetId | null
   setBrowserZoomPercent: Dispatch<SetStateAction<number>>
   inputLocked: boolean
   faviconUrl: string | null
@@ -104,6 +109,8 @@ export function useBrowserPageWebviewLifecycle({
   const inputLockedRef = useRef(inputLocked)
   const faviconUrlRef = useRef<string | null>(faviconUrl)
   const initialBrowserUrlRef = useRef(browserTabUrl)
+  // Why: CDP viewport emulation doesn't survive renderer process swaps, so reapply the preset from this ref on every dom-ready.
+  const viewportPresetIdRef = useRef(viewportPresetId)
   const addBrowserHistoryEntry = useBrowserStore((s) => s.addBrowserHistoryEntry)
   const addBrowserHistoryEntryRef = useRef(addBrowserHistoryEntry)
   const isPaintableRef = useRef(isPaintable)
@@ -111,8 +118,9 @@ export function useBrowserPageWebviewLifecycle({
   useLayoutEffect(() => {
     browserTabLoadingRef.current = browserTabLoading
     inputLockedRef.current = inputLocked
+    viewportPresetIdRef.current = viewportPresetId
     isPaintableRef.current = isPaintable
-  }, [browserTabLoading, inputLocked, isPaintable])
+  }, [browserTabLoading, inputLocked, isPaintable, viewportPresetId])
 
   useLayoutEffect(() => {
     const webview = webviewRef.current
@@ -185,6 +193,7 @@ export function useBrowserPageWebviewLifecycle({
       recoveryNavigationValidationRef,
       keepAddressBarFocusRef,
       paneZoomLevelRef,
+      viewportPresetIdRef,
       onUpdatePageStateRef,
       setGuestRecoveryGeneration,
       setBrowserZoomPercent,

@@ -1,6 +1,13 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { redactKagiSessionToken } from '../../../../shared/browser-url'
-import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
+import type {
+  BrowserLoadError,
+  BrowserViewportPresetId
+} from '../../../../shared/browser-workspace-types'
+import {
+  browserViewportPresetToOverride,
+  getBrowserViewportPreset
+} from '../../../../shared/browser-viewport-presets'
 import { translate } from '../../../i18n'
 import {
   BROWSER_GUEST_RECOVERY_ERROR_CODE,
@@ -33,6 +40,7 @@ export type BrowserPageWebviewGuestSessionArgs = {
   recoveryNavigationValidationRef: MutableRefObject<BrowserPageRecoveryNavigationValidation | null>
   keepAddressBarFocusRef: MutableRefObject<boolean>
   paneZoomLevelRef: MutableRefObject<number>
+  viewportPresetIdRef: MutableRefObject<BrowserViewportPresetId | null>
   onUpdatePageStateRef: MutableRefObject<(tabId: string, updates: BrowserTabPageState) => void>
   setGuestRecoveryGeneration: Dispatch<SetStateAction<number>>
   setBrowserZoomPercent: Dispatch<SetStateAction<number>>
@@ -61,6 +69,7 @@ export function createBrowserPageWebviewGuestSession({
   recoveryNavigationValidationRef,
   keepAddressBarFocusRef,
   paneZoomLevelRef,
+  viewportPresetIdRef,
   onUpdatePageStateRef,
   setGuestRecoveryGeneration,
   setBrowserZoomPercent,
@@ -246,6 +255,13 @@ export function createBrowserPageWebviewGuestSession({
     if (appliedLevel !== null) {
       setBrowserZoomPercent(browserPageZoomLevelToPercent(appliedLevel))
     }
+    // Why: CDP viewport overrides are scoped to the debugger session and don't survive cross-origin nav, so reapply (idempotently) on dom-ready.
+    const preset = getBrowserViewportPreset(viewportPresetIdRef.current)
+    // Why: reapply even null so CDP matches store state; setDeviceMetricsOverride persists across same-origin nav and would leave a stale viewport.
+    void window.browserAPI!.setViewportOverride({
+      browserPageId: browserTabId,
+      override: preset ? browserViewportPresetToOverride(preset) : null
+    })
   }
 
   const handleGuestDestroyed = (): void => {

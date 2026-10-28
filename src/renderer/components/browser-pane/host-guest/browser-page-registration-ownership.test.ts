@@ -85,6 +85,7 @@ function createSession(
     recoveryNavigationValidationRef: ref(null),
     keepAddressBarFocusRef: ref(false),
     paneZoomLevelRef: ref(0),
+    viewportPresetIdRef: ref(null),
     onUpdatePageStateRef: ref(update),
     setGuestRecoveryGeneration: vi.fn(),
     setBrowserZoomPercent: vi.fn(),
@@ -123,7 +124,8 @@ beforeEach(() => {
       registerGuest: registrations,
       unregisterGuest: unregister,
       isGuestRegistered: isRegistered,
-      repairGuestRegistration: repair
+      repairGuestRegistration: repair,
+      setViewportOverride: vi.fn(async () => true)
     }
   })
 })

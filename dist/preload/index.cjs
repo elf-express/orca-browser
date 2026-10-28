@@ -57,6 +57,7 @@ var browserGuestRegistrationApi = {
   repairGuestRegistration: (args) => import_electron.ipcRenderer.invoke("browser:repairGuestRegistration", args),
   unregisterGuest: (args) => import_electron.ipcRenderer.invoke("browser:unregisterGuest", args),
   openDevTools: (args) => import_electron.ipcRenderer.invoke("browser:openDevTools", args),
+  reportViewportScrollState: (args) => import_electron.ipcRenderer.send("browser:reportViewportScrollState", args),
   setViewportOverride: (args) => import_electron.ipcRenderer.invoke("browser:setViewportOverride", args),
   onGuestLoadFailed: (callback) => {
     const listener = (_event, data) => callback(data);
@@ -148,6 +149,11 @@ var browserUiCommandApi = {
     const listener = (_event, command) => callback(command);
     import_electron4.ipcRenderer.on("browser:zoomPage", listener);
     return () => import_electron4.ipcRenderer.removeListener("browser:zoomPage", listener);
+  },
+  onScrollPage: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    import_electron4.ipcRenderer.on("browser:scrollPage", listener);
+    return () => import_electron4.ipcRenderer.removeListener("browser:scrollPage", listener);
   },
   onSystemResumed: (callback) => {
     const listener = () => callback();

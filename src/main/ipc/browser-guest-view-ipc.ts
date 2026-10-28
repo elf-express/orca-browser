@@ -6,6 +6,7 @@ import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 export function registerBrowserGuestViewHandlers(): () => void {
   ipcMain.removeHandler('browser:openDevTools')
   ipcMain.removeHandler('browser:setViewportOverride')
+  ipcMain.removeAllListeners?.('browser:reportViewportScrollState')
 
   ipcMain.handle('browser:openDevTools', (event, args: { browserPageId: string }) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
@@ -55,7 +56,38 @@ export function registerBrowserGuestViewHandlers(): () => void {
     }
   )
 
+  ipcMain.on?.(
+    'browser:reportViewportScrollState',
+    (
+      event,
+      args: {
+        browserPageId?: unknown
+        state?: {
+          scrollLeft?: unknown
+          scrollTop?: unknown
+          maxScrollLeft?: unknown
+          maxScrollTop?: unknown
+        }
+      }
+    ) => {
+      if (!isTrustedBrowserRenderer(event.sender) || typeof args?.browserPageId !== 'string') {
+        return
+      }
+      const state = args.state
+      if (!state) {
+        return
+      }
+      browserManager.setViewportScrollState(args.browserPageId, event.sender.id, {
+        scrollLeft: Number(state.scrollLeft),
+        scrollTop: Number(state.scrollTop),
+        maxScrollLeft: Number(state.maxScrollLeft),
+        maxScrollTop: Number(state.maxScrollTop)
+      })
+    }
+  )
+
   return () => {
+    ipcMain.removeAllListeners?.('browser:reportViewportScrollState')
     ipcMain.removeHandler('browser:openDevTools')
     ipcMain.removeHandler('browser:setViewportOverride')
   }

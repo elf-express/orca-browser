@@ -102,6 +102,12 @@ type BrowserViewportOverride = {
     deviceScaleFactor: number;
     mobile: boolean;
 };
+type BrowserViewportScrollState = {
+    scrollLeft: number;
+    scrollTop: number;
+    maxScrollLeft: number;
+    maxScrollTop: number;
+};
 type BrowserSessionProfileSource = {
     browserFamily: 'chrome' | 'chromium' | 'arc' | 'edge' | 'firefox' | 'safari' | 'comet' | 'helium' | 'manual';
     profileName?: string;
@@ -190,6 +196,10 @@ interface BrowserApi {
         browserPageId: string;
         override: BrowserViewportOverride | null;
     }): Promise<boolean>;
+    reportViewportScrollState(args: {
+        browserPageId: string;
+        state: BrowserViewportScrollState;
+    }): void;
     openExternal(args: {
         url: string;
     }): Promise<boolean>;
@@ -206,6 +216,11 @@ interface BrowserApi {
     onFindInPage(source: BrowserFindSource, callback: () => void): BrowserUnsubscribe;
     onHistoryNavigate(callback: (command: BrowserHistoryNavigateCommand) => void): BrowserUnsubscribe;
     onZoomPage(callback: (command: BrowserPageZoomCommand) => void): BrowserUnsubscribe;
+    onScrollPage(callback: (event: {
+        browserPageId: string;
+        deltaX: number;
+        deltaY: number;
+    }) => void): BrowserUnsubscribe;
     onSystemResumed(callback: () => void): BrowserUnsubscribe;
     session: {
         listProfiles(): Promise<BrowserSessionProfile[]>;

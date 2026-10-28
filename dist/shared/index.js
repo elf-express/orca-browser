@@ -42,6 +42,7 @@ var BROWSER_EVENT_CHANNELS = [
   "browser:findInPage",
   "browser:historyNavigate",
   "browser:zoomPage",
+  "browser:scrollPage",
   "browser:systemResumed"
 ];
 var BROWSER_PROFILE_INVOKE_CHANNELS = [
@@ -58,6 +59,7 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:settings:get",
   "browser:settings:set"
 ];
+var BROWSER_SEND_CHANNELS = ["browser:reportViewportScrollState"];
 
 // src/shared/browser-keybindings.ts
 var BROWSER_SHORTCUT_BINDINGS = {
@@ -648,6 +650,7 @@ export {
   BROWSER_PAGE_ZOOM_MIN,
   BROWSER_PAGE_ZOOM_STEP,
   BROWSER_PROFILE_INVOKE_CHANNELS,
+  BROWSER_SEND_CHANNELS,
   BROWSER_VIEWPORT_PRESETS,
   DEFAULT_BROWSER_PAGE_ZOOM_LEVEL,
   DEFAULT_BROWSER_PLUGIN_SETTINGS,

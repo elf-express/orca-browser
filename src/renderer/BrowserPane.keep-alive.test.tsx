@@ -24,6 +24,7 @@ function createBrowserApiStub(): BrowserApi {
     notifyActiveTabChanged: vi.fn(async () => true),
     openDevTools: vi.fn(async () => true),
     setViewportOverride: vi.fn(async () => true),
+    reportViewportScrollState: vi.fn(),
     openExternal: vi.fn(async () => true),
     writeClipboardText: vi.fn(async () => {}),
     onGuestLoadFailed: unsubscribe,
@@ -38,6 +39,7 @@ function createBrowserApiStub(): BrowserApi {
     onFindInPage: unsubscribe,
     onHistoryNavigate: unsubscribe,
     onZoomPage: unsubscribe,
+    onScrollPage: unsubscribe,
     onSystemResumed: unsubscribe,
     session: {
       listProfiles: vi.fn(async () => []),

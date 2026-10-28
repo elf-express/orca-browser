@@ -349,7 +349,14 @@ function resolveGuestMouseWheelZoomDirection(mouse, platform = process.platform)
   return deltaY < 0 ? "in" : "out";
 }
 function setupGuestMouseWheelZoomForwarding(args) {
-  const { browserTabId, guest, resolveRenderer } = args;
+  const {
+    browserTabId,
+    guest,
+    resolveRenderer,
+    isViewportPresetActive,
+    canViewportScroll,
+    onViewportWheelConsumed
+  } = args;
   const handler = (event, mouse) => {
     const direction = resolveGuestMouseWheelZoomDirection(mouse);
     if (direction) {
@@ -359,7 +366,24 @@ function setupGuestMouseWheelZoomForwarding(args) {
         browserPageId: browserTabId,
         direction
       });
+      return;
     }
+    if (!isViewportPresetActive?.() || mouse.type !== "mouseWheel" || !canViewportScroll?.(mouse)) {
+      return;
+    }
+    const { deltaX, deltaY } = mouse;
+    const safeDeltaX = typeof deltaX === "number" && Number.isFinite(deltaX) ? deltaX : 0;
+    const safeDeltaY = typeof deltaY === "number" && Number.isFinite(deltaY) ? deltaY : 0;
+    if (safeDeltaX === 0 && safeDeltaY === 0) {
+      return;
+    }
+    event.preventDefault();
+    onViewportWheelConsumed?.(safeDeltaX, safeDeltaY);
+    resolveRenderer(browserTabId)?.send("browser:scrollPage", {
+      browserPageId: browserTabId,
+      deltaX: safeDeltaX,
+      deltaY: safeDeltaY
+    });
   };
   guest.on("before-mouse-event", handler);
   return () => {
@@ -2470,6 +2494,7 @@ function isTrustedBrowserRenderer(sender) {
 function registerBrowserGuestViewHandlers() {
   import_electron10.ipcMain.removeHandler("browser:openDevTools");
   import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
+  import_electron10.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
   import_electron10.ipcMain.handle("browser:openDevTools", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
@@ -2501,7 +2526,26 @@ function registerBrowserGuestViewHandlers() {
       return browserManager.setViewportOverride(args.browserPageId, args.override);
     }
   );
+  import_electron10.ipcMain.on?.(
+    "browser:reportViewportScrollState",
+    (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender) || typeof args?.browserPageId !== "string") {
+        return;
+      }
+      const state = args.state;
+      if (!state) {
+        return;
+      }
+      browserManager.setViewportScrollState(args.browserPageId, event.sender.id, {
+        scrollLeft: Number(state.scrollLeft),
+        scrollTop: Number(state.scrollTop),
+        maxScrollLeft: Number(state.maxScrollLeft),
+        maxScrollTop: Number(state.maxScrollTop)
+      });
+    }
+  );
   return () => {
+    import_electron10.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
     import_electron10.ipcMain.removeHandler("browser:openDevTools");
     import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
   };
