@@ -19,6 +19,7 @@ function makeRepo(): string {
   git(dir, 'config', 'user.name', 'test')
   git(dir, 'config', 'user.email', 'test@example.com')
   git(dir, 'config', 'core.autocrlf', 'false')
+  git(dir, 'config', 'commit.gpgsign', 'false')
   return dir
 }
 
