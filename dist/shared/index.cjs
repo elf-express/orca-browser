@@ -20,6 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/shared/index.ts
 var shared_exports = {};
 __export(shared_exports, {
+  BROWSER_AGENT_IMAGE_NAMES: () => BROWSER_AGENT_IMAGE_NAMES,
   BROWSER_API_GLOBAL_KEY: () => BROWSER_API_GLOBAL_KEY,
   BROWSER_EVENT_CHANNELS: () => BROWSER_EVENT_CHANNELS,
   BROWSER_FAMILY_LABELS: () => BROWSER_FAMILY_LABELS,
@@ -66,12 +67,47 @@ __export(shared_exports, {
   normalizeBrowserPluginSettings: () => normalizeBrowserPluginSettings,
   normalizeExternalBrowserUrl: () => normalizeExternalBrowserUrl,
   normalizeKagiSessionLink: () => normalizeKagiSessionLink,
+  pngDataUrlToAgentImage: () => pngDataUrlToAgentImage,
   redactKagiSessionToken: () => redactKagiSessionToken,
   resolveRemoteFailureExternalUrl: () => resolveRemoteFailureExternalUrl,
+  sanitizeAgentPageUrl: () => sanitizeAgentPageUrl,
   toHttpsRecoveryUrl: () => toHttpsRecoveryUrl,
   toSecureCertificateEndpoint: () => toSecureCertificateEndpoint
 });
 module.exports = __toCommonJS(shared_exports);
+
+// src/shared/agent-payload.ts
+var BROWSER_AGENT_IMAGE_NAMES = {
+  grab: "browser-grab.png",
+  markup: "browser-markup.png"
+};
+var SAFE_AGENT_URL_PROTOCOLS = /* @__PURE__ */ new Set(["http:", "https:", "file:"]);
+var PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+function sanitizeAgentPageUrl(rawUrl) {
+  if (!rawUrl) {
+    return "";
+  }
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol === "about:") {
+      return url.toString() === "about:blank" ? "about:blank" : "";
+    }
+    if (!SAFE_AGENT_URL_PROTOCOLS.has(url.protocol)) {
+      return "";
+    }
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+function pngDataUrlToAgentImage(name, dataUrl) {
+  if (!dataUrl || !dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
+    return null;
+  }
+  return { name, mimeType: "image/png", dataBase64: dataUrl.slice(PNG_DATA_URL_PREFIX.length) };
+}
 
 // src/shared/constants.ts
 var DEFAULT_MCP_PORT = 47821;
@@ -732,6 +768,7 @@ function browserViewportPresetToOverride(preset) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  BROWSER_AGENT_IMAGE_NAMES,
   BROWSER_API_GLOBAL_KEY,
   BROWSER_EVENT_CHANNELS,
   BROWSER_FAMILY_LABELS,
@@ -778,8 +815,10 @@ function browserViewportPresetToOverride(preset) {
   normalizeBrowserPluginSettings,
   normalizeExternalBrowserUrl,
   normalizeKagiSessionLink,
+  pngDataUrlToAgentImage,
   redactKagiSessionToken,
   resolveRemoteFailureExternalUrl,
+  sanitizeAgentPageUrl,
   toHttpsRecoveryUrl,
   toSecureCertificateEndpoint
 });
