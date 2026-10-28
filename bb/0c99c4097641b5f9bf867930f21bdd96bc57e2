@@ -1,0 +1,97 @@
+src/main/process-sync.test.ts
+  s_aa47a447e01641::t_bd08b6024caa39 36-37
+  s_aa47a447e01641::t_8a4198340560c7 33-35
+  s_aa47a447e01641::t_c077e7b04e7f7b 38-40
+  s_560abed2c77ba4::t_9c690905bf77c5 1-32
+src/main/process-sync.ts
+  s_aa47a447e01641::t_716c7f9411e144 35
+  s_aa47a447e01641::t_a14b33a2026e87 32-34
+  s_aa47a447e01641::t_28dfb359a52955 36-38
+  s_560abed2c77ba4::t_2177c25da3cec8 1-31,39-41
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_80daa13db81b2e 120-142,497
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_22d0b1097d750c 120-142,497
+package.json
+  s_aa47a447e01641::t_70876ddf791421 55-56
+pnpm-lock.yaml
+  s_aa47a447e01641::t_3ebcc2801f2ac8 26-28,2223-2224,4367,4373
+src/main/browser/browser-cookie-decryption.test.ts
+  s_aa47a447e01641::t_3c7a29634efe41 1-52
+src/main/browser/browser-cookie-decryption.ts
+  s_aa47a447e01641::t_356fca42c0f28e 1-132
+src/main/browser/browser-cookie-detection-types.ts
+  s_aa47a447e01641::t_2d5b66d58032fd 1-224
+src/main/browser/browser-cookie-detection.ts
+  s_aa47a447e01641::t_4d08d3b78e3649 1-127
+src/main/browser/browser-cookie-import-clear.ts
+  s_aa47a447e01641::t_6794fe6f47329a 1-269
+src/main/browser/browser-cookie-import-diagnostics.ts
+  s_aa47a447e01641::t_fbbf43ba0422aa 1-56
+src/main/browser/browser-cookie-import-policy.test.ts
+  s_aa47a447e01641::t_3a31215b6a8e17 1-542
+src/main/browser/browser-cookie-import-policy.ts
+  s_aa47a447e01641::t_2e6d472de764b4 1-312
+src/main/browser/browser-cookie-import-test-database.ts
+  s_aa47a447e01641::t_014694a5d23761 1-94
+src/main/browser/browser-cookie-import-write.ts
+  s_aa47a447e01641::t_eafbd3ebdb768c 1-237
+src/main/browser/browser-cookie-key.ts
+  s_aa47a447e01641::t_f9497acce2fe97 1-161
+src/main/browser/browser-cookie-public-suffix-scope.test.ts
+  s_aa47a447e01641::t_08a6784da323fa 1-89
+src/main/browser/browser-cookie-registrable-family.test.ts
+  s_aa47a447e01641::t_45f4c87e32076d 1-62
+src/main/browser/browser-cookie-safari-parser.ts
+  s_aa47a447e01641::t_f6b370422a4721 1-148
+src/main/browser/browser-cookie-source-partition.test.ts
+  s_aa47a447e01641::t_647e9e81b7f51c 1-228
+src/main/browser/browser-cookie-source-partition.ts
+  s_aa47a447e01641::t_753c4f34c39227 1-169
+src/main/browser/browser-cookie-sqlite.ts
+  s_aa47a447e01641::t_6eee914b7c0108 1-147
+src/main/browser/browser-cookie-staged-import.ts
+  s_aa47a447e01641::t_70959e3b052940 1-208
+src/main/browser/browser-cookie-validation.test.ts
+  s_aa47a447e01641::t_197a5e4385b61e 1-30
+src/main/browser/browser-cookie-validation.ts
+  s_aa47a447e01641::t_ddb57f60515882 1-122
+src/main/browser/chromium-cookie-path.ts
+  s_aa47a447e01641::t_221bda4a2ee4ac 1-13
+src/main/browser/chromium-cookie-snapshot.test.ts
+  s_aa47a447e01641::t_92ee4b0c39bd8a 1-227
+src/main/browser/chromium-cookie-snapshot.ts
+  s_aa47a447e01641::t_65746d630733af 1-144
+src/main/fs-utils.ts
+  s_aa47a447e01641::t_51adeb1212c32e 1-44
+src/shared/browser-cookie-import-sources.ts
+  s_aa47a447e01641::t_11cdd29e3253c8 1-30
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_cab7c225e23453 42-82
+src/shared/map-with-concurrency.ts
+  s_aa47a447e01641::t_1d3b6dbe324e81 1-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bb0c99c4097641b5f9bf867930f21bdd96bc57e2",
+  "prompts": {},
+  "sessions": {
+    "s_560abed2c77ba4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a31cab826770d9248",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
