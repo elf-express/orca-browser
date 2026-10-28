@@ -1,0 +1,145 @@
+dist/renderer/index.js
+  s_aa47a447e01641::t_e9debe07462eee 39-44,210-219,290-292,302,440-455,488-491,494-506,523-525,529-537,990,1016,1020,1144,1146-1151,1153-1165,1392-1413,1415-1422,1425-1427,1430-1431,1433-1434,1436-1438,1440-1449,1451-1453,1456-1462,1464-4310,4933-4935,4937-4941,4943-4945,4950,4956,4959,4962,4965,4970,4988,5039,5054,5062,5070-5078,5081-5082,5084-5091,5093,5095,5097,5099,5101-5108,5110-5152,5154-5155,5195-5233,5242-5258,5264-5265,5271-5272,5279,5283,5295,5297-5298,5307,5314,5337,5342,5349,5362,5371-5372,5379,5383,5385,5398,5425,5429,5435,5437
+package.json
+  s_aa47a447e01641::t_34dedc0e169840 50,52-53
+pnpm-lock.yaml
+  s_aa47a447e01641::t_3b226dbe5a784c 11-13,17-22,327-341,609-610,612-613,615-626,628-639,641-652,654-665,667-678,680-691,693-704,706-717,719-730,732-739,741-752,754-761,763-774,776-783,785-796,798-809,811-818,820-831,833-844,846-857,859-866,868-1435,1648-1651,1688-1690,1695-1700,1749-1751,1807-1810,2059-2071,2080-2109,2239-2241,2276-2295,2519-2668,2671,2674,2677,2680,2683,2686,2689,2692,2695,2698,2701,2704,2707,2710,2713,2716,2719,2722,2725,2728,2731,2734,2737,2740,2743,2746-2747,2749-2753,2755-2760,2762-2777,2779-2790,2792,2794-2799,2801-2808,2810-2822,2824-2837,2839-2853,2855-2866,2868-2872,2874-2885,2887-2891,2893-2914,2916-2920,2922-3158,3160-3168,3170-3177,3179-3186,3188-3196,3198-3213,3215-3232,3234-3250,3252-3279,3281-3288,3290-3306,3308-3313,3315-3327,3329-3343,3345-3363,3365-3378,3380-3389,3391-3404,3406-3426,3428-3433,3435-3442,3444-3449,3451-3456,3458-3462,3464-3468,3470-3474,3476-3481,3483-3488,3490-3497,3499,3742-3745,3775-3778,3781-3792,3827-3828,3897-3898,4134-4196,4204-4230,4380-4381,4418-4432
+src/renderer/components/browser-pane/assemble-chrome/BrowserAddressBar.test.tsx
+  s_aa47a447e01641::t_7508f7c0cc720f 1-283
+src/renderer/components/browser-pane/assemble-chrome/BrowserAddressBar.tsx
+  s_aa47a447e01641::t_c64081eb3319dd 1-454
+src/renderer/components/browser-pane/assemble-chrome/BrowserAddressBarSuggestionList.tsx
+  s_aa47a447e01641::t_ce8a56cb553506 1-46
+src/renderer/components/browser-pane/assemble-chrome/browser-address-bar-edit-session.ts
+  s_aa47a447e01641::t_4f81f630d8af96 1-61
+src/renderer/components/browser-pane/assemble-chrome/browser-address-bar-expansion.test.ts
+  s_aa47a447e01641::t_f4d85c5923e543 1-33
+src/renderer/components/browser-pane/assemble-chrome/browser-address-bar-expansion.ts
+  s_aa47a447e01641::t_63189d47c701ea 1-19
+src/renderer/components/browser-pane/assemble-chrome/browser-address-bar-suggestions.test.ts
+  s_aa47a447e01641::t_d5bc5bf9fce1ca 1-291
+src/renderer/components/browser-pane/assemble-chrome/browser-address-bar-suggestions.ts
+  s_aa47a447e01641::t_6376a8fae1ebb3 1-122
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-address-slot.ts
+  s_aa47a447e01641::t_2722ba0f97ad8e 1-13
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-folded-tools.test.tsx
+  s_aa47a447e01641::t_d801276e816331 1-107
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-folded-tools.tsx
+  s_aa47a447e01641::t_c2b8cf892f14d3 1-155
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.test.tsx
+  s_aa47a447e01641::t_729cc6c53189b3 1-113
+src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.tsx
+  s_aa47a447e01641::t_42f2b878b44694 1-161
+src/renderer/components/browser-pane/assemble-chrome/browser-navigation-control-row.test.tsx
+  s_aa47a447e01641::t_3dc8284bb91168 1-138
+src/renderer/components/browser-pane/assemble-chrome/browser-navigation-control-row.tsx
+  s_aa47a447e01641::t_5a9b9a6b2662ef 1-108
+src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
+  s_aa47a447e01641::t_470c66f58ef8d1 1-56
+src/renderer/components/browser-pane/assemble-chrome/browser-page-guest-focus.ts
+  s_aa47a447e01641::t_9907eb9ad21694 1-66
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_654225395c58e8 1,4-12,15,35,56,72-75,80,83-91,93-137,139-140,182-221,237-251
+src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.test.tsx
+  s_aa47a447e01641::t_4273805c5a9add 1-124
+src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
+  s_aa47a447e01641::t_44994aea5076ef 1-114
+src/renderer/components/browser-pane/assemble-chrome/browser-reload-control.tsx
+  s_aa47a447e01641::t_5e6328377eb347 1-99
+src/renderer/components/browser-pane/assemble-chrome/use-browser-address-bar-click-select.ts
+  s_aa47a447e01641::t_c53c84401b0680 1-37
+src/renderer/components/browser-pane/assemble-chrome/use-browser-address-bar-dismissal.ts
+  s_aa47a447e01641::t_ee20968c4b150d 1-45
+src/renderer/components/browser-pane/assemble-chrome/use-browser-address-bar-edit-session.ts
+  s_aa47a447e01641::t_4ccf2d22790293 1-136
+src/renderer/components/browser-pane/assemble-chrome/use-browser-chrome-tool-fold.test.tsx
+  s_aa47a447e01641::t_872c7d1c12cdf5 1-160
+src/renderer/components/browser-pane/assemble-chrome/use-browser-chrome-tool-fold.ts
+  s_aa47a447e01641::t_c628048ddb780b 1-116
+src/renderer/components/browser-pane/assemble-chrome/use-browser-page-chrome-focus.test.tsx
+  s_aa47a447e01641::t_289bca126b9df7 1-436
+src/renderer/components/browser-pane/assemble-chrome/use-browser-page-chrome-focus.ts
+  s_aa47a447e01641::t_feb973076ee943 1-249
+src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.test.ts
+  s_aa47a447e01641::t_c05affaa288bd6 1-69
+src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.ts
+  s_aa47a447e01641::t_ce380c9b872d80 1-49
+src/renderer/components/browser-pane/navigate/browser-page-deferred-navigation.ts
+  s_aa47a447e01641::t_0409f07de7f108 1-42
+src/renderer/components/browser-pane/navigate/browser-reload-action.test.ts
+  s_aa47a447e01641::t_42e0c0c65deae8 1-113
+src/renderer/components/browser-pane/navigate/browser-reload-action.ts
+  s_aa47a447e01641::t_dce6b22059f398 1-81
+src/renderer/components/browser-pane/navigate/chromium-error-page-poll-visibility.test.ts
+  s_aa47a447e01641::t_3ade5f8d934391 1-97
+src/renderer/components/browser-pane/navigate/chromium-error-page-polling.test.ts
+  s_aa47a447e01641::t_b9c953018c7d76 1-11
+src/renderer/components/browser-pane/navigate/chromium-error-page-polling.ts
+  s_aa47a447e01641::t_d6a7baa8a67d16 1-6
+src/renderer/components/browser-pane/navigate/navigate-browser-page-url.ts
+  s_aa47a447e01641::t_aad640986a7249 1-78
+src/renderer/components/browser-pane/navigate/use-browser-page-reload-actions.test.tsx
+  s_aa47a447e01641::t_9e8e56a92e2077 1-77
+src/renderer/components/browser-pane/navigate/use-browser-page-reload-actions.ts
+  s_aa47a447e01641::t_c1c42e18a3c0aa 1-129
+src/renderer/components/browser-pane/navigate/use-browser-page-webview-url-sync.ts
+  s_aa47a447e01641::t_732ab163787e89 1-190
+src/renderer/lib/browser-history-match.ts
+  s_aa47a447e01641::t_a1dcaddd3e2a48 1-160
+src/renderer/lib/ime-composition-keyboard-event.test.ts
+  s_aa47a447e01641::t_da8143fe7fb27c 1-220
+src/renderer/lib/ime-composition-keyboard-event.ts
+  s_aa47a447e01641::t_64a2c2e9217ec6 1-135
+src/renderer/lib/ime-overlay-escape.test.tsx
+  s_aa47a447e01641::t_59fb2e9a38c4be 1-116
+src/renderer/lib/ime-overlay-escape.ts
+  s_aa47a447e01641::t_eb6996d2ac2853 1-13
+src/renderer/lib/ime-text-field.test.tsx
+  s_aa47a447e01641::t_4b18f12a079b37 1-157
+src/renderer/lib/ime-text-field.tsx
+  s_aa47a447e01641::t_318f720552bb9f 1-47
+src/renderer/renderer-class-tokens.test.ts
+  s_aa47a447e01641::t_bddd63dce4b121 1-29
+src/renderer/ui/button.tsx
+  s_aa47a447e01641::t_15139364c7de32 1-63
+src/renderer/ui/command.tsx
+  s_aa47a447e01641::t_fd661490437929 1-295
+src/renderer/ui/context-menu.tsx
+  s_aa47a447e01641::t_4031180e0e0f55 1-204
+src/renderer/ui/dialog.tsx
+  s_aa47a447e01641::t_efe3b50a069852 1-210
+src/renderer/ui/dropdown-menu.tsx
+  s_aa47a447e01641::t_706544c6e4bdda 1-244
+src/renderer/ui/input.tsx
+  s_aa47a447e01641::t_4fe405388c81a4 1-27
+src/renderer/ui/popover.tsx
+  s_aa47a447e01641::t_b7be277c08420d 1-212
+src/renderer/ui/sheet.tsx
+  s_aa47a447e01641::t_6116d13f031c17 1-157
+src/renderer/ui/textarea.tsx
+  s_aa47a447e01641::t_c95d694f4e3e52 1-40
+src/renderer/ui/tooltip.tsx
+  s_aa47a447e01641::t_7abe78602940da 1-72
+src/shared/clipboard-text.ts
+  s_aa47a447e01641::t_49b4b01d26c330 1-165
+src/shared/event-loop-yield.ts
+  s_aa47a447e01641::t_838f9e8edae208 1-60
+src/shared/utf8-byte-limits.ts
+  s_aa47a447e01641::t_649a8e003f6428 1-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7cc799aef9d4137aa9190c2bb8428f21bbf00542",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
