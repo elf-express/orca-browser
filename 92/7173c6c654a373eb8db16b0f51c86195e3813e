@@ -1,0 +1,27 @@
+src/renderer/components/browser-pane/annotate/use-browser-page-markup-capture.test.tsx
+  s_aa47a447e01641::t_070bcffc5121e5 7,21-22,90,101
+src/renderer/components/browser-pane/annotate/use-browser-page-markup-capture.ts
+  s_aa47a447e01641::t_353c57af67f354 12,46,52
+src/renderer/components/browser-pane/annotate/useMarkupMode.test.tsx
+  s_aa47a447e01641::t_7c893c8569ea39 1-123
+src/renderer/components/browser-pane/annotate/useMarkupMode.ts
+  s_aa47a447e01641::t_56bc97768a9679 16-26,159,165-170
+dist/renderer/index.js
+  s_aa47a447e01641::t_9018e154cb4eb0 10079-10084,10169,10173-10178,10223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "927173c6c654a373eb8db16b0f51c86195e3813e",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
