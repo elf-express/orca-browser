@@ -117,6 +117,29 @@ type BrowserHistoryEntry = {
     lastVisitedAt: number;
     visitCount: number;
 };
+type BrowserSessionProfileSource = {
+    browserFamily: 'chrome' | 'chromium' | 'arc' | 'edge' | 'firefox' | 'safari' | 'comet' | 'helium' | 'manual';
+    profileName?: string;
+    importedAt: number;
+};
+type BrowserCookieImportSummary = {
+    totalCookies: number;
+    importedCookies: number;
+    skippedCookies: number;
+    googleCookiesSkipped?: number;
+    partitionSkippedCookies?: number;
+    domains: string[];
+    warning?: {
+        code: 'restart-fallback-unavailable';
+        loadedCookies: number;
+        failedCookies: number;
+    } | {
+        code: 'cookies-undecryptable';
+        failedCookies: number;
+        otherFailedCookies?: number;
+        reason: 'app-bound-encryption' | 'linux-keyring-unavailable' | 'unknown';
+    };
+};
 
 type BrowserGuestArgs = {
     browserPageId: string;
@@ -471,4 +494,4 @@ declare const GRAB_SECRET_PATTERNS: string[];
 declare const MAX_BROWSER_HISTORY_ENTRIES = 200;
 declare function normalizeBrowserHistoryUrl(url: string): string;
 
-export { BROWSER_API_GLOBAL_KEY, BROWSER_EVENT_CHANNELS, BROWSER_INVOKE_CHANNELS, BROWSER_PAGE_ZOOM_LEVELS, BROWSER_PAGE_ZOOM_MAX, BROWSER_PAGE_ZOOM_MIN, BROWSER_PAGE_ZOOM_STEP, type BrowserAgentPayload, type BrowserAnnotationIntent, type BrowserAnnotationPayload, type BrowserAnnotationPriority, type BrowserApi, type BrowserAwaitGrabSelectionArgs, type BrowserCancelGrabArgs, type BrowserCaptureSelectionScreenshotArgs, type BrowserCaptureSelectionScreenshotResult, type BrowserContextMenuDismissedEvent, type BrowserContextMenuRequestedEvent, type BrowserExtractHoverArgs, type BrowserExtractHoverResult, type BrowserFindSource, type BrowserFindTarget, type BrowserGrabAccessibility, type BrowserGrabCancelReason, type BrowserGrabComputedStyles, type BrowserGrabPageContext, type BrowserGrabPayload, type BrowserGrabRect, type BrowserGrabRejectReason, type BrowserGrabResult, type BrowserGrabScreenshot, type BrowserGrabTarget, type BrowserGuestArgs, type BrowserGuestLoadFailedEvent, type BrowserHistoryEntry, type BrowserHistoryNavigateCommand, type BrowserHost, type BrowserHostLogger, type BrowserIdentityModeSetResult, type BrowserIdentityModeSnapshot, type BrowserIdentityModeStatus, type BrowserLoadError, type BrowserOpenLinkInTabEvent, type BrowserPage, type BrowserPageAnnotation, type BrowserPageCommandTarget, type BrowserPageZoomCommand, type BrowserPageZoomDirection, type BrowserPermissionDeniedEvent, type BrowserPluginHandle, type BrowserPluginOptions, type BrowserPopupEvent, type BrowserSetGrabModeArgs, type BrowserSetGrabModeResult, type BrowserShortcutAction, type BrowserShortcutInput, type BrowserUnsubscribe, type BrowserUserAgentMode, type BrowserViewportOverride, type BrowserViewportScrollState, DEFAULT_BROWSER_PAGE_ZOOM_LEVEL, DEFAULT_MCP_PORT, DEFAULT_SEARCH_ENGINE, GRAB_BUDGET, GRAB_SAFE_ATTRIBUTE_NAMES, GRAB_SECRET_PATTERNS, type GrabIntent, MAX_BROWSER_HISTORY_ENTRIES, ORCA_BROWSER_BLANK_URL, ORCA_BROWSER_GUEST_WEB_PREFERENCES, ORCA_BROWSER_GUEST_WEB_PREFERENCES_ATTRIBUTE, ORCA_BROWSER_PARTITION, PACKAGE_LOG_PREFIX, SEARCH_ENGINE_LABELS, type SearchEngine, type SearchUrlOptions, asBrowserFindTarget, browserPageZoomLevelToPercent, buildSearchUrl, classifySchemeLessLocalDevAddress, formatBrowserShortcutLabel, isAbsoluteFilesystemPathInput, isAriaAttribute, isEligibleLocalCertificateHost, isFileUrl, looksLikeSearchQuery, matchBrowserShortcut, nextBrowserPageZoomLevel, normalizeBrowserHistoryUrl, normalizeBrowserNavigationUrl, normalizeBrowserPageZoomLevel, normalizeExternalBrowserUrl, normalizeKagiSessionLink, redactKagiSessionToken, resolveRemoteFailureExternalUrl, toHttpsRecoveryUrl, toSecureCertificateEndpoint };
+export { BROWSER_API_GLOBAL_KEY, BROWSER_EVENT_CHANNELS, BROWSER_INVOKE_CHANNELS, BROWSER_PAGE_ZOOM_LEVELS, BROWSER_PAGE_ZOOM_MAX, BROWSER_PAGE_ZOOM_MIN, BROWSER_PAGE_ZOOM_STEP, type BrowserAgentPayload, type BrowserAnnotationIntent, type BrowserAnnotationPayload, type BrowserAnnotationPriority, type BrowserApi, type BrowserAwaitGrabSelectionArgs, type BrowserCancelGrabArgs, type BrowserCaptureSelectionScreenshotArgs, type BrowserCaptureSelectionScreenshotResult, type BrowserContextMenuDismissedEvent, type BrowserContextMenuRequestedEvent, type BrowserCookieImportSummary, type BrowserExtractHoverArgs, type BrowserExtractHoverResult, type BrowserFindSource, type BrowserFindTarget, type BrowserGrabAccessibility, type BrowserGrabCancelReason, type BrowserGrabComputedStyles, type BrowserGrabPageContext, type BrowserGrabPayload, type BrowserGrabRect, type BrowserGrabRejectReason, type BrowserGrabResult, type BrowserGrabScreenshot, type BrowserGrabTarget, type BrowserGuestArgs, type BrowserGuestLoadFailedEvent, type BrowserHistoryEntry, type BrowserHistoryNavigateCommand, type BrowserHost, type BrowserHostLogger, type BrowserIdentityModeSetResult, type BrowserIdentityModeSnapshot, type BrowserIdentityModeStatus, type BrowserLoadError, type BrowserOpenLinkInTabEvent, type BrowserPage, type BrowserPageAnnotation, type BrowserPageCommandTarget, type BrowserPageZoomCommand, type BrowserPageZoomDirection, type BrowserPermissionDeniedEvent, type BrowserPluginHandle, type BrowserPluginOptions, type BrowserPopupEvent, type BrowserSessionProfileSource, type BrowserSetGrabModeArgs, type BrowserSetGrabModeResult, type BrowserShortcutAction, type BrowserShortcutInput, type BrowserUnsubscribe, type BrowserUserAgentMode, type BrowserViewportOverride, type BrowserViewportScrollState, DEFAULT_BROWSER_PAGE_ZOOM_LEVEL, DEFAULT_MCP_PORT, DEFAULT_SEARCH_ENGINE, GRAB_BUDGET, GRAB_SAFE_ATTRIBUTE_NAMES, GRAB_SECRET_PATTERNS, type GrabIntent, MAX_BROWSER_HISTORY_ENTRIES, ORCA_BROWSER_BLANK_URL, ORCA_BROWSER_GUEST_WEB_PREFERENCES, ORCA_BROWSER_GUEST_WEB_PREFERENCES_ATTRIBUTE, ORCA_BROWSER_PARTITION, PACKAGE_LOG_PREFIX, SEARCH_ENGINE_LABELS, type SearchEngine, type SearchUrlOptions, asBrowserFindTarget, browserPageZoomLevelToPercent, buildSearchUrl, classifySchemeLessLocalDevAddress, formatBrowserShortcutLabel, isAbsoluteFilesystemPathInput, isAriaAttribute, isEligibleLocalCertificateHost, isFileUrl, looksLikeSearchQuery, matchBrowserShortcut, nextBrowserPageZoomLevel, normalizeBrowserHistoryUrl, normalizeBrowserNavigationUrl, normalizeBrowserPageZoomLevel, normalizeExternalBrowserUrl, normalizeKagiSessionLink, redactKagiSessionToken, resolveRemoteFailureExternalUrl, toHttpsRecoveryUrl, toSecureCertificateEndpoint };
