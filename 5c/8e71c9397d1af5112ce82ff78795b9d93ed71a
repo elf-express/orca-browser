@@ -1,0 +1,75 @@
+README.md
+  s_aa47a447e01641::t_747b77403a72a4 7-12,41-47,163-165,170-174
+dist/i18n-keys.json
+  s_aa47a447e01641::t_18eac8088b2da8 25,37
+dist/main/index.cjs
+  s_aa47a447e01641::t_29c10f8615001a 1189-1197,1199-1200,1202-1453,4006-4045,4410,4460-4485,4490
+dist/main/index.d.cts
+  s_aa47a447e01641::t_614930623991bd 144-165,356
+dist/preload/index.cjs
+  s_aa47a447e01641::t_2fff81bb4ec486 62
+dist/renderer/index.d.ts
+  s_aa47a447e01641::t_2d4d6a702c99a4 161-182,373
+dist/shared/index.cjs
+  s_aa47a447e01641::t_4f10f72c9345fe 105-106
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_e0b8621572ef41 202-233,479,584
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_bf5ecdcb66afda 202-233,479,584
+dist/shared/index.js
+  s_aa47a447e01641::t_395082a52b5153 30-31
+src/main/browser/browser-manager-annotation-bridge.test.ts
+  s_aa47a447e01641::t_13b5699442a7be 1-391
+src/main/browser/browser-manager-viewport.ts
+  s_aa47a447e01641::t_0e71c04d81cf13 2-6,67-122
+src/main/ipc/browser-annotation-viewport-ipc.test.ts
+  s_aa47a447e01641::t_f4cf9eb2960657 1-57
+src/main/ipc/browser-guest-view-ipc.ts
+  s_aa47a447e01641::t_7a9178bb380bb9 5-9,15,95-133,138
+src/preload/api/browser-bridge-guest-registration-and-downloads.ts
+  s_aa47a447e01641::t_b6784e48d67ccc 2,18-19
+src/preload/browser-api.test.ts
+  s_aa47a447e01641::t_482467b1ca6994 49
+src/renderer/BrowserPane.keep-alive.test.tsx
+  s_aa47a447e01641::t_d9309c53ececca 27
+src/renderer/components/browser-pane/annotate/browser-annotation-page-url.ts
+  s_aa47a447e01641::t_ab55afe9b49b90 1-12
+src/renderer/components/browser-pane/annotate/browser-annotation-viewport-message.ts
+  s_aa47a447e01641::t_6705684ec28d02 1-23
+src/renderer/components/browser-pane/annotate/guest-annotation-viewport-bridge.test.ts
+  s_aa47a447e01641::t_78d163bc530541 1-97
+src/renderer/components/browser-pane/annotate/guest-annotation-viewport-bridge.ts
+  s_aa47a447e01641::t_ef1cd919929b4d 1-53
+src/renderer/components/browser-pane/annotate/use-browser-page-annotation-viewport-tracking.ts
+  s_aa47a447e01641::t_a57a2351db8b69 1-48
+src/renderer/components/browser-pane/describe-page/browser-annotation-geometry.test.ts
+  s_aa47a447e01641::t_b21026460896ab 1-205
+src/renderer/components/browser-pane/describe-page/browser-annotation-geometry.ts
+  s_aa47a447e01641::t_a239730895afb7 1-201
+src/renderer/store/browser-annotation-test-fixture.ts
+  s_aa47a447e01641::t_60861d9cb7ac91 1-60
+src/shared/browser-annotation-viewport-lifecycle.test.ts
+  s_aa47a447e01641::t_73cf2fd195ec35 1-74
+src/shared/browser-annotation-viewport-live-target.test.ts
+  s_aa47a447e01641::t_45df34c71c4574 1-296
+src/shared/browser-api-types.ts
+  s_aa47a447e01641::t_e08e8aec491d0b 1,81
+src/shared/browser-ipc-channels.ts
+  s_aa47a447e01641::t_cdd74771fc03bb 10-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c8e71c9397d1af5112ce82ff78795b9d93ed71a",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
