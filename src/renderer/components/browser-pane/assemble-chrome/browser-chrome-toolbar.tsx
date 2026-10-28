@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Crosshair, ExternalLink, MessageSquarePlus, SquareCode } from 'lucide-react'
+import { Crosshair, ExternalLink, MessageSquarePlus, PenTool, SquareCode } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button } from '../../../ui/button'
 import {
@@ -21,6 +21,15 @@ import {
   type BrowserChromeElementTools
 } from './browser-chrome-element-tool-buttons'
 import { translate } from '../../../i18n'
+import { MarkupDrawButton } from '../annotate/MarkupDrawButton'
+
+export type BrowserChromeMarkupTool = {
+  active: boolean
+  disabled: boolean
+  onToggle: () => void
+  /** Whether this surface may spend the draw tool's one-per-install discovery popover. */
+  canShowDiscoveryHint: boolean
+}
 
 export type BrowserChromeToolAction = {
   onSelect: () => void
@@ -67,6 +76,7 @@ export function BrowserChromeToolbar({
   reloadLabel,
   importControl = null,
   elementTools = null,
+  markup = null,
   viewSource,
   openExternal,
   overflowMenu = null,
@@ -81,6 +91,8 @@ export function BrowserChromeToolbar({
   importControl?: ((compact: boolean) => React.ReactNode) | null
   /** The in-guest element picker (Grab and Annotate); null where the surface cannot run it. */
   elementTools?: BrowserChromeElementTools | null
+  /** Draw-on-screenshot; null where the surface cannot capture a page screenshot. */
+  markup?: BrowserChromeMarkupTool | null
   viewSource: BrowserChromeToolAction | null
   openExternal: BrowserChromeToolAction | null
   /** The surface's ⋯ menu; null falls back to a default menu holding only the folded tools. */
@@ -92,15 +104,15 @@ export function BrowserChromeToolbar({
 }): React.JSX.Element {
   const rowRef = useRef<HTMLDivElement>(null)
   const overflowTriggerRef = useRef<HTMLButtonElement>(null)
-  // Share and draw are absent from this package; the stages stay in the fold
-  // order so a surface that adds those tools folds them in the same sequence.
+  // Share is absent from this package; its stage stays in the fold order so a
+  // surface that adds it folds the tools in the same sequence.
   const present: Record<BrowserChromeFoldStage, boolean> = {
     'import-label': importControl != null,
     import: importControl != null,
     external: openExternal !== null,
     devtools: viewSource !== null,
     share: false,
-    draw: false,
+    draw: markup !== null,
     grab: elementTools !== null,
     annotate: elementTools !== null
   }
@@ -135,6 +147,16 @@ export function BrowserChromeToolbar({
       shortcut: elementTools.annotateShortcutLabel,
       count: elementTools.annotationCount,
       active: elementTools.activeIntent === 'annotate'
+    })
+  }
+  if (markup && folded.has('draw')) {
+    foldedTools.push({
+      stage: 'draw',
+      label: translate('auto.components.browser-pane.markup.drawButton', 'Draw on screenshot'),
+      icon: PenTool,
+      onSelect: markup.onToggle,
+      disabled: markup.disabled,
+      active: markup.active
     })
   }
   if (viewSource && folded.has('devtools') && !viewSource.alreadyInOverflowMenu) {
@@ -180,6 +202,15 @@ export function BrowserChromeToolbar({
           tools={elementTools}
           showGrab={!folded.has('grab')}
           showAnnotate={!folded.has('annotate')}
+        />
+      ) : null}
+
+      {markup && !folded.has('draw') ? (
+        <MarkupDrawButton
+          onClick={markup.onToggle}
+          disabled={markup.disabled}
+          active={markup.active}
+          surfaceActive={markup.canShowDiscoveryHint}
         />
       ) : null}
 

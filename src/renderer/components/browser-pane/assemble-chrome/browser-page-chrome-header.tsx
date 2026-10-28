@@ -24,6 +24,9 @@ export function BrowserPageChromeHeader({
   grabAnnotations,
   annotationSend,
   isBlankTab,
+  markupIsActive,
+  markupStart,
+  markupCancel,
   resourceNotice,
   setResourceNotice
 }: {
@@ -43,6 +46,9 @@ export function BrowserPageChromeHeader({
   grabAnnotations: ReturnType<typeof useBrowserPageGrabAnnotations>
   annotationSend: ReturnType<typeof useBrowserPageAnnotationSend>
   isBlankTab: boolean
+  markupIsActive: boolean
+  markupStart: () => Promise<void>
+  markupCancel: () => void
   resourceNotice: string | null
   setResourceNotice: Dispatch<SetStateAction<string | null>>
 }): React.JSX.Element {
@@ -74,6 +80,9 @@ export function BrowserPageChromeHeader({
         startGrabIntent={grabAnnotations.startGrabIntent}
         browserAnnotationsLength={annotationSend.browserAnnotations.length}
         isBlankTab={isBlankTab}
+        markupIsActive={markupIsActive}
+        markupStart={markupStart}
+        markupCancel={markupCancel}
       />
       {resourceNotice ? (
         <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">

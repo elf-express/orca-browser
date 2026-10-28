@@ -1320,14 +1320,14 @@ function BrowserPane(props) {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { useEffect as useEffect26 } from "react";
+import { useEffect as useEffect29 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { memo, useCallback as useCallback17, useMemo as useMemo9 } from "react";
+import { memo, useCallback as useCallback23, useMemo as useMemo10 } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { useMemo as useMemo8 } from "react";
+import { useMemo as useMemo9 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-pane-page-selection.ts
 var EMPTY_BROWSER_PAGES = [];
@@ -1451,8 +1451,8 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback16, useEffect as useEffect24, useLayoutEffect as useLayoutEffect9, useRef as useRef17, useState as useState21 } from "react";
-import { createPortal as createPortal2 } from "react-dom";
+import { useCallback as useCallback22, useEffect as useEffect27, useLayoutEffect as useLayoutEffect10, useRef as useRef22, useState as useState24 } from "react";
+import { createPortal as createPortal3 } from "react-dom";
 
 // src/renderer/store/browser-session-store.ts
 import { create as create3 } from "zustand";
@@ -3710,8 +3710,8 @@ function BrowserAddressBar({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.tsx
-import { useRef as useRef6 } from "react";
-import { Crosshair as Crosshair2, ExternalLink, MessageSquarePlus as MessageSquarePlus2, SquareCode } from "lucide-react";
+import { useRef as useRef7 } from "react";
+import { Crosshair as Crosshair2, ExternalLink, MessageSquarePlus as MessageSquarePlus2, PenTool as PenTool2, SquareCode } from "lucide-react";
 
 // src/renderer/ui/button.tsx
 import * as React4 from "react";
@@ -4246,13 +4246,224 @@ function BrowserChromeElementToolButtons({
   ] });
 }
 
+// src/renderer/components/browser-pane/annotate/MarkupDrawButton.tsx
+import { useEffect as useEffect7 } from "react";
+import { PenTool } from "lucide-react";
+
+// src/renderer/ui/badge.tsx
+import { cva as cva4 } from "class-variance-authority";
+import * as Slot2 from "radix-ui/slot";
+import { jsx as jsx15 } from "react/jsx-runtime";
+var badgeVariants = cva4(
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+        secondary: "bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+        dot: "bg-background text-foreground border-border shadow-xs dark:bg-secondary dark:border-white/20",
+        destructive: "bg-destructive text-white focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive/90",
+        outline: "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 [a&]:hover:underline",
+        /** The chip naming the machine a workspace runs on — quieter and squarer than `secondary`,
+         *  so it reads as context beside a workspace name rather than as a status of its own. */
+        hostContext: "h-4 rounded border-border bg-accent px-1.5 text-[10px] leading-none text-muted-foreground dark:border-border/50 dark:bg-accent/80",
+        /** A skill or file sitting inline in the chat message box, ringed while selected. */
+        promptPill: "max-w-full border-border bg-secondary px-1.5 py-0 align-baseline text-muted-foreground data-[selected=true]:ring-1 data-[selected=true]:ring-ring"
+      }
+    },
+    defaultVariants: {
+      variant: "default"
+    }
+  }
+);
+function Badge({
+  className,
+  variant = "default",
+  asChild = false,
+  ...props
+}) {
+  const Comp = asChild ? Slot2.Root : "span";
+  return /* @__PURE__ */ jsx15(
+    Comp,
+    {
+      "data-slot": "badge",
+      "data-variant": variant,
+      className: cn(badgeVariants({ variant }), className),
+      ...props
+    }
+  );
+}
+
+// src/renderer/components/browser-pane/annotate/use-markup-draw-hint.ts
+import { useCallback as useCallback6, useRef as useRef6, useSyncExternalStore as useSyncExternalStore2 } from "react";
+var MARKUP_DRAW_HINT_SEEN_KEY = "orca.browser.markup-draw-hint-seen";
+function claimFirstView() {
+  try {
+    if (window.localStorage.getItem(MARKUP_DRAW_HINT_SEEN_KEY) === "true") {
+      return false;
+    }
+    window.localStorage.setItem(MARKUP_DRAW_HINT_SEEN_KEY, "true");
+    return true;
+  } catch {
+    return false;
+  }
+}
+function useMarkupDrawHint(eligible) {
+  const hintOpenRef = useRef6(false);
+  const notifyRef = useRef6(() => {
+  });
+  const subscribe = useCallback6(
+    (notify) => {
+      notifyRef.current = notify;
+      const nextOpen = eligible && (hintOpenRef.current || claimFirstView());
+      if (hintOpenRef.current !== nextOpen) {
+        hintOpenRef.current = nextOpen;
+        notify();
+      }
+      return () => {
+        if (notifyRef.current === notify) {
+          notifyRef.current = () => {
+          };
+        }
+      };
+    },
+    [eligible]
+  );
+  const getSnapshot = useCallback6(() => hintOpenRef.current && eligible, [eligible]);
+  const hintOpen = useSyncExternalStore2(subscribe, getSnapshot, () => false);
+  const dismissHint = useCallback6(() => {
+    hintOpenRef.current = false;
+    notifyRef.current();
+  }, []);
+  return { hintOpen, dismissHint };
+}
+
+// src/renderer/components/browser-pane/annotate/MarkupDrawButton.tsx
+import { jsx as jsx16, jsxs as jsxs10 } from "react/jsx-runtime";
+function MarkupDrawButton({
+  onClick,
+  disabled,
+  active,
+  surfaceActive,
+  className
+}) {
+  const label = translate("auto.components.browser-pane.markup.drawButton", "Draw on screenshot");
+  const { hintOpen, dismissHint } = useMarkupDrawHint(surfaceActive && !disabled && !active);
+  const showHint = hintOpen && surfaceActive;
+  useEffect7(() => {
+    if (!showHint) {
+      return;
+    }
+    window.addEventListener("blur", dismissHint);
+    return () => window.removeEventListener("blur", dismissHint);
+  }, [dismissHint, showHint]);
+  const startMarkup = () => {
+    dismissHint();
+    onClick();
+  };
+  const button = /* @__PURE__ */ jsx16(
+    Button,
+    {
+      size: "icon",
+      variant: active ? "default" : "ghost",
+      className: cn(
+        className ?? "h-8 w-8",
+        active && "bg-foreground/80 text-background hover:bg-foreground/90",
+        // Why: soft ring while the discovery callout is open — points at the
+        // control without the harsh solid highlight of a force-open tooltip.
+        showHint && "ring-2 ring-ring/45 ring-offset-1 ring-offset-background"
+      ),
+      onClick: startMarkup,
+      disabled,
+      "aria-label": label,
+      "aria-pressed": active,
+      children: /* @__PURE__ */ jsx16(PenTool, { className: "size-4" })
+    }
+  );
+  return /* @__PURE__ */ jsxs10(
+    Popover,
+    {
+      modal: false,
+      open: showHint,
+      onOpenChange: (open) => {
+        if (!open) {
+          dismissHint();
+        }
+      },
+      children: [
+        /* @__PURE__ */ jsxs10(Tooltip, { children: [
+          /* @__PURE__ */ jsx16(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx16(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsx16("span", { className: "inline-flex", children: button }) }) }),
+          /* @__PURE__ */ jsx16(TooltipContent, { side: "bottom", sideOffset: 4, children: label })
+        ] }),
+        /* @__PURE__ */ jsx16(
+          PopoverContent,
+          {
+            side: "bottom",
+            align: "center",
+            sideOffset: 6,
+            className: "w-72 p-3",
+            onOpenAutoFocus: (event) => {
+              event.preventDefault();
+            },
+            children: /* @__PURE__ */ jsxs10("div", { className: "space-y-3", children: [
+              /* @__PURE__ */ jsxs10("div", { className: "space-y-1.5", children: [
+                /* @__PURE__ */ jsxs10("div", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsx16(
+                    Badge,
+                    {
+                      variant: "secondary",
+                      className: "h-5 shrink-0 px-1.5 text-[10px] font-semibold tracking-wider uppercase",
+                      children: translate("auto.components.browser-pane.markup.drawHintBadge", "New")
+                    }
+                  ),
+                  /* @__PURE__ */ jsx16("div", { className: "text-sm font-medium text-foreground", children: label })
+                ] }),
+                /* @__PURE__ */ jsx16("p", { className: "text-xs leading-5 text-muted-foreground", children: translate(
+                  "auto.components.browser-pane.markup.drawHint",
+                  "Draw on the page, then copy the markup to paste into your agent."
+                ) })
+              ] }),
+              /* @__PURE__ */ jsxs10("div", { className: "flex items-center gap-3", children: [
+                /* @__PURE__ */ jsxs10(
+                  Button,
+                  {
+                    type: "button",
+                    size: "sm",
+                    className: "h-7 gap-1.5 px-2.5 text-xs",
+                    onClick: startMarkup,
+                    children: [
+                      /* @__PURE__ */ jsx16(PenTool, { className: "size-3.5" }),
+                      translate("auto.components.browser-pane.markup.drawHintTry", "Try it")
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsx16(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: dismissHint,
+                    className: "rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+                    children: translate("auto.components.browser-pane.markup.drawHintDismiss", "Got it")
+                  }
+                )
+              ] })
+            ] })
+          }
+        )
+      ]
+    }
+  );
+}
+
 // src/renderer/components/browser-pane/assemble-chrome/browser-chrome-toolbar.tsx
-import { jsx as jsx15, jsxs as jsxs10 } from "react/jsx-runtime";
+import { jsx as jsx17, jsxs as jsxs11 } from "react/jsx-runtime";
 function BrowserChromeActionButton({
   action,
   icon: Icon2
 }) {
-  return /* @__PURE__ */ jsx15(
+  return /* @__PURE__ */ jsx17(
     Button,
     {
       size: "icon",
@@ -4262,7 +4473,7 @@ function BrowserChromeActionButton({
       title: action.label,
       "aria-label": action.label,
       disabled: action.disabled,
-      children: /* @__PURE__ */ jsx15(Icon2, { className: "size-4" })
+      children: /* @__PURE__ */ jsx17(Icon2, { className: "size-4" })
     }
   );
 }
@@ -4273,21 +4484,22 @@ function BrowserChromeToolbar({
   reloadLabel,
   importControl = null,
   elementTools = null,
+  markup = null,
   viewSource,
   openExternal,
   overflowMenu = null,
   showTourAnchors = false,
   pinnedStage
 }) {
-  const rowRef = useRef6(null);
-  const overflowTriggerRef = useRef6(null);
+  const rowRef = useRef7(null);
+  const overflowTriggerRef = useRef7(null);
   const present = {
     "import-label": importControl != null,
     import: importControl != null,
     external: openExternal !== null,
     devtools: viewSource !== null,
     share: false,
-    draw: false,
+    draw: markup !== null,
     grab: elementTools !== null,
     annotate: elementTools !== null
   };
@@ -4295,7 +4507,7 @@ function BrowserChromeToolbar({
     (stage) => present[stage] && stage !== pinnedStage
   );
   const folded = useBrowserChromeToolFold(rowRef, stages);
-  const afterMenuCloseRef = useRef6(null);
+  const afterMenuCloseRef = useRef7(null);
   const foldedTools = [];
   if (elementTools && folded.has("grab")) {
     foldedTools.push({
@@ -4323,6 +4535,16 @@ function BrowserChromeToolbar({
       active: elementTools.activeIntent === "annotate"
     });
   }
+  if (markup && folded.has("draw")) {
+    foldedTools.push({
+      stage: "draw",
+      label: translate("auto.components.browser-pane.markup.drawButton", "Draw on screenshot"),
+      icon: PenTool2,
+      onSelect: markup.onToggle,
+      disabled: markup.disabled,
+      active: markup.active
+    });
+  }
   if (viewSource && folded.has("devtools") && !viewSource.alreadyInOverflowMenu) {
     foldedTools.push({ stage: "devtools", icon: SquareCode, ...viewSource });
   }
@@ -4348,7 +4570,7 @@ function BrowserChromeToolbar({
     deferUntilClose: runAfterMenuClose,
     onMenuCloseAutoFocus
   };
-  return /* @__PURE__ */ jsxs10(
+  return /* @__PURE__ */ jsxs11(
     BrowserNavigationControlRow,
     {
       rowRef,
@@ -4359,7 +4581,7 @@ function BrowserChromeToolbar({
       showTourAnchors,
       children: [
         folded.has("import") ? null : importControl?.(folded.has("import-label")),
-        elementTools ? /* @__PURE__ */ jsx15(
+        elementTools ? /* @__PURE__ */ jsx17(
           BrowserChromeElementToolButtons,
           {
             tools: elementTools,
@@ -4367,14 +4589,23 @@ function BrowserChromeToolbar({
             showAnnotate: !folded.has("annotate")
           }
         ) : null,
-        viewSource && !folded.has("devtools") ? /* @__PURE__ */ jsx15(BrowserChromeActionButton, { action: viewSource, icon: SquareCode }) : null,
-        openExternal && !folded.has("external") ? /* @__PURE__ */ jsx15(BrowserChromeActionButton, { action: openExternal, icon: ExternalLink }) : null,
-        /* @__PURE__ */ jsxs10("span", { className: "relative inline-flex", children: [
+        markup && !folded.has("draw") ? /* @__PURE__ */ jsx17(
+          MarkupDrawButton,
+          {
+            onClick: markup.onToggle,
+            disabled: markup.disabled,
+            active: markup.active,
+            surfaceActive: markup.canShowDiscoveryHint
+          }
+        ) : null,
+        viewSource && !folded.has("devtools") ? /* @__PURE__ */ jsx17(BrowserChromeActionButton, { action: viewSource, icon: SquareCode }) : null,
+        openExternal && !folded.has("external") ? /* @__PURE__ */ jsx17(BrowserChromeActionButton, { action: openExternal, icon: ExternalLink }) : null,
+        /* @__PURE__ */ jsxs11("span", { className: "relative inline-flex", children: [
           overflowMenu ? (
             // oxlint-disable-next-line react/refs -- Intentional: overflowProps carries a ref object and closures that touch refs only from event handlers.
             overflowMenu(overflowProps)
-          ) : /* @__PURE__ */ jsx15(BrowserChromeDefaultOverflowMenu, { ...overflowProps }),
-          showFoldedAnnotationDot ? /* @__PURE__ */ jsx15("span", { className: "pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary ring-2 ring-background" }) : null
+          ) : /* @__PURE__ */ jsx17(BrowserChromeDefaultOverflowMenu, { ...overflowProps }),
+          showFoldedAnnotationDot ? /* @__PURE__ */ jsx17("span", { className: "pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary ring-2 ring-background" }) : null
         ] })
       ]
     }
@@ -4383,7 +4614,7 @@ function BrowserChromeToolbar({
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-reload-control.tsx
 import { Loader2 as Loader22, RefreshCw as RefreshCw2 } from "lucide-react";
-import { jsx as jsx16, jsxs as jsxs11 } from "react/jsx-runtime";
+import { jsx as jsx18, jsxs as jsxs12 } from "react/jsx-runtime";
 function BrowserReloadControl({
   menuOpen,
   onMenuOpenChange,
@@ -4396,9 +4627,9 @@ function BrowserReloadControl({
   onReload,
   onHardReload
 }) {
-  return /* @__PURE__ */ jsxs11(DropdownMenu, { modal: false, open: menuOpen, onOpenChange: onMenuOpenChange, children: [
-    /* @__PURE__ */ jsxs11(Tooltip, { open: menuOpen ? false : void 0, children: [
-      /* @__PURE__ */ jsx16(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx16(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx16(
+  return /* @__PURE__ */ jsxs12(DropdownMenu, { modal: false, open: menuOpen, onOpenChange: onMenuOpenChange, children: [
+    /* @__PURE__ */ jsxs12(Tooltip, { open: menuOpen ? false : void 0, children: [
+      /* @__PURE__ */ jsx18(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx18(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx18(
         Button,
         {
           size: "icon",
@@ -4421,29 +4652,29 @@ function BrowserReloadControl({
             e.preventDefault();
             onMenuOpenChange(true);
           },
-          children: loading ? /* @__PURE__ */ jsx16(Loader22, { className: "size-4 animate-spin" }) : /* @__PURE__ */ jsx16(RefreshCw2, { className: "size-4" })
+          children: loading ? /* @__PURE__ */ jsx18(Loader22, { className: "size-4 animate-spin" }) : /* @__PURE__ */ jsx18(RefreshCw2, { className: "size-4" })
         }
       ) }) }),
-      /* @__PURE__ */ jsxs11(TooltipContent, { side: "bottom", sideOffset: 4, children: [
+      /* @__PURE__ */ jsxs12(TooltipContent, { side: "bottom", sideOffset: 4, children: [
         label,
         reloadShortcut && showShortcutHint ? ` \xB7 ${reloadShortcut}` : ""
       ] })
     ] }),
-    /* @__PURE__ */ jsxs11(DropdownMenuContent, { align: "start", alignOffset: -4, children: [
-      /* @__PURE__ */ jsxs11(DropdownMenuItem, { onClick: onReload, children: [
+    /* @__PURE__ */ jsxs12(DropdownMenuContent, { align: "start", alignOffset: -4, children: [
+      /* @__PURE__ */ jsxs12(DropdownMenuItem, { onClick: onReload, children: [
         translate("auto.components.browser.pane.BrowserPane.0e080d820e", "Reload"),
-        /* @__PURE__ */ jsx16(DropdownMenuShortcut, { children: reloadShortcut })
+        /* @__PURE__ */ jsx18(DropdownMenuShortcut, { children: reloadShortcut })
       ] }),
-      /* @__PURE__ */ jsxs11(DropdownMenuItem, { onClick: onHardReload, children: [
+      /* @__PURE__ */ jsxs12(DropdownMenuItem, { onClick: onHardReload, children: [
         translate("auto.components.browser.pane.BrowserPane.a1f3c2e4b5", "Hard Reload"),
-        /* @__PURE__ */ jsx16(DropdownMenuShortcut, { children: hardReloadShortcut })
+        /* @__PURE__ */ jsx18(DropdownMenuShortcut, { children: hardReloadShortcut })
       ] })
     ] })
   ] });
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
-import { useCallback as useCallback6, useEffect as useEffect9, useMemo as useMemo4, useState as useState8 } from "react";
+import { useCallback as useCallback7, useEffect as useEffect10, useMemo as useMemo4, useState as useState8 } from "react";
 import { Import as Import2 } from "lucide-react";
 import { toast as toast4 } from "sonner";
 
@@ -4565,18 +4796,18 @@ function emitBrowserCookieImportToast(summary, successMessage) {
 
 // src/renderer/components/BrowserCookieImportDisclosure.tsx
 import { Info } from "lucide-react";
-import { Fragment as Fragment3, jsx as jsx17, jsxs as jsxs12 } from "react/jsx-runtime";
+import { Fragment as Fragment3, jsx as jsx19, jsxs as jsxs13 } from "react/jsx-runtime";
 function BrowserCookieImportDisclosure() {
-  return /* @__PURE__ */ jsxs12(Fragment3, { children: [
-    /* @__PURE__ */ jsx17(DropdownMenuSeparator, {}),
-    /* @__PURE__ */ jsxs12(DropdownMenuLabel, { className: "flex max-w-64 items-start gap-2 whitespace-normal py-2 font-normal", children: [
-      /* @__PURE__ */ jsx17(Info, { "aria-hidden": true, className: "mt-0.5 size-3.5 shrink-0" }),
-      /* @__PURE__ */ jsxs12("span", { className: "min-w-0", children: [
-        /* @__PURE__ */ jsx17("span", { className: "block font-medium leading-4 text-foreground", children: translate(
+  return /* @__PURE__ */ jsxs13(Fragment3, { children: [
+    /* @__PURE__ */ jsx19(DropdownMenuSeparator, {}),
+    /* @__PURE__ */ jsxs13(DropdownMenuLabel, { className: "flex max-w-64 items-start gap-2 whitespace-normal py-2 font-normal", children: [
+      /* @__PURE__ */ jsx19(Info, { "aria-hidden": true, className: "mt-0.5 size-3.5 shrink-0" }),
+      /* @__PURE__ */ jsxs13("span", { className: "min-w-0", children: [
+        /* @__PURE__ */ jsx19("span", { className: "block font-medium leading-4 text-foreground", children: translate(
           "auto.components.BrowserCookieImportDisclosure.title",
           "Google logins aren't imported"
         ) }),
-        /* @__PURE__ */ jsx17("span", { className: "block leading-4 text-muted-foreground", children: translate(
+        /* @__PURE__ */ jsx19("span", { className: "block leading-4 text-muted-foreground", children: translate(
           "auto.components.BrowserCookieImportDisclosure.description",
           "Sign in to Google directly in Orca."
         ) })
@@ -4586,21 +4817,21 @@ function BrowserCookieImportDisclosure() {
 }
 
 // src/renderer/ui/dialog.tsx
-import { cva as cva4 } from "class-variance-authority";
+import { cva as cva5 } from "class-variance-authority";
 import { Minus, XIcon } from "lucide-react";
 import * as DialogPrimitive2 from "radix-ui/dialog";
-import { jsx as jsx18, jsxs as jsxs13 } from "react/jsx-runtime";
+import { jsx as jsx20, jsxs as jsxs14 } from "react/jsx-runtime";
 function Dialog({ ...props }) {
-  return /* @__PURE__ */ jsx18(DialogPrimitive2.Root, { "data-slot": "dialog", ...props });
+  return /* @__PURE__ */ jsx20(DialogPrimitive2.Root, { "data-slot": "dialog", ...props });
 }
 function DialogPortal({ ...props }) {
-  return /* @__PURE__ */ jsx18(DialogPrimitive2.Portal, { "data-slot": "dialog-portal", ...props });
+  return /* @__PURE__ */ jsx20(DialogPrimitive2.Portal, { "data-slot": "dialog-portal", ...props });
 }
 function DialogOverlay({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx18(
+  return /* @__PURE__ */ jsx20(
     DialogPrimitive2.Overlay,
     {
       "data-slot": "dialog-overlay",
@@ -4612,7 +4843,7 @@ function DialogOverlay({
     }
   );
 }
-var dialogContentSurfaceVariants = cva4("", {
+var dialogContentSurfaceVariants = cva5("", {
   variants: {
     surface: {
       default: "",
@@ -4624,20 +4855,20 @@ var dialogContentSurfaceVariants = cva4("", {
 });
 function DialogContentCloseButton({ variant }) {
   const label = variant === "minimize" ? translate("auto.components.ui.dialog.minimize", "Minimize") : translate("auto.components.ui.dialog.f26c4baeda", "Close");
-  const button = /* @__PURE__ */ jsxs13(
+  const button = /* @__PURE__ */ jsxs14(
     DialogPrimitive2.Close,
     {
       "data-slot": "dialog-close",
       className: "absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
       children: [
-        variant === "minimize" ? /* @__PURE__ */ jsx18(Minus, { className: "size-3.5" }) : /* @__PURE__ */ jsx18(XIcon, {}),
-        /* @__PURE__ */ jsx18("span", { className: "sr-only", children: label })
+        variant === "minimize" ? /* @__PURE__ */ jsx20(Minus, { className: "size-3.5" }) : /* @__PURE__ */ jsx20(XIcon, {}),
+        /* @__PURE__ */ jsx20("span", { className: "sr-only", children: label })
       ]
     }
   );
-  return variant === "minimize" ? /* @__PURE__ */ jsxs13(Tooltip, { children: [
-    /* @__PURE__ */ jsx18(TooltipTrigger, { asChild: true, children: button }),
-    /* @__PURE__ */ jsx18(TooltipContent, { side: "top", sideOffset: 4, children: label })
+  return variant === "minimize" ? /* @__PURE__ */ jsxs14(Tooltip, { children: [
+    /* @__PURE__ */ jsx20(TooltipTrigger, { asChild: true, children: button }),
+    /* @__PURE__ */ jsx20(TooltipContent, { side: "top", sideOffset: 4, children: label })
   ] }) : button;
 }
 function DialogContent({
@@ -4649,9 +4880,9 @@ function DialogContent({
   surface,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs13(DialogPortal, { "data-slot": "dialog-portal", children: [
-    /* @__PURE__ */ jsx18(DialogOverlay, { className: overlayClassName }),
-    /* @__PURE__ */ jsxs13(
+  return /* @__PURE__ */ jsxs14(DialogPortal, { "data-slot": "dialog-portal", children: [
+    /* @__PURE__ */ jsx20(DialogOverlay, { className: overlayClassName }),
+    /* @__PURE__ */ jsxs14(
       DialogPrimitive2.Content,
       {
         "data-slot": "dialog-content",
@@ -4664,14 +4895,14 @@ function DialogContent({
         onEscapeKeyDown: (event) => handleImeOverlayEscape(event, props.onEscapeKeyDown),
         children: [
           children,
-          showCloseButton && /* @__PURE__ */ jsx18(DialogContentCloseButton, { variant: closeButtonVariant })
+          showCloseButton && /* @__PURE__ */ jsx20(DialogContentCloseButton, { variant: closeButtonVariant })
         ]
       }
     )
   ] });
 }
 function DialogHeader({ className, ...props }) {
-  return /* @__PURE__ */ jsx18(
+  return /* @__PURE__ */ jsx20(
     "div",
     {
       "data-slot": "dialog-header",
@@ -4686,7 +4917,7 @@ function DialogFooter({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs13(
+  return /* @__PURE__ */ jsxs14(
     "div",
     {
       "data-slot": "dialog-footer",
@@ -4694,7 +4925,7 @@ function DialogFooter({
       ...props,
       children: [
         children,
-        showCloseButton && /* @__PURE__ */ jsx18(DialogPrimitive2.Close, { asChild: true, children: /* @__PURE__ */ jsx18(Button, { variant: "outline", children: translate("auto.components.ui.dialog.f26c4baeda", "Close") }) })
+        showCloseButton && /* @__PURE__ */ jsx20(DialogPrimitive2.Close, { asChild: true, children: /* @__PURE__ */ jsx20(Button, { variant: "outline", children: translate("auto.components.ui.dialog.f26c4baeda", "Close") }) })
       ]
     }
   );
@@ -4704,7 +4935,7 @@ function DialogTitle({
   size = "default",
   ...props
 }) {
-  return /* @__PURE__ */ jsx18(
+  return /* @__PURE__ */ jsx20(
     DialogPrimitive2.Title,
     {
       "data-slot": "dialog-title",
@@ -4721,7 +4952,7 @@ function DialogDescription({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx18(
+  return /* @__PURE__ */ jsx20(
     DialogPrimitive2.Description,
     {
       "data-slot": "dialog-description",
@@ -4732,17 +4963,17 @@ function DialogDescription({
 }
 
 // src/renderer/components/settings/BrowserSettingsPanel.tsx
-import { useEffect as useEffect8, useState as useState7 } from "react";
+import { useEffect as useEffect9, useState as useState7 } from "react";
 
 // src/renderer/components/settings/BrowserNewProfileDialog.tsx
 import { useState as useState4 } from "react";
 import { toast as toast2 } from "sonner";
 
 // src/renderer/hooks/useMountedRef.ts
-import { useEffect as useEffect7, useRef as useRef7 } from "react";
+import { useEffect as useEffect8, useRef as useRef8 } from "react";
 function useMountedRef() {
-  const mountedRef = useRef7(true);
-  useEffect7(() => {
+  const mountedRef = useRef8(true);
+  useEffect8(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -4752,7 +4983,7 @@ function useMountedRef() {
 }
 
 // src/renderer/components/settings/BrowserNewProfileDialog.tsx
-import { jsx as jsx19, jsxs as jsxs14 } from "react/jsx-runtime";
+import { jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
 function BrowserNewProfileDialog({
   open,
   onOpenChange
@@ -4764,7 +4995,7 @@ function BrowserNewProfileDialog({
     onOpenChange(false);
     setNewProfileName("");
   };
-  return /* @__PURE__ */ jsx19(
+  return /* @__PURE__ */ jsx21(
     Dialog,
     {
       open,
@@ -4773,9 +5004,9 @@ function BrowserNewProfileDialog({
           handleClose();
         }
       },
-      children: /* @__PURE__ */ jsxs14(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-        /* @__PURE__ */ jsx19(DialogHeader, { children: /* @__PURE__ */ jsx19(DialogTitle, { className: "text-base", children: translate("auto.components.settings.BrowserPane.8481ee0331", "New Browser Profile") }) }),
-        /* @__PURE__ */ jsxs14(
+      children: /* @__PURE__ */ jsxs15(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+        /* @__PURE__ */ jsx21(DialogHeader, { children: /* @__PURE__ */ jsx21(DialogTitle, { className: "text-base", children: translate("auto.components.settings.BrowserPane.8481ee0331", "New Browser Profile") }) }),
+        /* @__PURE__ */ jsxs15(
           "form",
           {
             onSubmit: async (e) => {
@@ -4814,7 +5045,7 @@ function BrowserNewProfileDialog({
               }
             },
             children: [
-              /* @__PURE__ */ jsx19(
+              /* @__PURE__ */ jsx21(
                 Input,
                 {
                   value: newProfileName,
@@ -4828,9 +5059,9 @@ function BrowserNewProfileDialog({
                   className: "mb-3"
                 }
               ),
-              /* @__PURE__ */ jsxs14(DialogFooter, { children: [
-                /* @__PURE__ */ jsx19(Button, { type: "button", variant: "outline", size: "sm", onClick: handleClose, children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
-                /* @__PURE__ */ jsx19(Button, { type: "submit", size: "sm", disabled: !newProfileName.trim() || isCreatingProfile, children: isCreatingProfile ? translate("auto.components.settings.BrowserPane.7b649a578a", "Creating\u2026") : translate("auto.components.settings.BrowserPane.64898ecdab", "Create") })
+              /* @__PURE__ */ jsxs15(DialogFooter, { children: [
+                /* @__PURE__ */ jsx21(Button, { type: "button", variant: "outline", size: "sm", onClick: handleClose, children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
+                /* @__PURE__ */ jsx21(Button, { type: "submit", size: "sm", disabled: !newProfileName.trim() || isCreatingProfile, children: isCreatingProfile ? translate("auto.components.settings.BrowserPane.7b649a578a", "Creating\u2026") : translate("auto.components.settings.BrowserPane.64898ecdab", "Create") })
               ] })
             ]
           }
@@ -4842,9 +5073,9 @@ function BrowserNewProfileDialog({
 
 // src/renderer/ui/label.tsx
 import * as LabelPrimitive from "radix-ui/label";
-import { jsx as jsx20 } from "react/jsx-runtime";
+import { jsx as jsx22 } from "react/jsx-runtime";
 function Label2({ className, ...props }) {
-  return /* @__PURE__ */ jsx20(
+  return /* @__PURE__ */ jsx22(
     LabelPrimitive.Root,
     {
       "data-slot": "label",
@@ -4860,12 +5091,12 @@ function Label2({ className, ...props }) {
 // src/renderer/ui/select.tsx
 import { CheckIcon as CheckIcon2, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import * as SelectPrimitive from "radix-ui/select";
-import { jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
+import { jsx as jsx23, jsxs as jsxs16 } from "react/jsx-runtime";
 function Select({ ...props }) {
-  return /* @__PURE__ */ jsx21(SelectPrimitive.Root, { "data-slot": "select", ...props });
+  return /* @__PURE__ */ jsx23(SelectPrimitive.Root, { "data-slot": "select", ...props });
 }
 function SelectValue({ ...props }) {
-  return /* @__PURE__ */ jsx21(SelectPrimitive.Value, { "data-slot": "select-value", ...props });
+  return /* @__PURE__ */ jsx23(SelectPrimitive.Value, { "data-slot": "select-value", ...props });
 }
 function SelectTrigger({
   className,
@@ -4873,7 +5104,7 @@ function SelectTrigger({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs15(
+  return /* @__PURE__ */ jsxs16(
     SelectPrimitive.Trigger,
     {
       "data-slot": "select-trigger",
@@ -4885,7 +5116,7 @@ function SelectTrigger({
       ...props,
       children: [
         children,
-        /* @__PURE__ */ jsx21(SelectPrimitive.Icon, { asChild: true, children: /* @__PURE__ */ jsx21(ChevronDownIcon, { className: "size-4 opacity-50" }) })
+        /* @__PURE__ */ jsx23(SelectPrimitive.Icon, { asChild: true, children: /* @__PURE__ */ jsx23(ChevronDownIcon, { className: "size-4 opacity-50" }) })
       ]
     }
   );
@@ -4898,7 +5129,7 @@ function SelectContent({
   portalContainer,
   ...props
 }) {
-  return /* @__PURE__ */ jsx21(SelectPrimitive.Portal, { container: portalContainer ?? void 0, children: /* @__PURE__ */ jsxs15(
+  return /* @__PURE__ */ jsx23(SelectPrimitive.Portal, { container: portalContainer ?? void 0, children: /* @__PURE__ */ jsxs16(
     SelectPrimitive.Content,
     {
       "data-slot": "select-content",
@@ -4911,8 +5142,8 @@ function SelectContent({
       align,
       ...props,
       children: [
-        /* @__PURE__ */ jsx21(SelectScrollUpButton, {}),
-        /* @__PURE__ */ jsx21(
+        /* @__PURE__ */ jsx23(SelectScrollUpButton, {}),
+        /* @__PURE__ */ jsx23(
           SelectPrimitive.Viewport,
           {
             className: cn(
@@ -4922,7 +5153,7 @@ function SelectContent({
             children
           }
         ),
-        /* @__PURE__ */ jsx21(SelectScrollDownButton, {})
+        /* @__PURE__ */ jsx23(SelectScrollDownButton, {})
       ]
     }
   ) });
@@ -4932,7 +5163,7 @@ function SelectItem({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs15(
+  return /* @__PURE__ */ jsxs16(
     SelectPrimitive.Item,
     {
       "data-slot": "select-item",
@@ -4942,15 +5173,15 @@ function SelectItem({
       ),
       ...props,
       children: [
-        /* @__PURE__ */ jsx21(
+        /* @__PURE__ */ jsx23(
           "span",
           {
             "data-slot": "select-item-indicator",
             className: "absolute right-2 flex size-3.5 items-center justify-center",
-            children: /* @__PURE__ */ jsx21(SelectPrimitive.ItemIndicator, { children: /* @__PURE__ */ jsx21(CheckIcon2, { className: "size-4" }) })
+            children: /* @__PURE__ */ jsx23(SelectPrimitive.ItemIndicator, { children: /* @__PURE__ */ jsx23(CheckIcon2, { className: "size-4" }) })
           }
         ),
-        /* @__PURE__ */ jsx21(SelectPrimitive.ItemText, { children })
+        /* @__PURE__ */ jsx23(SelectPrimitive.ItemText, { children })
       ]
     }
   );
@@ -4959,13 +5190,13 @@ function SelectScrollUpButton({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx21(
+  return /* @__PURE__ */ jsx23(
     SelectPrimitive.ScrollUpButton,
     {
       "data-slot": "select-scroll-up-button",
       className: cn("flex cursor-default items-center justify-center py-1", className),
       ...props,
-      children: /* @__PURE__ */ jsx21(ChevronUpIcon, { className: "size-4" })
+      children: /* @__PURE__ */ jsx23(ChevronUpIcon, { className: "size-4" })
     }
   );
 }
@@ -4973,39 +5204,39 @@ function SelectScrollDownButton({
   className,
   ...props
 }) {
-  return /* @__PURE__ */ jsx21(
+  return /* @__PURE__ */ jsx23(
     SelectPrimitive.ScrollDownButton,
     {
       "data-slot": "select-scroll-down-button",
       className: cn("flex cursor-default items-center justify-center py-1", className),
       ...props,
-      children: /* @__PURE__ */ jsx21(ChevronDownIcon, { className: "size-4" })
+      children: /* @__PURE__ */ jsx23(ChevronDownIcon, { className: "size-4" })
     }
   );
 }
 
 // src/renderer/components/settings/BrowserSearchEngineSetting.tsx
-import { jsx as jsx22, jsxs as jsxs16 } from "react/jsx-runtime";
+import { jsx as jsx24, jsxs as jsxs17 } from "react/jsx-runtime";
 function BrowserSearchEngineSetting({
   selectedSearchEngine,
   onSearchEngineChange
 }) {
-  return /* @__PURE__ */ jsxs16("div", { className: "flex items-start justify-between gap-4 py-2", children: [
-    /* @__PURE__ */ jsxs16("div", { className: "space-y-0.5", children: [
-      /* @__PURE__ */ jsx22(Label2, { children: translate("auto.components.settings.BrowserPane.0d9c987f21", "Default Search Engine") }),
-      /* @__PURE__ */ jsx22("p", { className: "text-xs text-muted-foreground", children: translate(
+  return /* @__PURE__ */ jsxs17("div", { className: "flex items-start justify-between gap-4 py-2", children: [
+    /* @__PURE__ */ jsxs17("div", { className: "space-y-0.5", children: [
+      /* @__PURE__ */ jsx24(Label2, { children: translate("auto.components.settings.BrowserPane.0d9c987f21", "Default Search Engine") }),
+      /* @__PURE__ */ jsx24("p", { className: "text-xs text-muted-foreground", children: translate(
         "auto.components.settings.BrowserPane.3e46903ad4",
         "Used when typing non-URL text in the address bar."
       ) })
     ] }),
-    /* @__PURE__ */ jsxs16(
+    /* @__PURE__ */ jsxs17(
       Select,
       {
         value: selectedSearchEngine,
         onValueChange: (value) => onSearchEngineChange(value),
         children: [
-          /* @__PURE__ */ jsx22(SelectTrigger, { className: "h-7 w-36 text-xs", children: /* @__PURE__ */ jsx22(SelectValue, {}) }),
-          /* @__PURE__ */ jsx22(SelectContent, { children: Object.keys(SEARCH_ENGINE_LABELS).map((engine) => /* @__PURE__ */ jsx22(SelectItem, { value: engine, className: "text-xs", children: SEARCH_ENGINE_LABELS[engine] }, engine)) })
+          /* @__PURE__ */ jsx24(SelectTrigger, { className: "h-7 w-36 text-xs", children: /* @__PURE__ */ jsx24(SelectValue, {}) }),
+          /* @__PURE__ */ jsx24(SelectContent, { children: Object.keys(SEARCH_ENGINE_LABELS).map((engine) => /* @__PURE__ */ jsx24(SelectItem, { value: engine, className: "text-xs", children: SEARCH_ENGINE_LABELS[engine] }, engine)) })
         ]
       }
     )
@@ -5019,7 +5250,7 @@ import { Plus } from "lucide-react";
 import { useState as useState5 } from "react";
 import { Import, Loader2 as Loader23, Trash2 } from "lucide-react";
 import { toast as toast3 } from "sonner";
-import { jsx as jsx23, jsxs as jsxs17 } from "react/jsx-runtime";
+import { jsx as jsx25, jsxs as jsxs18 } from "react/jsx-runtime";
 function BrowserProfileRow({
   profile,
   inUse,
@@ -5088,21 +5319,21 @@ function BrowserProfileRow({
     }
   };
   const sourceLabel = profile.source ? `${BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily}${profile.source.profileName ? ` (${profile.source.profileName})` : ""}` : translate("auto.components.settings.BrowserProfileRow.796d846483", "No cookies imported");
-  return /* @__PURE__ */ jsxs17(
+  return /* @__PURE__ */ jsxs18(
     "div",
     {
       "data-profile-id": profile.id,
       className: `flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left ${inUse ? "border-foreground/20 bg-accent/15" : "border-border/70"}`,
       children: [
-        /* @__PURE__ */ jsxs17("div", { className: "min-w-0 flex-1", children: [
-          /* @__PURE__ */ jsxs17("div", { className: "flex items-center gap-2", children: [
-            /* @__PURE__ */ jsx23("span", { className: "truncate text-sm font-medium", children: profile.label }),
-            inUse ? /* @__PURE__ */ jsx23("span", { className: "shrink-0 rounded border border-border/50 px-1.5 text-[10px] font-medium leading-4 text-foreground/80", children: translate("auto.components.browser.settings.currentProfile", "In use") }) : null
+        /* @__PURE__ */ jsxs18("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ jsxs18("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsx25("span", { className: "truncate text-sm font-medium", children: profile.label }),
+            inUse ? /* @__PURE__ */ jsx25("span", { className: "shrink-0 rounded border border-border/50 px-1.5 text-[10px] font-medium leading-4 text-foreground/80", children: translate("auto.components.browser.settings.currentProfile", "In use") }) : null
           ] }),
-          /* @__PURE__ */ jsx23("p", { className: "truncate text-[11px] text-muted-foreground", children: sourceLabel })
+          /* @__PURE__ */ jsx25("p", { className: "truncate text-[11px] text-muted-foreground", children: sourceLabel })
         ] }),
-        /* @__PURE__ */ jsxs17("div", { className: "flex shrink-0 items-center gap-1", children: [
-          /* @__PURE__ */ jsxs17(
+        /* @__PURE__ */ jsxs18("div", { className: "flex shrink-0 items-center gap-1", children: [
+          /* @__PURE__ */ jsxs18(
             DropdownMenu,
             {
               onOpenChange: (open) => {
@@ -5111,7 +5342,7 @@ function BrowserProfileRow({
                 }
               },
               children: [
-                /* @__PURE__ */ jsx23(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsxs17(
+                /* @__PURE__ */ jsx25(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsxs18(
                   Button,
                   {
                     variant: "ghost",
@@ -5119,20 +5350,20 @@ function BrowserProfileRow({
                     className: "h-6 gap-1 px-1.5 text-[11px] text-muted-foreground",
                     disabled: isImporting,
                     children: [
-                      isImporting ? /* @__PURE__ */ jsx23(Loader23, { className: "size-3 animate-spin" }) : /* @__PURE__ */ jsx23(Import, { className: "size-3" }),
+                      isImporting ? /* @__PURE__ */ jsx25(Loader23, { className: "size-3 animate-spin" }) : /* @__PURE__ */ jsx25(Import, { className: "size-3" }),
                       translate("auto.components.settings.BrowserProfileRow.cdec84552f", "Import Cookies")
                     ]
                   }
                 ) }),
-                /* @__PURE__ */ jsxs17(DropdownMenuContent, { align: "end", children: [
+                /* @__PURE__ */ jsxs18(DropdownMenuContent, { align: "end", children: [
                   detectedBrowsers.map(
-                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs17(DropdownMenuSub, { children: [
-                      /* @__PURE__ */ jsx23(DropdownMenuSubTrigger, { children: translate(
+                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs18(DropdownMenuSub, { children: [
+                      /* @__PURE__ */ jsx25(DropdownMenuSubTrigger, { children: translate(
                         "auto.components.settings.BrowserProfileRow.c5a273a809",
                         "From {{value0}}",
                         { value0: browser.label }
                       ) }),
-                      /* @__PURE__ */ jsx23(DropdownMenuPortal, { children: /* @__PURE__ */ jsx23(DropdownMenuSubContent, { children: browser.profiles.map((bp) => /* @__PURE__ */ jsx23(
+                      /* @__PURE__ */ jsx25(DropdownMenuPortal, { children: /* @__PURE__ */ jsx25(DropdownMenuSubContent, { children: browser.profiles.map((bp) => /* @__PURE__ */ jsx25(
                         DropdownMenuItem,
                         {
                           onSelect: () => void handleImportFromBrowser(browser.family, bp.directory),
@@ -5140,7 +5371,7 @@ function BrowserProfileRow({
                         },
                         bp.directory
                       )) }) })
-                    ] }, browser.family) : /* @__PURE__ */ jsx23(
+                    ] }, browser.family) : /* @__PURE__ */ jsx25(
                       DropdownMenuItem,
                       {
                         onSelect: () => void handleImportFromBrowser(browser.family),
@@ -5153,14 +5384,14 @@ function BrowserProfileRow({
                       browser.family
                     )
                   ),
-                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx23(DropdownMenuSeparator, {}),
-                  /* @__PURE__ */ jsx23(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate("auto.components.settings.BrowserProfileRow.ebb78dfd6f", "From File\u2026") }),
-                  /* @__PURE__ */ jsx23(BrowserCookieImportDisclosure, {})
+                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx25(DropdownMenuSeparator, {}),
+                  /* @__PURE__ */ jsx25(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate("auto.components.settings.BrowserProfileRow.ebb78dfd6f", "From File\u2026") }),
+                  /* @__PURE__ */ jsx25(BrowserCookieImportDisclosure, {})
                 ] })
               ]
             }
           ),
-          isDefault ? /* @__PURE__ */ jsx23(
+          isDefault ? /* @__PURE__ */ jsx25(
             Button,
             {
               variant: "ghost",
@@ -5179,9 +5410,9 @@ function BrowserProfileRow({
                   );
                 }
               },
-              children: /* @__PURE__ */ jsx23(Trash2, { className: "size-3" })
+              children: /* @__PURE__ */ jsx25(Trash2, { className: "size-3" })
             }
-          ) : /* @__PURE__ */ jsx23(
+          ) : /* @__PURE__ */ jsx25(
             Button,
             {
               variant: "ghost",
@@ -5192,25 +5423,25 @@ function BrowserProfileRow({
                 "Delete profile"
               ),
               onClick: () => setConfirmingDelete(true),
-              children: /* @__PURE__ */ jsx23(Trash2, { className: "size-3" })
+              children: /* @__PURE__ */ jsx25(Trash2, { className: "size-3" })
             }
           )
         ] }),
-        /* @__PURE__ */ jsx23(Dialog, { open: confirmingDelete, onOpenChange: setConfirmingDelete, children: /* @__PURE__ */ jsxs17(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-          /* @__PURE__ */ jsxs17(DialogHeader, { children: [
-            /* @__PURE__ */ jsx23(DialogTitle, { className: "text-base", children: translate(
+        /* @__PURE__ */ jsx25(Dialog, { open: confirmingDelete, onOpenChange: setConfirmingDelete, children: /* @__PURE__ */ jsxs18(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+          /* @__PURE__ */ jsxs18(DialogHeader, { children: [
+            /* @__PURE__ */ jsx25(DialogTitle, { className: "text-base", children: translate(
               "auto.components.browser.settings.deleteProfileTitle",
               "Delete this profile?"
             ) }),
-            /* @__PURE__ */ jsx23(DialogDescription, { className: "text-xs", children: translate(
+            /* @__PURE__ */ jsx25(DialogDescription, { className: "text-xs", children: translate(
               "auto.components.browser.settings.deleteProfileDescription",
               'Cookies and logins stored in "{{value0}}" will be removed.',
               { value0: profile.label }
             ) })
           ] }),
-          /* @__PURE__ */ jsxs17(DialogFooter, { children: [
-            /* @__PURE__ */ jsx23(Button, { variant: "outline", size: "sm", onClick: () => setConfirmingDelete(false), children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
-            /* @__PURE__ */ jsx23(Button, { variant: "destructive", size: "sm", onClick: () => void handleDelete(), children: translate("auto.components.browser.settings.deleteConfirm", "Delete") })
+          /* @__PURE__ */ jsxs18(DialogFooter, { children: [
+            /* @__PURE__ */ jsx25(Button, { variant: "outline", size: "sm", onClick: () => setConfirmingDelete(false), children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
+            /* @__PURE__ */ jsx25(Button, { variant: "destructive", size: "sm", onClick: () => void handleDelete(), children: translate("auto.components.browser.settings.deleteConfirm", "Delete") })
           ] })
         ] }) })
       ]
@@ -5219,7 +5450,7 @@ function BrowserProfileRow({
 }
 
 // src/renderer/components/settings/BrowserSessionCookiesSection.tsx
-import { jsx as jsx24, jsxs as jsxs18 } from "react/jsx-runtime";
+import { jsx as jsx26, jsxs as jsxs19 } from "react/jsx-runtime";
 function BrowserSessionCookiesSection({
   inUseProfileId,
   onAddProfile
@@ -5227,22 +5458,22 @@ function BrowserSessionCookiesSection({
   const profiles = useBrowserSessionStore((s) => s.browserSessionProfiles);
   const defaultProfile = profiles.find((profile) => profile.id === "default");
   const nonDefaultProfiles = profiles.filter((profile) => profile.id !== "default");
-  return /* @__PURE__ */ jsxs18("div", { className: "space-y-3 py-2", children: [
-    /* @__PURE__ */ jsxs18("div", { className: "flex items-center justify-between gap-3", children: [
-      /* @__PURE__ */ jsxs18("div", { className: "space-y-0.5", children: [
-        /* @__PURE__ */ jsx24(Label2, { children: translate("auto.components.settings.BrowserPane.2d66a6efb5", "Session & Cookies") }),
-        /* @__PURE__ */ jsx24("p", { className: "text-xs text-muted-foreground", children: translate(
+  return /* @__PURE__ */ jsxs19("div", { className: "space-y-3 py-2", children: [
+    /* @__PURE__ */ jsxs19("div", { className: "flex items-center justify-between gap-3", children: [
+      /* @__PURE__ */ jsxs19("div", { className: "space-y-0.5", children: [
+        /* @__PURE__ */ jsx26(Label2, { children: translate("auto.components.settings.BrowserPane.2d66a6efb5", "Session & Cookies") }),
+        /* @__PURE__ */ jsx26("p", { className: "text-xs text-muted-foreground", children: translate(
           "auto.components.browser.settings.profilesHint",
           "Import cookies into a profile, and switch profiles per tab from the toolbar menu."
         ) })
       ] }),
-      /* @__PURE__ */ jsxs18(Button, { variant: "outline", size: "xs", onClick: onAddProfile, className: "shrink-0 gap-1.5", children: [
-        /* @__PURE__ */ jsx24(Plus, { className: "size-3" }),
+      /* @__PURE__ */ jsxs19(Button, { variant: "outline", size: "xs", onClick: onAddProfile, className: "shrink-0 gap-1.5", children: [
+        /* @__PURE__ */ jsx26(Plus, { className: "size-3" }),
         translate("auto.components.settings.BrowserPane.6f2584b39e", "Add Profile")
       ] })
     ] }),
-    /* @__PURE__ */ jsxs18("div", { className: "space-y-2", children: [
-      /* @__PURE__ */ jsx24(
+    /* @__PURE__ */ jsxs19("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsx26(
         BrowserProfileRow,
         {
           profile: defaultProfile ?? {
@@ -5256,7 +5487,7 @@ function BrowserSessionCookiesSection({
           isDefault: true
         }
       ),
-      nonDefaultProfiles.map((profile) => /* @__PURE__ */ jsx24(
+      nonDefaultProfiles.map((profile) => /* @__PURE__ */ jsx26(
         BrowserProfileRow,
         {
           profile,
@@ -5270,7 +5501,7 @@ function BrowserSessionCookiesSection({
 
 // src/renderer/components/settings/BrowserUserAgentSetting.tsx
 import { useState as useState6 } from "react";
-import { jsx as jsx25, jsxs as jsxs19 } from "react/jsx-runtime";
+import { jsx as jsx27, jsxs as jsxs20 } from "react/jsx-runtime";
 function BrowserUserAgentSetting() {
   const status = useBrowserSessionStore((s) => s.identity);
   const setIdentityMode = useBrowserSessionStore((s) => s.setIdentityMode);
@@ -5296,9 +5527,9 @@ function BrowserUserAgentSetting() {
   };
   let control;
   if (!status) {
-    control = /* @__PURE__ */ jsx25("span", { className: "text-xs text-muted-foreground", children: translate("settings.browser.userAgent.loading", "Loading\u2026") });
+    control = /* @__PURE__ */ jsx27("span", { className: "text-xs text-muted-foreground", children: translate("settings.browser.userAgent.loading", "Loading\u2026") });
   } else if (status.identity.configuredMode === null) {
-    control = /* @__PURE__ */ jsx25("div", { className: "text-xs text-destructive", children: translate(
+    control = /* @__PURE__ */ jsx27("div", { className: "text-xs text-destructive", children: translate(
       "settings.browser.userAgent.resetRequired",
       "Identity data must be reset explicitly before it can be changed."
     ) });
@@ -5322,8 +5553,8 @@ function BrowserUserAgentSetting() {
         )
       }
     ];
-    control = /* @__PURE__ */ jsxs19("div", { className: "space-y-1 text-right", children: [
-      /* @__PURE__ */ jsx25("div", { role: "radiogroup", "aria-label": title, className: "inline-flex gap-1", children: options.map((option) => /* @__PURE__ */ jsx25(
+    control = /* @__PURE__ */ jsxs20("div", { className: "space-y-1 text-right", children: [
+      /* @__PURE__ */ jsx27("div", { role: "radiogroup", "aria-label": title, className: "inline-flex gap-1", children: options.map((option) => /* @__PURE__ */ jsx27(
         Button,
         {
           type: "button",
@@ -5339,21 +5570,21 @@ function BrowserUserAgentSetting() {
         },
         option.value
       )) }),
-      status.identity.restartRequired ? /* @__PURE__ */ jsx25("div", { className: "text-[11px] text-muted-foreground", children: translate("settings.browser.userAgent.restartRequired", "Restart required") }) : null,
-      error ? /* @__PURE__ */ jsx25("div", { className: "text-[11px] text-destructive", children: error }) : null
+      status.identity.restartRequired ? /* @__PURE__ */ jsx27("div", { className: "text-[11px] text-muted-foreground", children: translate("settings.browser.userAgent.restartRequired", "Restart required") }) : null,
+      error ? /* @__PURE__ */ jsx27("div", { className: "text-[11px] text-destructive", children: error }) : null
     ] });
   }
-  return /* @__PURE__ */ jsxs19("div", { className: "flex items-start justify-between gap-4 py-2", children: [
-    /* @__PURE__ */ jsxs19("div", { className: "space-y-0.5", children: [
-      /* @__PURE__ */ jsx25(Label2, { children: title }),
-      /* @__PURE__ */ jsx25("p", { className: "text-xs text-muted-foreground", children: description })
+  return /* @__PURE__ */ jsxs20("div", { className: "flex items-start justify-between gap-4 py-2", children: [
+    /* @__PURE__ */ jsxs20("div", { className: "space-y-0.5", children: [
+      /* @__PURE__ */ jsx27(Label2, { children: title }),
+      /* @__PURE__ */ jsx27("p", { className: "text-xs text-muted-foreground", children: description })
     ] }),
-    /* @__PURE__ */ jsx25("div", { className: "shrink-0", children: control })
+    /* @__PURE__ */ jsx27("div", { className: "shrink-0", children: control })
   ] });
 }
 
 // src/renderer/components/settings/BrowserSettingsPanel.tsx
-import { jsx as jsx26, jsxs as jsxs20 } from "react/jsx-runtime";
+import { jsx as jsx28, jsxs as jsxs21 } from "react/jsx-runtime";
 function BrowserSettingsPanel(props) {
   const { scopeId } = props;
   const searchEngine = useBrowserSessionStore((s) => s.settings.searchEngine);
@@ -5367,7 +5598,7 @@ function BrowserSettingsPanel(props) {
     const activePage = s.pagesByScope[scopeId]?.find((page) => page.id === activePageId);
     return activePage ? activePage.sessionProfileId ?? "default" : void 0;
   });
-  useEffect8(() => {
+  useEffect9(() => {
     const state = useBrowserSessionStore.getState();
     if (!state.settingsLoaded) {
       void state.loadSettings();
@@ -5379,36 +5610,36 @@ function BrowserSettingsPanel(props) {
       void state.loadIdentity();
     }
   }, []);
-  return /* @__PURE__ */ jsxs20("div", { className: "space-y-4", children: [
-    /* @__PURE__ */ jsx26(
+  return /* @__PURE__ */ jsxs21("div", { className: "space-y-4", children: [
+    /* @__PURE__ */ jsx28(
       BrowserSearchEngineSetting,
       {
         selectedSearchEngine: searchEngine,
         onSearchEngineChange: (engine) => void updateSettings({ searchEngine: engine })
       }
     ),
-    /* @__PURE__ */ jsx26(BrowserUserAgentSetting, {}),
-    /* @__PURE__ */ jsx26(
+    /* @__PURE__ */ jsx28(BrowserUserAgentSetting, {}),
+    /* @__PURE__ */ jsx28(
       BrowserSessionCookiesSection,
       {
         inUseProfileId,
         onAddProfile: () => setNewProfileDialogOpen(true)
       }
     ),
-    /* @__PURE__ */ jsx26(BrowserNewProfileDialog, { open: newProfileDialogOpen, onOpenChange: setNewProfileDialogOpen })
+    /* @__PURE__ */ jsx28(BrowserNewProfileDialog, { open: newProfileDialogOpen, onOpenChange: setNewProfileDialogOpen })
   ] });
 }
 
 // src/renderer/components/settings/BrowserSettingsDialog.tsx
-import { jsx as jsx27, jsxs as jsxs21 } from "react/jsx-runtime";
+import { jsx as jsx29, jsxs as jsxs22 } from "react/jsx-runtime";
 function BrowserSettingsDialog(props) {
   const { open, onOpenChange, scopeId } = props;
-  return /* @__PURE__ */ jsx27(Dialog, { open, onOpenChange, children: /* @__PURE__ */ jsxs21(DialogContent, { className: "max-h-[85vh] overflow-y-auto sm:max-w-xl", children: [
-    /* @__PURE__ */ jsx27(DialogHeader, { children: /* @__PURE__ */ jsx27(DialogTitle, { className: "text-base", children: translate(
+  return /* @__PURE__ */ jsx29(Dialog, { open, onOpenChange, children: /* @__PURE__ */ jsxs22(DialogContent, { className: "max-h-[85vh] overflow-y-auto sm:max-w-xl", children: [
+    /* @__PURE__ */ jsx29(DialogHeader, { children: /* @__PURE__ */ jsx29(DialogTitle, { className: "text-base", children: translate(
       "auto.components.browser.pane.BrowserToolbarMenu.a771c2b6c8",
       "Browser Settings\u2026"
     ) }) }),
-    open ? /* @__PURE__ */ jsx27(BrowserSettingsPanel, { scopeId }) : null
+    open ? /* @__PURE__ */ jsx29(BrowserSettingsPanel, { scopeId }) : null
   ] }) });
 }
 
@@ -5476,7 +5707,7 @@ function formatBrowserImportSummary({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
-import { Fragment as Fragment4, jsx as jsx28, jsxs as jsxs22 } from "react/jsx-runtime";
+import { Fragment as Fragment4, jsx as jsx30, jsxs as jsxs23 } from "react/jsx-runtime";
 function BrowserImportHintButton({
   profileId,
   compact = false
@@ -5509,7 +5740,7 @@ function BrowserImportHintButton({
     }),
     [detectedBrowsers, detectedBrowsersLoaded, supportedImportLabels]
   );
-  const handleOpenChange = useCallback6(
+  const handleOpenChange = useCallback7(
     (nextOpen) => {
       setOpen(nextOpen);
       if (!nextOpen) {
@@ -5521,7 +5752,7 @@ function BrowserImportHintButton({
     },
     [fetchDetectedBrowsers]
   );
-  const handleImportFromBrowser = useCallback6(
+  const handleImportFromBrowser = useCallback7(
     async (browserFamily, browserProfile) => {
       setOpen(false);
       setImportMenuOpen(false);
@@ -5550,7 +5781,7 @@ function BrowserImportHintButton({
     },
     [detectedBrowsers, effectiveProfileId, importCookiesFromBrowser]
   );
-  const handleImportFromFile = useCallback6(async () => {
+  const handleImportFromFile = useCallback7(async () => {
     setOpen(false);
     setImportMenuOpen(false);
     const result = await importCookiesToProfile(effectiveProfileId);
@@ -5569,15 +5800,15 @@ function BrowserImportHintButton({
       toast4.error(result.reason);
     }
   }, [effectiveProfileId, importCookiesToProfile]);
-  const handleOpenBrowserSettings = useCallback6(() => {
+  const handleOpenBrowserSettings = useCallback7(() => {
     setSettingsOpen(true);
     setOpen(false);
   }, []);
-  const handleHideHint = useCallback6(() => {
+  const handleHideHint = useCallback7(() => {
     void updateSettings({ importHintHidden: true });
     setOpen(false);
   }, [updateSettings]);
-  useEffect9(() => {
+  useEffect10(() => {
     if (!open) {
       return;
     }
@@ -5590,9 +5821,9 @@ function BrowserImportHintButton({
   if (!shouldShow) {
     return null;
   }
-  return /* @__PURE__ */ jsxs22(Fragment4, { children: [
-    /* @__PURE__ */ jsxs22(Popover, { modal: false, open, onOpenChange: handleOpenChange, children: [
-      /* @__PURE__ */ jsx28(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsxs22(
+  return /* @__PURE__ */ jsxs23(Fragment4, { children: [
+    /* @__PURE__ */ jsxs23(Popover, { modal: false, open, onOpenChange: handleOpenChange, children: [
+      /* @__PURE__ */ jsx30(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsxs23(
         Button,
         {
           type: "button",
@@ -5604,7 +5835,7 @@ function BrowserImportHintButton({
             "Import browser data"
           ),
           children: [
-            /* @__PURE__ */ jsx28(Import2, { className: "size-3.5" }),
+            /* @__PURE__ */ jsx30(Import2, { className: "size-3.5" }),
             compact ? null : translate(
               "auto.components.browser.pane.BrowserImportHintButton.b24fef25be",
               "Import"
@@ -5612,21 +5843,21 @@ function BrowserImportHintButton({
           ]
         }
       ) }),
-      /* @__PURE__ */ jsx28(PopoverContent, { align: "end", side: "bottom", sideOffset: 6, className: "w-80 p-3", children: /* @__PURE__ */ jsxs22("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ jsxs22("div", { className: "space-y-1.5", children: [
-          /* @__PURE__ */ jsx28("div", { className: "text-sm font-medium text-foreground", children: translate(
+      /* @__PURE__ */ jsx30(PopoverContent, { align: "end", side: "bottom", sideOffset: 6, className: "w-80 p-3", children: /* @__PURE__ */ jsxs23("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ jsxs23("div", { className: "space-y-1.5", children: [
+          /* @__PURE__ */ jsx30("div", { className: "text-sm font-medium text-foreground", children: translate(
             "auto.components.browser.pane.BrowserImportHintButton.4f5ffaa6a1",
             "Import browser data"
           ) }),
-          /* @__PURE__ */ jsx28("p", { className: "text-xs leading-5 text-muted-foreground", children: importSummary }),
-          /* @__PURE__ */ jsx28("p", { className: "text-[11px] leading-4 text-muted-foreground/80", children: translate(
+          /* @__PURE__ */ jsx30("p", { className: "text-xs leading-5 text-muted-foreground", children: importSummary }),
+          /* @__PURE__ */ jsx30("p", { className: "text-[11px] leading-4 text-muted-foreground/80", children: translate(
             "auto.components.browser.pane.BrowserImportHintButton.e52a955e6f",
             "You can always find this in Settings > Browser."
           ) })
         ] }),
-        /* @__PURE__ */ jsxs22("div", { className: "flex items-center gap-3", children: [
-          /* @__PURE__ */ jsxs22(DropdownMenu, { modal: false, open: importMenuOpen, onOpenChange: setImportMenuOpen, children: [
-            /* @__PURE__ */ jsx28(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx28(
+        /* @__PURE__ */ jsxs23("div", { className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ jsxs23(DropdownMenu, { modal: false, open: importMenuOpen, onOpenChange: setImportMenuOpen, children: [
+            /* @__PURE__ */ jsx30(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx30(
               Button,
               {
                 type: "button",
@@ -5640,15 +5871,15 @@ function BrowserImportHintButton({
                 )
               }
             ) }),
-            /* @__PURE__ */ jsxs22(DropdownMenuContent, { align: "start", className: "w-52", children: [
+            /* @__PURE__ */ jsxs23(DropdownMenuContent, { align: "start", className: "w-52", children: [
               detectedBrowsers.map(
-                (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs22(DropdownMenuSub, { children: [
-                  /* @__PURE__ */ jsx28(DropdownMenuSubTrigger, { children: translate(
+                (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs23(DropdownMenuSub, { children: [
+                  /* @__PURE__ */ jsx30(DropdownMenuSubTrigger, { children: translate(
                     "auto.components.browser.pane.BrowserImportHintButton.0c6d254eca",
                     "From {{value0}}",
                     { value0: browser.label }
                   ) }),
-                  /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsx28(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx28(
+                  /* @__PURE__ */ jsx30(DropdownMenuPortal, { children: /* @__PURE__ */ jsx30(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx30(
                     DropdownMenuItem,
                     {
                       onSelect: () => void handleImportFromBrowser(browser.family, profile.directory),
@@ -5656,7 +5887,7 @@ function BrowserImportHintButton({
                     },
                     profile.directory
                   )) }) })
-                ] }, browser.family) : /* @__PURE__ */ jsx28(
+                ] }, browser.family) : /* @__PURE__ */ jsx30(
                   DropdownMenuItem,
                   {
                     onSelect: () => void handleImportFromBrowser(browser.family),
@@ -5669,15 +5900,15 @@ function BrowserImportHintButton({
                   browser.family
                 )
               ),
-              detectedBrowsers.length > 0 ? /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}) : null,
-              /* @__PURE__ */ jsx28(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate(
+              detectedBrowsers.length > 0 ? /* @__PURE__ */ jsx30(DropdownMenuSeparator, {}) : null,
+              /* @__PURE__ */ jsx30(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate(
                 "auto.components.browser.pane.BrowserImportHintButton.e0e125e074",
                 "From File\u2026"
               ) }),
-              /* @__PURE__ */ jsx28(BrowserCookieImportDisclosure, {})
+              /* @__PURE__ */ jsx30(BrowserCookieImportDisclosure, {})
             ] })
           ] }),
-          /* @__PURE__ */ jsx28(
+          /* @__PURE__ */ jsx30(
             "button",
             {
               type: "button",
@@ -5689,7 +5920,7 @@ function BrowserImportHintButton({
               )
             }
           ),
-          /* @__PURE__ */ jsx28(
+          /* @__PURE__ */ jsx30(
             "button",
             {
               type: "button",
@@ -5704,7 +5935,7 @@ function BrowserImportHintButton({
         ] })
       ] }) })
     ] }),
-    /* @__PURE__ */ jsx28(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen })
+    /* @__PURE__ */ jsx30(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen })
   ] });
 }
 
@@ -5788,7 +6019,7 @@ function browserViewportPresetToOverride(preset) {
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-menu-dropdown.tsx
 import { Check as Check2, Ellipsis as Ellipsis2, Import as Import3, Monitor, Plus as Plus2, Settings } from "lucide-react";
-import { jsx as jsx29, jsxs as jsxs23 } from "react/jsx-runtime";
+import { jsx as jsx31, jsxs as jsxs24 } from "react/jsx-runtime";
 function BrowserToolbarMenuDropdown({
   onOpenSettings,
   allProfiles,
@@ -5804,8 +6035,8 @@ function BrowserToolbarMenuDropdown({
   onApplyViewportPreset,
   overflow
 }) {
-  return /* @__PURE__ */ jsxs23(DropdownMenu, { modal: false, children: [
-    /* @__PURE__ */ jsx29(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx29(
+  return /* @__PURE__ */ jsxs24(DropdownMenu, { modal: false, children: [
+    /* @__PURE__ */ jsx31(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx31(
       Button,
       {
         ref: overflow.triggerRef,
@@ -5816,17 +6047,17 @@ function BrowserToolbarMenuDropdown({
           "auto.components.browser.pane.BrowserToolbarMenu.7b838540c7",
           "Browser menu"
         ),
-        children: /* @__PURE__ */ jsx29(Ellipsis2, { className: "size-4" })
+        children: /* @__PURE__ */ jsx31(Ellipsis2, { className: "size-4" })
       }
     ) }),
-    /* @__PURE__ */ jsxs23(
+    /* @__PURE__ */ jsxs24(
       DropdownMenuContent,
       {
         align: "end",
         className: "w-56",
         onCloseAutoFocus: overflow.onMenuCloseAutoFocus,
         children: [
-          /* @__PURE__ */ jsx29(
+          /* @__PURE__ */ jsx31(
             BrowserChromeFoldedMenuItems,
             {
               tools: overflow.tools,
@@ -5835,31 +6066,31 @@ function BrowserToolbarMenuDropdown({
           ),
           allProfiles.map((profile) => {
             const isSelectedProfile = profile.id === effectiveProfileId;
-            return /* @__PURE__ */ jsxs23(
+            return /* @__PURE__ */ jsxs24(
               DropdownMenuItem,
               {
                 onSelect: () => onSwitchProfile(profile.id === "default" ? null : profile.id),
                 children: [
-                  /* @__PURE__ */ jsx29(
+                  /* @__PURE__ */ jsx31(
                     Check2,
                     {
                       className: `mr-2 size-3.5 shrink-0 ${isSelectedProfile ? "opacity-100" : "opacity-0"}`
                     }
                   ),
-                  /* @__PURE__ */ jsx29("span", { className: "truncate", children: profile.label }),
-                  profile.source?.browserFamily && /* @__PURE__ */ jsx29("span", { className: "ml-auto pl-2 text-[11px] text-muted-foreground", children: BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily })
+                  /* @__PURE__ */ jsx31("span", { className: "truncate", children: profile.label }),
+                  profile.source?.browserFamily && /* @__PURE__ */ jsx31("span", { className: "ml-auto pl-2 text-[11px] text-muted-foreground", children: BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily })
                 ]
               },
               profile.id
             );
           }),
-          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs23(DropdownMenuItem, { onSelect: onNewProfile, children: [
-            /* @__PURE__ */ jsx29(Plus2, { className: "mr-2 size-3.5" }),
+          /* @__PURE__ */ jsx31(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs24(DropdownMenuItem, { onSelect: onNewProfile, children: [
+            /* @__PURE__ */ jsx31(Plus2, { className: "mr-2 size-3.5" }),
             translate("auto.components.browser.pane.BrowserToolbarMenu.cf7cdc67ef", "New Profile\u2026")
           ] }),
-          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs23(
+          /* @__PURE__ */ jsx31(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs24(
             DropdownMenuSub,
             {
               onOpenChange: (open) => {
@@ -5868,12 +6099,12 @@ function BrowserToolbarMenuDropdown({
                 }
               },
               children: [
-                /* @__PURE__ */ jsxs23(
+                /* @__PURE__ */ jsxs24(
                   DropdownMenuSubTrigger,
                   {
                     disabled: browserSessionImportState?.profileId === effectiveProfileId && browserSessionImportState.status === "importing",
                     children: [
-                      /* @__PURE__ */ jsx29(Import3, { className: "mr-2 size-3.5" }),
+                      /* @__PURE__ */ jsx31(Import3, { className: "mr-2 size-3.5" }),
                       translate(
                         "auto.components.browser.pane.BrowserToolbarMenu.2293adf620",
                         "Import Cookies"
@@ -5881,15 +6112,15 @@ function BrowserToolbarMenuDropdown({
                     ]
                   }
                 ),
-                /* @__PURE__ */ jsx29(DropdownMenuPortal, { children: /* @__PURE__ */ jsxs23(DropdownMenuSubContent, { children: [
+                /* @__PURE__ */ jsx31(DropdownMenuPortal, { children: /* @__PURE__ */ jsxs24(DropdownMenuSubContent, { children: [
                   detectedBrowsers.map(
-                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs23(DropdownMenuSub, { children: [
-                      /* @__PURE__ */ jsx29(DropdownMenuSubTrigger, { children: translate(
+                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs24(DropdownMenuSub, { children: [
+                      /* @__PURE__ */ jsx31(DropdownMenuSubTrigger, { children: translate(
                         "auto.components.browser.pane.BrowserToolbarMenu.eb280bfb11",
                         "From {{value0}}",
                         { value0: browser.label }
                       ) }),
-                      /* @__PURE__ */ jsx29(DropdownMenuPortal, { children: /* @__PURE__ */ jsx29(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx29(
+                      /* @__PURE__ */ jsx31(DropdownMenuPortal, { children: /* @__PURE__ */ jsx31(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx31(
                         DropdownMenuItem,
                         {
                           onSelect: () => onImportFromBrowser(browser.family, profile.directory),
@@ -5897,7 +6128,7 @@ function BrowserToolbarMenuDropdown({
                         },
                         profile.directory
                       )) }) })
-                    ] }, browser.family) : /* @__PURE__ */ jsx29(
+                    ] }, browser.family) : /* @__PURE__ */ jsx31(
                       DropdownMenuItem,
                       {
                         onSelect: () => onImportFromBrowser(browser.family),
@@ -5910,44 +6141,44 @@ function BrowserToolbarMenuDropdown({
                       browser.family
                     )
                   ),
-                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
-                  /* @__PURE__ */ jsx29(DropdownMenuItem, { onSelect: onImportFromFile, children: translate(
+                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx31(DropdownMenuSeparator, {}),
+                  /* @__PURE__ */ jsx31(DropdownMenuItem, { onSelect: onImportFromFile, children: translate(
                     "auto.components.browser.pane.BrowserToolbarMenu.56f94f4ffa",
                     "From File\u2026"
                   ) }),
-                  /* @__PURE__ */ jsx29(BrowserCookieImportDisclosure, {})
+                  /* @__PURE__ */ jsx31(BrowserCookieImportDisclosure, {})
                 ] }) })
               ]
             }
           ),
-          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs23(DropdownMenuSub, { children: [
-            /* @__PURE__ */ jsxs23(DropdownMenuSubTrigger, { children: [
-              /* @__PURE__ */ jsx29(Monitor, { className: "mr-2 size-3.5" }),
+          /* @__PURE__ */ jsx31(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs24(DropdownMenuSub, { children: [
+            /* @__PURE__ */ jsxs24(DropdownMenuSubTrigger, { children: [
+              /* @__PURE__ */ jsx31(Monitor, { className: "mr-2 size-3.5" }),
               translate(
                 "auto.components.browser.pane.BrowserToolbarMenu.e5d31de1a9",
                 "Viewport Size"
               )
             ] }),
-            /* @__PURE__ */ jsx29(DropdownMenuPortal, { children: /* @__PURE__ */ jsx29(DropdownMenuSubContent, { children: /* @__PURE__ */ jsxs23(
+            /* @__PURE__ */ jsx31(DropdownMenuPortal, { children: /* @__PURE__ */ jsx31(DropdownMenuSubContent, { children: /* @__PURE__ */ jsxs24(
               DropdownMenuRadioGroup,
               {
                 value: viewportPresetId ?? "default",
                 onValueChange: (v) => onApplyViewportPreset(v === "default" ? null : v),
                 children: [
-                  /* @__PURE__ */ jsx29(DropdownMenuRadioItem, { value: "default", children: translate(
+                  /* @__PURE__ */ jsx31(DropdownMenuRadioItem, { value: "default", children: translate(
                     "auto.components.browser.pane.BrowserToolbarMenu.ed8f54509d",
                     "Default"
                   ) }),
-                  /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
-                  BROWSER_VIEWPORT_PRESETS.map((preset) => /* @__PURE__ */ jsx29(DropdownMenuRadioItem, { value: preset.id, children: /* @__PURE__ */ jsx29("span", { className: "truncate", children: preset.label }) }, preset.id))
+                  /* @__PURE__ */ jsx31(DropdownMenuSeparator, {}),
+                  BROWSER_VIEWPORT_PRESETS.map((preset) => /* @__PURE__ */ jsx31(DropdownMenuRadioItem, { value: preset.id, children: /* @__PURE__ */ jsx31("span", { className: "truncate", children: preset.label }) }, preset.id))
                 ]
               }
             ) }) })
           ] }),
-          /* @__PURE__ */ jsx29(DropdownMenuSeparator, {}),
-          /* @__PURE__ */ jsxs23(DropdownMenuItem, { onSelect: onOpenSettings, children: [
-            /* @__PURE__ */ jsx29(Settings, { className: "mr-2 size-3.5" }),
+          /* @__PURE__ */ jsx31(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs24(DropdownMenuItem, { onSelect: onOpenSettings, children: [
+            /* @__PURE__ */ jsx31(Settings, { className: "mr-2 size-3.5" }),
             translate(
               "auto.components.browser.pane.BrowserToolbarMenu.a771c2b6c8",
               "Browser Settings\u2026"
@@ -5960,7 +6191,7 @@ function BrowserToolbarMenuDropdown({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-profile-dialogs.tsx
-import { Fragment as Fragment5, jsx as jsx30, jsxs as jsxs24 } from "react/jsx-runtime";
+import { Fragment as Fragment5, jsx as jsx32, jsxs as jsxs25 } from "react/jsx-runtime";
 function BrowserToolbarProfileDialogs({
   pendingSwitchProfileId,
   onPendingSwitchChange,
@@ -5973,8 +6204,8 @@ function BrowserToolbarProfileDialogs({
   onCreateProfile,
   onCancelNewProfile
 }) {
-  return /* @__PURE__ */ jsxs24(Fragment5, { children: [
-    /* @__PURE__ */ jsx30(
+  return /* @__PURE__ */ jsxs25(Fragment5, { children: [
+    /* @__PURE__ */ jsx32(
       Dialog,
       {
         open: pendingSwitchProfileId !== void 0,
@@ -5983,30 +6214,30 @@ function BrowserToolbarProfileDialogs({
             onPendingSwitchChange(false);
           }
         },
-        children: /* @__PURE__ */ jsxs24(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-          /* @__PURE__ */ jsxs24(DialogHeader, { children: [
-            /* @__PURE__ */ jsx30(DialogTitle, { className: "text-base", children: translate(
+        children: /* @__PURE__ */ jsxs25(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+          /* @__PURE__ */ jsxs25(DialogHeader, { children: [
+            /* @__PURE__ */ jsx32(DialogTitle, { className: "text-base", children: translate(
               "auto.components.browser.pane.BrowserToolbarMenu.fe683eb3b4",
               "Switch Profile"
             ) }),
-            /* @__PURE__ */ jsx30(DialogDescription, { className: "text-xs", children: translate(
+            /* @__PURE__ */ jsx32(DialogDescription, { className: "text-xs", children: translate(
               "auto.components.browser.pane.BrowserToolbarMenu.a38f217b46",
               "Switching profiles will reload this page. Any unsaved form data will be lost."
             ) })
           ] }),
-          /* @__PURE__ */ jsxs24(DialogFooter, { children: [
-            /* @__PURE__ */ jsx30(Button, { variant: "outline", size: "sm", onClick: () => onPendingSwitchChange(false), children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
-            /* @__PURE__ */ jsx30(Button, { size: "sm", onClick: onConfirmSwitch, children: translate("auto.components.browser.pane.BrowserToolbarMenu.58f2c81542", "Switch") })
+          /* @__PURE__ */ jsxs25(DialogFooter, { children: [
+            /* @__PURE__ */ jsx32(Button, { variant: "outline", size: "sm", onClick: () => onPendingSwitchChange(false), children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
+            /* @__PURE__ */ jsx32(Button, { size: "sm", onClick: onConfirmSwitch, children: translate("auto.components.browser.pane.BrowserToolbarMenu.58f2c81542", "Switch") })
           ] })
         ] })
       }
     ),
-    /* @__PURE__ */ jsx30(Dialog, { open: newProfileDialogOpen, onOpenChange: onNewProfileDialogOpenChange, children: /* @__PURE__ */ jsxs24(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
-      /* @__PURE__ */ jsx30(DialogHeader, { children: /* @__PURE__ */ jsx30(DialogTitle, { className: "text-base", children: translate(
+    /* @__PURE__ */ jsx32(Dialog, { open: newProfileDialogOpen, onOpenChange: onNewProfileDialogOpenChange, children: /* @__PURE__ */ jsxs25(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+      /* @__PURE__ */ jsx32(DialogHeader, { children: /* @__PURE__ */ jsx32(DialogTitle, { className: "text-base", children: translate(
         "auto.components.browser.pane.BrowserToolbarMenu.67e9b9fcd6",
         "New Browser Profile"
       ) }) }),
-      /* @__PURE__ */ jsxs24(
+      /* @__PURE__ */ jsxs25(
         "form",
         {
           onSubmit: (e) => {
@@ -6014,7 +6245,7 @@ function BrowserToolbarProfileDialogs({
             onCreateProfile();
           },
           children: [
-            /* @__PURE__ */ jsx30(
+            /* @__PURE__ */ jsx32(
               Input,
               {
                 value: newProfileName,
@@ -6028,9 +6259,9 @@ function BrowserToolbarProfileDialogs({
                 className: "mb-3"
               }
             ),
-            /* @__PURE__ */ jsxs24(DialogFooter, { children: [
-              /* @__PURE__ */ jsx30(Button, { type: "button", variant: "outline", size: "sm", onClick: onCancelNewProfile, children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
-              /* @__PURE__ */ jsx30(
+            /* @__PURE__ */ jsxs25(DialogFooter, { children: [
+              /* @__PURE__ */ jsx32(Button, { type: "button", variant: "outline", size: "sm", onClick: onCancelNewProfile, children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
+              /* @__PURE__ */ jsx32(
                 Button,
                 {
                   type: "submit",
@@ -6054,7 +6285,7 @@ function BrowserToolbarProfileDialogs({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserToolbarMenu.tsx
-import { Fragment as Fragment6, jsx as jsx31, jsxs as jsxs25 } from "react/jsx-runtime";
+import { Fragment as Fragment6, jsx as jsx33, jsxs as jsxs26 } from "react/jsx-runtime";
 function BrowserToolbarMenu({
   currentProfileId,
   scopeId,
@@ -6200,8 +6431,8 @@ function BrowserToolbarMenu({
       toast5.error(result.reason);
     }
   };
-  return /* @__PURE__ */ jsxs25(Fragment6, { children: [
-    /* @__PURE__ */ jsx31(
+  return /* @__PURE__ */ jsxs26(Fragment6, { children: [
+    /* @__PURE__ */ jsx33(
       BrowserToolbarMenuDropdown,
       {
         onOpenSettings: () => setSettingsOpen(true),
@@ -6219,8 +6450,8 @@ function BrowserToolbarMenu({
         overflow
       }
     ),
-    /* @__PURE__ */ jsx31(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen, scopeId }),
-    /* @__PURE__ */ jsx31(
+    /* @__PURE__ */ jsx33(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen, scopeId }),
+    /* @__PURE__ */ jsx33(
       BrowserToolbarProfileDialogs,
       {
         pendingSwitchProfileId,
@@ -6242,7 +6473,7 @@ function BrowserToolbarMenu({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
-import { jsx as jsx32 } from "react/jsx-runtime";
+import { jsx as jsx34 } from "react/jsx-runtime";
 function BrowserPageToolbar({
   page,
   isActive,
@@ -6268,12 +6499,15 @@ function BrowserPageToolbar({
   grabIntent,
   startGrabIntent,
   browserAnnotationsLength,
-  isBlankTab
+  isBlankTab,
+  markupIsActive,
+  markupStart,
+  markupCancel
 }) {
   const browserPageId = page.id;
   const externalUrl = getOpenableExternalUrl(currentUrl);
   const isMac = getRendererPlatform() === "darwin";
-  return /* @__PURE__ */ jsx32(TooltipProvider, { children: /* @__PURE__ */ jsx32(
+  return /* @__PURE__ */ jsx34(TooltipProvider, { children: /* @__PURE__ */ jsx34(
     BrowserChromeToolbar,
     {
       controls: {
@@ -6285,7 +6519,7 @@ function BrowserPageToolbar({
         reload: () => runReloadTrigger("button"),
         navigate: navigateToUrl
       },
-      addressSlot: /* @__PURE__ */ jsx32(
+      addressSlot: /* @__PURE__ */ jsx34(
         BrowserAddressBar,
         {
           value: addressBarValue,
@@ -6296,7 +6530,7 @@ function BrowserPageToolbar({
           dismissSuggestionsRef: dismissAddressBarSuggestionsRef
         }
       ),
-      reloadControl: /* @__PURE__ */ jsx32(
+      reloadControl: /* @__PURE__ */ jsx34(
         BrowserReloadControl,
         {
           menuOpen: reloadMenuOpen,
@@ -6311,16 +6545,22 @@ function BrowserPageToolbar({
           onHardReload: () => runReloadTrigger("hard-reload")
         }
       ),
-      importControl: (compact) => /* @__PURE__ */ jsx32(BrowserImportHintButton, { profileId: page.sessionProfileId, compact }),
+      importControl: (compact) => /* @__PURE__ */ jsx34(BrowserImportHintButton, { profileId: page.sessionProfileId, compact }),
       elementTools: {
         activeIntent: grab.state !== "idle" ? grabIntent : null,
         onStartIntent: startGrabIntent,
-        disabled: isBlankTab,
+        disabled: isBlankTab || markupIsActive,
         grabShortcutLabel: isMac ? "\u2318C" : "Ctrl+C",
         annotateShortcutLabel: isMac ? "\u2318\u21E7C" : "Alt+Shift+N",
         annotationCount: browserAnnotationsLength
       },
-      overflowMenu: (overflow) => /* @__PURE__ */ jsx32(
+      markup: {
+        active: markupIsActive,
+        disabled: isBlankTab || grab.state !== "idle",
+        onToggle: () => markupIsActive ? markupCancel() : void markupStart(),
+        canShowDiscoveryHint: isActive
+      },
+      overflowMenu: (overflow) => /* @__PURE__ */ jsx34(
         BrowserToolbarMenu,
         {
           currentProfileId: page.sessionProfileId,
@@ -6357,7 +6597,7 @@ function BrowserPageToolbar({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
-import { jsx as jsx33, jsxs as jsxs26 } from "react/jsx-runtime";
+import { jsx as jsx35, jsxs as jsxs27 } from "react/jsx-runtime";
 function BrowserPageChromeHeader({
   chromeHeaderRef,
   browserTab,
@@ -6375,11 +6615,14 @@ function BrowserPageChromeHeader({
   grabAnnotations,
   annotationSend,
   isBlankTab,
+  markupIsActive,
+  markupStart,
+  markupCancel,
   resourceNotice,
   setResourceNotice
 }) {
-  return /* @__PURE__ */ jsxs26("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
-    /* @__PURE__ */ jsx33(
+  return /* @__PURE__ */ jsxs27("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
+    /* @__PURE__ */ jsx35(
       BrowserPageToolbar,
       {
         page: browserTab,
@@ -6406,12 +6649,15 @@ function BrowserPageChromeHeader({
         grabIntent: grabAnnotations.grabIntent,
         startGrabIntent: grabAnnotations.startGrabIntent,
         browserAnnotationsLength: annotationSend.browserAnnotations.length,
-        isBlankTab
+        isBlankTab,
+        markupIsActive,
+        markupStart,
+        markupCancel
       }
     ),
-    resourceNotice ? /* @__PURE__ */ jsxs26("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
-      /* @__PURE__ */ jsx33("span", { children: resourceNotice }),
-      /* @__PURE__ */ jsx33(
+    resourceNotice ? /* @__PURE__ */ jsxs27("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
+      /* @__PURE__ */ jsx35("span", { children: resourceNotice }),
+      /* @__PURE__ */ jsx35(
         "button",
         {
           type: "button",
@@ -6426,7 +6672,7 @@ function BrowserPageChromeHeader({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-chrome-focus.ts
-import { useCallback as useCallback7, useEffect as useEffect10, useRef as useRef8 } from "react";
+import { useCallback as useCallback8, useEffect as useEffect11, useRef as useRef9 } from "react";
 
 // src/renderer/components/browser-pane/host-guest/browser-focus.ts
 var ORCA_BROWSER_FOCUS_REQUEST_EVENT = "orca:browser-focus-request";
@@ -6469,12 +6715,12 @@ function useBrowserPageChromeFocus({
   guestFocus
 }) {
   const consumeAddressBarFocusRequest = useBrowserStore((s) => s.consumeAddressBarFocusRequest);
-  const keepAddressBarFocusRef = useRef8(false);
-  const addressBarFocusGrabRef = useRef8(null);
-  const cancelAddressBarFocusGrab = useCallback7(() => {
+  const keepAddressBarFocusRef = useRef9(false);
+  const addressBarFocusGrabRef = useRef9(null);
+  const cancelAddressBarFocusGrab = useCallback8(() => {
     addressBarFocusGrabRef.current?.();
   }, []);
-  const focusAddressBarNow = useCallback7(
+  const focusAddressBarNow = useCallback8(
     (selection) => {
       const input = addressBarInputRef.current;
       if (!input) {
@@ -6491,14 +6737,14 @@ function useBrowserPageChromeFocus({
     },
     [addressBarInputRef, guestFocus]
   );
-  const focusGuestNow = useCallback7(() => {
+  const focusGuestNow = useCallback8(() => {
     if (!guestFocus.isAttached()) {
       return false;
     }
     addressBarInputRef.current?.blur();
     return guestFocus.focus();
   }, [addressBarInputRef, guestFocus]);
-  const startAddressBarFocusGrab = useCallback7(
+  const startAddressBarFocusGrab = useCallback8(
     (selection) => {
       cancelAddressBarFocusGrab();
       let cancelled = false;
@@ -6535,7 +6781,7 @@ function useBrowserPageChromeFocus({
     },
     [addressBarInputRef, cancelAddressBarFocusGrab, focusAddressBarNow]
   );
-  useEffect10(() => {
+  useEffect11(() => {
     if (!isActive) {
       return;
     }
@@ -6544,7 +6790,7 @@ function useBrowserPageChromeFocus({
     }
     return startAddressBarFocusGrab();
   }, [browserTabId, consumeAddressBarFocusRequest, isActive, startAddressBarFocusGrab]);
-  useEffect10(() => {
+  useEffect11(() => {
     if (!isActive) {
       return;
     }
@@ -6554,7 +6800,7 @@ function useBrowserPageChromeFocus({
       }
     });
   }, [browserTabId, focusAddressBarNow, isActive]);
-  useEffect10(() => {
+  useEffect11(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -6572,7 +6818,7 @@ function useBrowserPageChromeFocus({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, focusAddressBarNow, workspaceId]);
-  useEffect10(() => {
+  useEffect11(() => {
     if (!isActive) {
       return;
     }
@@ -6602,7 +6848,7 @@ function useBrowserPageChromeFocus({
       window.cancelAnimationFrame(frameId);
     };
   }, [browserTabId, cancelAddressBarFocusGrab, focusGuestNow, isActive, startAddressBarFocusGrab]);
-  useEffect10(() => {
+  useEffect11(() => {
     if (!isActive) {
       return;
     }
@@ -6656,9 +6902,9 @@ function useWebviewGuestFocus(webviewRef) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-viewport-scroll-reporting.ts
-import { useEffect as useEffect11 } from "react";
+import { useEffect as useEffect12 } from "react";
 function useBrowserPageViewportScrollReporting(browserPageId, scroller, viewportPresetId) {
-  useEffect11(() => {
+  useEffect12(() => {
     let reportFrame = null;
     const send = () => {
       reportFrame = null;
@@ -6703,22 +6949,22 @@ function isBrowserPagePanePaintable({ isActive }) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-slot-viewport.ts
-import { useCallback as useCallback8, useSyncExternalStore as useSyncExternalStore2 } from "react";
+import { useCallback as useCallback9, useSyncExternalStore as useSyncExternalStore3 } from "react";
 function useBrowserPageSlotViewport(workspaceId) {
-  const subscribe = useCallback8(
+  const subscribe = useCallback9(
     (listener) => subscribeBrowserOverlaySlotViewport(workspaceId, listener),
     [workspaceId]
   );
-  const getSnapshot = useCallback8(() => getBrowserOverlaySlotViewport(workspaceId), [workspaceId]);
-  return useSyncExternalStore2(subscribe, getSnapshot, () => null);
+  const getSnapshot = useCallback9(() => getBrowserOverlaySlotViewport(workspaceId), [workspaceId]);
+  return useSyncExternalStore3(subscribe, getSnapshot, () => null);
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
 import {
-  useCallback as useCallback9,
-  useEffect as useEffect12,
+  useCallback as useCallback10,
+  useEffect as useEffect13,
   useLayoutEffect as useLayoutEffect4,
-  useRef as useRef9,
+  useRef as useRef10,
   useState as useState10
 } from "react";
 
@@ -7804,29 +8050,29 @@ function useBrowserPageWebviewLifecycle({
   onSetUrlRef
 }) {
   const [guestRecoveryGeneration, setGuestRecoveryGeneration] = useState10(0);
-  const guestRecoveryPendingRef = useRef9(false);
-  const validateVisibleGuestRegistrationRef = useRef9(() => {
+  const guestRecoveryPendingRef = useRef10(false);
+  const validateVisibleGuestRegistrationRef = useRef10(() => {
   });
-  const wasPaintableForGuestValidationRef = useRef9(isPaintable);
-  const browserTabLoadingRef = useRef9(browserTabLoading);
-  const inputLockedRef = useRef9(inputLocked);
-  const faviconUrlRef = useRef9(faviconUrl);
-  const initialBrowserUrlRef = useRef9(browserTabUrl);
-  const viewportPresetIdRef = useRef9(viewportPresetId);
+  const wasPaintableForGuestValidationRef = useRef10(isPaintable);
+  const browserTabLoadingRef = useRef10(browserTabLoading);
+  const inputLockedRef = useRef10(inputLocked);
+  const faviconUrlRef = useRef10(faviconUrl);
+  const initialBrowserUrlRef = useRef10(browserTabUrl);
+  const viewportPresetIdRef = useRef10(viewportPresetId);
   const addBrowserHistoryEntry = useBrowserStore((s) => s.addBrowserHistoryEntry);
-  const addBrowserHistoryEntryRef = useRef9(addBrowserHistoryEntry);
-  const isPaintableRef = useRef9(isPaintable);
-  const annotationViewportBridgeTokenRef = useRef9(void 0);
+  const addBrowserHistoryEntryRef = useRef10(addBrowserHistoryEntry);
+  const isPaintableRef = useRef10(isPaintable);
+  const annotationViewportBridgeTokenRef = useRef10(void 0);
   annotationViewportBridgeTokenRef.current ??= createNonSecureContextUuid().replaceAll("-", "");
-  const isActiveRef = useRef9(isActive);
-  const pendingAnnotationPayloadRef = useRef9(pendingAnnotationPayload);
+  const isActiveRef = useRef10(isActive);
+  const pendingAnnotationPayloadRef = useRef10(pendingAnnotationPayload);
   const browserAnnotations = useBrowserAnnotationStore(
     (s) => s.browserAnnotationsByPageId[browserTabId] ?? EMPTY_BROWSER_ANNOTATIONS
   );
   const browserAnnotationMarkerIds = useBrowserAnnotationStore(
     (s) => s.browserAnnotationMarkerIdsByPageId[browserTabId]
   );
-  const invalidatePendingCaptureRef = useRef9(cancelPendingBrowserCapture);
+  const invalidatePendingCaptureRef = useRef10(cancelPendingBrowserCapture);
   useLayoutEffect4(() => {
     browserTabLoadingRef.current = browserTabLoading;
     inputLockedRef.current = inputLocked;
@@ -7850,21 +8096,21 @@ function useBrowserPageWebviewLifecycle({
       setBrowserPageWebviewInputLock(webview, inputLocked);
     }
   }, [inputLocked, webviewRef]);
-  useEffect12(() => {
+  useEffect13(() => {
     initialBrowserUrlRef.current = browserTabUrl;
   }, [browserTabId, browserTabUrl]);
-  useEffect12(() => {
+  useEffect13(() => {
     browserTabUrlRef.current = browserTabUrl;
   }, [browserTabUrl, browserTabUrlRef]);
-  useEffect12(() => {
+  useEffect13(() => {
     activeLoadFailureRef.current = browserTabLoadError;
   }, [activeLoadFailureRef, browserTabLoadError]);
-  useEffect12(() => {
+  useEffect13(() => {
     onUpdatePageStateRef.current = onUpdatePageState;
     onSetUrlRef.current = onSetUrl;
     addBrowserHistoryEntryRef.current = addBrowserHistoryEntry;
   }, [onSetUrl, onUpdatePageState, addBrowserHistoryEntry, onSetUrlRef, onUpdatePageStateRef]);
-  const syncNavigationState = useCallback9(
+  const syncNavigationState = useCallback10(
     (webview) => {
       try {
         const loading = browserTabLoadingRef.current ? webview.isLoading() : void 0;
@@ -7882,7 +8128,7 @@ function useBrowserPageWebviewLifecycle({
     },
     [browserTabId, browserTabUrlRef, onUpdatePageStateRef]
   );
-  const syncBrowserAnnotationViewportBridge = useCallback9(() => {
+  const syncBrowserAnnotationViewportBridge = useCallback10(() => {
     const state = useBrowserAnnotationStore.getState();
     syncGuestAnnotationViewportBridge({
       toolTargetId: browserTabId,
@@ -7896,17 +8142,17 @@ function useBrowserPageWebviewLifecycle({
       token: annotationViewportBridgeTokenRef.current
     });
   }, [browserTabId, browserTabUrlRef]);
-  const invalidateBrowserAnnotationDocument = useCallback9(() => {
+  const invalidateBrowserAnnotationDocument = useCallback10(() => {
     useBrowserAnnotationStore.getState().invalidateBrowserPageAnnotationGeometry(browserTabId);
     invalidatePendingCaptureRef.current();
     pendingAnnotationPayloadRef.current = null;
     syncBrowserAnnotationViewportBridge();
   }, [browserTabId, syncBrowserAnnotationViewportBridge]);
-  const invalidateBrowserAnnotationDocumentRef = useRef9(invalidateBrowserAnnotationDocument);
+  const invalidateBrowserAnnotationDocumentRef = useRef10(invalidateBrowserAnnotationDocument);
   useLayoutEffect4(() => {
     invalidateBrowserAnnotationDocumentRef.current = invalidateBrowserAnnotationDocument;
   }, [invalidateBrowserAnnotationDocument]);
-  useEffect12(() => {
+  useEffect13(() => {
     return attachBrowserPageWebview({
       browserTabId,
       browserTabUrl,
@@ -7963,14 +8209,14 @@ function useBrowserPageWebviewLifecycle({
     syncNavigationState,
     syncBrowserAnnotationViewportBridge
   ]);
-  useEffect12(() => {
+  useEffect13(() => {
     const becamePaintable = isPaintable && !wasPaintableForGuestValidationRef.current;
     wasPaintableForGuestValidationRef.current = isPaintable;
     if (becamePaintable) {
       validateVisibleGuestRegistrationRef.current();
     }
   }, [isPaintable]);
-  useEffect12(() => {
+  useEffect13(() => {
     syncBrowserAnnotationViewportBridge();
   }, [
     browserAnnotations,
@@ -7995,7 +8241,7 @@ function useBrowserPageWebviewPartition(args) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-zoom-feedback.ts
-import { useCallback as useCallback10, useEffect as useEffect13, useRef as useRef10, useState as useState11 } from "react";
+import { useCallback as useCallback11, useEffect as useEffect14, useRef as useRef11, useState as useState11 } from "react";
 var BROWSER_PAGE_ZOOM_FEEDBACK_MS = 1400;
 var noopSetDefaultZoomLevel = () => {
 };
@@ -8004,18 +8250,18 @@ function useBrowserPageZoomFeedback(browserTabId) {
   const [initialZoomLevel] = useState11(
     () => getExplicitBrowserPageZoomLevel(browserTabId) ?? DEFAULT_BROWSER_PAGE_ZOOM_LEVEL
   );
-  const paneZoomLevelRef = useRef10(initialZoomLevel);
+  const paneZoomLevelRef = useRef11(initialZoomLevel);
   const [browserZoomPercent, setBrowserZoomPercent] = useState11(
     browserPageZoomLevelToPercent(initialZoomLevel)
   );
   const [browserZoomFeedbackVisible, setBrowserZoomFeedbackVisible] = useState11(false);
-  const browserZoomFeedbackTimerRef = useRef10(void 0);
-  useEffect13(() => {
+  const browserZoomFeedbackTimerRef = useRef11(void 0);
+  useEffect14(() => {
     return () => {
       clearTimeout(browserZoomFeedbackTimerRef.current);
     };
   }, []);
-  const showBrowserZoomFeedback = useCallback10((level) => {
+  const showBrowserZoomFeedback = useCallback11((level) => {
     setBrowserZoomPercent(browserPageZoomLevelToPercent(level));
     setBrowserZoomFeedbackVisible(true);
     clearTimeout(browserZoomFeedbackTimerRef.current);
@@ -8035,7 +8281,7 @@ function useBrowserPageZoomFeedback(browserTabId) {
 }
 
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
-import { useEffect as useEffect14, useState as useState12 } from "react";
+import { useEffect as useEffect15, useState as useState12 } from "react";
 
 // src/renderer/components/browser-pane/navigate/browser-notices.ts
 function humanizePermission(permission) {
@@ -8119,14 +8365,14 @@ function formatLoadFailureRecoveryHint(meta, loadError) {
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
 function useBrowserPageResourceNotices(browserTabId) {
   const [resourceNotice, setResourceNotice] = useState12(null);
-  useEffect14(() => {
+  useEffect15(() => {
     if (!resourceNotice) {
       return;
     }
     const timer = setTimeout(() => setResourceNotice(null), 1e4);
     return () => clearTimeout(timer);
   }, [resourceNotice]);
-  useEffect14(() => {
+  useEffect15(() => {
     return window.browserAPI.onPermissionDenied((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -8134,7 +8380,7 @@ function useBrowserPageResourceNotices(browserTabId) {
       setResourceNotice(formatPermissionNotice(event));
     });
   }, [browserTabId]);
-  useEffect14(() => {
+  useEffect15(() => {
     return window.browserAPI.onPopup((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -8150,11 +8396,11 @@ function useBrowserPageResourceNotices(browserTabId) {
 
 // src/renderer/components/browser-pane/annotate/use-browser-page-annotation-send.ts
 import {
-  useCallback as useCallback11,
-  useEffect as useEffect15,
+  useCallback as useCallback12,
+  useEffect as useEffect16,
   useLayoutEffect as useLayoutEffect5,
   useMemo as useMemo6,
-  useRef as useRef11,
+  useRef as useRef12,
   useState as useState13
 } from "react";
 import { toast as toast6 } from "sonner";
@@ -8364,11 +8610,11 @@ function formatBrowserAnnotationsAsMarkdown(annotations) {
 }
 
 // src/renderer/components/browser-pane/annotate/GrabConfirmationSheet.tsx
-import { Copy, Image, MessageSquarePlus as MessageSquarePlus3, X as X2 } from "lucide-react";
+import { Copy, Image as Image2, MessageSquarePlus as MessageSquarePlus3, X as X2 } from "lucide-react";
 
 // src/renderer/ui/scroll-area.tsx
 import * as ScrollAreaPrimitive from "radix-ui/scroll-area";
-import { jsx as jsx34, jsxs as jsxs27 } from "react/jsx-runtime";
+import { jsx as jsx36, jsxs as jsxs28 } from "react/jsx-runtime";
 function ScrollArea({
   className,
   viewportClassName,
@@ -8378,14 +8624,14 @@ function ScrollArea({
   children,
   ...props
 }) {
-  return /* @__PURE__ */ jsxs27(
+  return /* @__PURE__ */ jsxs28(
     ScrollAreaPrimitive.Root,
     {
       "data-slot": "scroll-area",
       className: cn("relative", className),
       ...props,
       children: [
-        /* @__PURE__ */ jsx34(
+        /* @__PURE__ */ jsx36(
           ScrollAreaPrimitive.Viewport,
           {
             ref: viewportRef,
@@ -8399,8 +8645,8 @@ function ScrollArea({
             children
           }
         ),
-        /* @__PURE__ */ jsx34(ScrollBar, {}),
-        /* @__PURE__ */ jsx34(ScrollAreaPrimitive.Corner, {})
+        /* @__PURE__ */ jsx36(ScrollBar, {}),
+        /* @__PURE__ */ jsx36(ScrollAreaPrimitive.Corner, {})
       ]
     }
   );
@@ -8410,7 +8656,7 @@ function ScrollBar({
   orientation = "vertical",
   ...props
 }) {
-  return /* @__PURE__ */ jsx34(
+  return /* @__PURE__ */ jsx36(
     ScrollAreaPrimitive.ScrollAreaScrollbar,
     {
       "data-slot": "scroll-area-scrollbar",
@@ -8422,7 +8668,7 @@ function ScrollBar({
         className
       ),
       ...props,
-      children: /* @__PURE__ */ jsx34(
+      children: /* @__PURE__ */ jsx36(
         ScrollAreaPrimitive.ScrollAreaThumb,
         {
           "data-slot": "scroll-area-thumb",
@@ -8434,7 +8680,7 @@ function ScrollBar({
 }
 
 // src/renderer/components/browser-pane/annotate/GrabConfirmationSheet.tsx
-import { jsx as jsx35, jsxs as jsxs28 } from "react/jsx-runtime";
+import { jsx as jsx37, jsxs as jsxs29 } from "react/jsx-runtime";
 function formatGrabPayloadAsText(payload) {
   const lines = [];
   lines.push(`Attached browser context from ${payload.page.sanitizedUrl}`);
@@ -8507,7 +8753,7 @@ function formatGrabPayloadAsText(payload) {
   return lines.join("\n").trimEnd();
 }
 function EscapedText({ text, className }) {
-  return /* @__PURE__ */ jsx35("span", { className, children: text });
+  return /* @__PURE__ */ jsx37("span", { className, children: text });
 }
 function getNearbyTextRows(nearbyText) {
   const counts = /* @__PURE__ */ new Map();
@@ -8527,19 +8773,19 @@ function GrabConfirmationSheet({
 }) {
   const { target, page, nearbyText } = payload;
   const nearbyTextRows = getNearbyTextRows(nearbyText);
-  return /* @__PURE__ */ jsxs28("div", { className: "absolute inset-0 z-20 flex flex-col bg-background/98 backdrop-blur-sm", children: [
-    /* @__PURE__ */ jsxs28("div", { className: "flex items-center justify-between border-b border-border/70 px-4 py-3", children: [
-      /* @__PURE__ */ jsxs28("div", { className: "flex items-center gap-2", children: [
-        /* @__PURE__ */ jsx35("div", { className: "rounded-md bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-400", children: translate("auto.components.browser.pane.GrabConfirmationSheet.f3575229df", "Grab") }),
-        /* @__PURE__ */ jsx35("span", { className: "text-sm text-muted-foreground", children: translate(
+  return /* @__PURE__ */ jsxs29("div", { className: "absolute inset-0 z-20 flex flex-col bg-background/98 backdrop-blur-sm", children: [
+    /* @__PURE__ */ jsxs29("div", { className: "flex items-center justify-between border-b border-border/70 px-4 py-3", children: [
+      /* @__PURE__ */ jsxs29("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsx37("div", { className: "rounded-md bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-400", children: translate("auto.components.browser.pane.GrabConfirmationSheet.f3575229df", "Grab") }),
+        /* @__PURE__ */ jsx37("span", { className: "text-sm text-muted-foreground", children: translate(
           "auto.components.browser.pane.GrabConfirmationSheet.50f7114f99",
           "Review before attaching. Captured page context may include visible site content."
         ) })
       ] }),
-      /* @__PURE__ */ jsx35(Button, { size: "icon", variant: "ghost", className: "h-7 w-7", onClick: onCancel, disabled: busy, children: /* @__PURE__ */ jsx35(X2, { className: "size-4" }) })
+      /* @__PURE__ */ jsx37(Button, { size: "icon", variant: "ghost", className: "h-7 w-7", onClick: onCancel, disabled: busy, children: /* @__PURE__ */ jsx37(X2, { className: "size-4" }) })
     ] }),
-    /* @__PURE__ */ jsx35(ScrollArea, { className: "flex-1 p-4", children: /* @__PURE__ */ jsxs28("div", { className: "space-y-4", children: [
-      payload.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsx35("div", { className: "overflow-hidden rounded-lg border border-border/60", children: /* @__PURE__ */ jsx35(
+    /* @__PURE__ */ jsx37(ScrollArea, { className: "flex-1 p-4", children: /* @__PURE__ */ jsxs29("div", { className: "space-y-4", children: [
+      payload.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsx37("div", { className: "overflow-hidden rounded-lg border border-border/60", children: /* @__PURE__ */ jsx37(
         "img",
         {
           src: payload.screenshot.dataUrl,
@@ -8550,42 +8796,42 @@ function GrabConfirmationSheet({
           className: "max-h-48 w-full object-contain bg-black/5"
         }
       ) }) : null,
-      /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
-        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate(
+      /* @__PURE__ */ jsxs29("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx37("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate(
           "auto.components.browser.pane.GrabConfirmationSheet.a759d8f866",
           "Selected Element"
         ) }),
-        /* @__PURE__ */ jsxs28("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3 text-sm", children: [
-          /* @__PURE__ */ jsxs28("div", { className: "flex items-baseline gap-2", children: [
-            /* @__PURE__ */ jsx35("span", { className: "font-mono font-semibold text-foreground", children: /* @__PURE__ */ jsx35(EscapedText, { text: `<${target.tagName}>` }) }),
-            target.accessibility.role ? /* @__PURE__ */ jsxs28("span", { className: "text-xs text-muted-foreground", children: [
+        /* @__PURE__ */ jsxs29("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3 text-sm", children: [
+          /* @__PURE__ */ jsxs29("div", { className: "flex items-baseline gap-2", children: [
+            /* @__PURE__ */ jsx37("span", { className: "font-mono font-semibold text-foreground", children: /* @__PURE__ */ jsx37(EscapedText, { text: `<${target.tagName}>` }) }),
+            target.accessibility.role ? /* @__PURE__ */ jsxs29("span", { className: "text-xs text-muted-foreground", children: [
               translate(
                 "auto.components.browser.pane.GrabConfirmationSheet.d053db279d",
                 "role="
               ),
-              /* @__PURE__ */ jsx35(EscapedText, { text: target.accessibility.role })
+              /* @__PURE__ */ jsx37(EscapedText, { text: target.accessibility.role })
             ] }) : null
           ] }),
-          target.accessibility.accessibleName ? /* @__PURE__ */ jsxs28("div", { className: "mt-1 text-muted-foreground", children: [
+          target.accessibility.accessibleName ? /* @__PURE__ */ jsxs29("div", { className: "mt-1 text-muted-foreground", children: [
             translate(
               "auto.components.browser.pane.GrabConfirmationSheet.accessibleNameOpenQuote",
               '"'
             ),
-            /* @__PURE__ */ jsx35(EscapedText, { text: target.accessibility.accessibleName }),
+            /* @__PURE__ */ jsx37(EscapedText, { text: target.accessibility.accessibleName }),
             translate("auto.components.browser.pane.GrabConfirmationSheet.eb98a0971a", '"')
           ] }) : null,
-          /* @__PURE__ */ jsx35("div", { className: "mt-1 font-mono text-xs text-muted-foreground/70", children: /* @__PURE__ */ jsx35(EscapedText, { text: target.selector }) }),
-          /* @__PURE__ */ jsxs28("div", { className: "mt-1 text-xs text-muted-foreground/60", children: [
+          /* @__PURE__ */ jsx37("div", { className: "mt-1 font-mono text-xs text-muted-foreground/70", children: /* @__PURE__ */ jsx37(EscapedText, { text: target.selector }) }),
+          /* @__PURE__ */ jsxs29("div", { className: "mt-1 text-xs text-muted-foreground/60", children: [
             Math.round(target.rectViewport.width),
             "x",
             Math.round(target.rectViewport.height)
           ] })
         ] })
       ] }),
-      /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
-        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate("auto.components.browser.pane.GrabConfirmationSheet.9098b118ab", "Page") }),
-        /* @__PURE__ */ jsxs28("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3 text-sm", children: [
-          /* @__PURE__ */ jsx35("div", { className: "font-medium text-foreground", children: /* @__PURE__ */ jsx35(
+      /* @__PURE__ */ jsxs29("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx37("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate("auto.components.browser.pane.GrabConfirmationSheet.9098b118ab", "Page") }),
+        /* @__PURE__ */ jsxs29("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3 text-sm", children: [
+          /* @__PURE__ */ jsx37("div", { className: "font-medium text-foreground", children: /* @__PURE__ */ jsx37(
             EscapedText,
             {
               text: page.title || translate(
@@ -8594,36 +8840,36 @@ function GrabConfirmationSheet({
               )
             }
           ) }),
-          /* @__PURE__ */ jsx35("div", { className: "mt-0.5 text-xs text-muted-foreground/70", children: /* @__PURE__ */ jsx35(EscapedText, { text: page.sanitizedUrl }) })
+          /* @__PURE__ */ jsx37("div", { className: "mt-0.5 text-xs text-muted-foreground/70", children: /* @__PURE__ */ jsx37(EscapedText, { text: page.sanitizedUrl }) })
         ] })
       ] }),
-      target.htmlSnippet ? /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
-        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate("auto.components.browser.pane.GrabConfirmationSheet.7d1480fbf1", "HTML") }),
-        /* @__PURE__ */ jsx35("pre", { className: "max-h-32 overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 font-mono text-xs text-foreground/80", children: /* @__PURE__ */ jsx35(EscapedText, { text: target.htmlSnippet }) })
+      target.htmlSnippet ? /* @__PURE__ */ jsxs29("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx37("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate("auto.components.browser.pane.GrabConfirmationSheet.7d1480fbf1", "HTML") }),
+        /* @__PURE__ */ jsx37("pre", { className: "max-h-32 overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 font-mono text-xs text-foreground/80", children: /* @__PURE__ */ jsx37(EscapedText, { text: target.htmlSnippet }) })
       ] }) : null,
-      nearbyText.length > 0 ? /* @__PURE__ */ jsxs28("div", { className: "space-y-2", children: [
-        /* @__PURE__ */ jsx35("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate(
+      nearbyText.length > 0 ? /* @__PURE__ */ jsxs29("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx37("h3", { className: "text-xs font-semibold uppercase tracking-wider text-muted-foreground", children: translate(
           "auto.components.browser.pane.GrabConfirmationSheet.effd75e330",
           "Nearby Context"
         ) }),
-        /* @__PURE__ */ jsx35("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3", children: /* @__PURE__ */ jsx35("ul", { className: "list-inside list-disc space-y-0.5 text-sm text-muted-foreground", children: nearbyTextRows.map((row) => /* @__PURE__ */ jsx35("li", { children: /* @__PURE__ */ jsx35(EscapedText, { text: row.text }) }, row.key)) }) })
+        /* @__PURE__ */ jsx37("div", { className: "rounded-lg border border-border/60 bg-muted/20 p-3", children: /* @__PURE__ */ jsx37("ul", { className: "list-inside list-disc space-y-0.5 text-sm text-muted-foreground", children: nearbyTextRows.map((row) => /* @__PURE__ */ jsx37("li", { children: /* @__PURE__ */ jsx37(EscapedText, { text: row.text }) }, row.key)) }) })
       ] }) : null
     ] }) }),
-    /* @__PURE__ */ jsxs28("div", { className: "flex items-center justify-end gap-2 border-t border-border/70 px-4 py-3", children: [
-      /* @__PURE__ */ jsx35(Button, { variant: "ghost", size: "sm", onClick: onCancel, disabled: busy, children: translate("auto.components.browser.pane.GrabConfirmationSheet.87d97bdd6d", "Cancel") }),
-      /* @__PURE__ */ jsxs28(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopy, children: [
-        /* @__PURE__ */ jsx35(Copy, { className: "size-3.5" }),
+    /* @__PURE__ */ jsxs29("div", { className: "flex items-center justify-end gap-2 border-t border-border/70 px-4 py-3", children: [
+      /* @__PURE__ */ jsx37(Button, { variant: "ghost", size: "sm", onClick: onCancel, disabled: busy, children: translate("auto.components.browser.pane.GrabConfirmationSheet.87d97bdd6d", "Cancel") }),
+      /* @__PURE__ */ jsxs29(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopy, children: [
+        /* @__PURE__ */ jsx37(Copy, { className: "size-3.5" }),
         translate("auto.components.browser.pane.GrabConfirmationSheet.26fd87f4df", "Copy")
       ] }),
-      onCopyScreenshot ? /* @__PURE__ */ jsxs28(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopyScreenshot, children: [
-        /* @__PURE__ */ jsx35(Image, { className: "size-3.5" }),
+      onCopyScreenshot ? /* @__PURE__ */ jsxs29(Button, { variant: "outline", size: "sm", className: "gap-1.5", onClick: onCopyScreenshot, children: [
+        /* @__PURE__ */ jsx37(Image2, { className: "size-3.5" }),
         translate(
           "auto.components.browser.pane.GrabConfirmationSheet.7095e98362",
           "Copy Screenshot"
         )
       ] }) : null,
-      /* @__PURE__ */ jsxs28(Button, { size: "sm", className: "gap-1.5", onClick: onAttach, disabled: busy, children: [
-        /* @__PURE__ */ jsx35(MessageSquarePlus3, { className: "size-3.5" }),
+      /* @__PURE__ */ jsxs29(Button, { size: "sm", className: "gap-1.5", onClick: onAttach, disabled: busy, children: [
+        /* @__PURE__ */ jsx37(MessageSquarePlus3, { className: "size-3.5" }),
         translate("auto.components.browser.pane.sendToAgent.attach", "Send to agent")
       ] })
     ] })
@@ -8658,6 +8904,24 @@ function buildAnnotationAgentPayload(annotations) {
     images: []
   };
 }
+function formatMarkupAsText(args) {
+  const heading = args.pageUrl ? `Screenshot markup from ${args.pageUrl}` : "Screenshot markup";
+  return `${heading}
+
+Image: ${BROWSER_AGENT_IMAGE_NAMES.markup} (${args.width}x${args.height})`;
+}
+function buildMarkupAgentPayload(args) {
+  const pageUrl = sanitizeAgentPageUrl(args.pageUrl);
+  return {
+    kind: "markup",
+    pageUrl,
+    pageTitle: args.pageTitle,
+    text: formatMarkupAsText({ pageUrl, width: args.result.width, height: args.result.height }),
+    images: compactImages([
+      pngDataUrlToAgentImage(BROWSER_AGENT_IMAGE_NAMES.markup, args.result.dataUrl)
+    ])
+  };
+}
 function isSendToAgentCanceled(error) {
   const isErrorLike = error instanceof Error || typeof DOMException !== "undefined" && error instanceof DOMException;
   return isErrorLike && error.name === "AbortError";
@@ -8679,18 +8943,18 @@ function useBrowserPageAnnotationSend({
   const browserAnnotations = useBrowserAnnotationStore(
     (s) => s.browserAnnotationsByPageId[browserTabId] ?? EMPTY_BROWSER_ANNOTATIONS
   );
-  const browserAnnotationsRef = useRef11(browserAnnotations);
+  const browserAnnotationsRef = useRef12(browserAnnotations);
   const [browserAnnotationTrayOpen, setBrowserAnnotationTrayOpen] = useState13(true);
   const [browserAnnotationsCopied, setBrowserAnnotationsCopied] = useState13(false);
   const [browserAnnotationsSending, setBrowserAnnotationsSending] = useState13(false);
-  const sendInFlightRef = useRef11(false);
-  const annotationCopyTimerRef = useRef11(void 0);
+  const sendInFlightRef = useRef12(false);
+  const annotationCopyTimerRef = useRef12(void 0);
   const copyPrompt = useMemo6(
     () => formatBrowserAnnotationsAsMarkdown(browserAnnotations),
     [browserAnnotations]
   );
   const sendToAgent = useSendToAgent();
-  const sendToAgentRef = useRef11(sendToAgent);
+  const sendToAgentRef = useRef12(sendToAgent);
   const deleteBrowserPageAnnotation = useBrowserAnnotationStore(
     (s) => s.deleteBrowserPageAnnotation
   );
@@ -8707,12 +8971,12 @@ function useBrowserPageAnnotationSend({
     browserAnnotationsRef.current = browserAnnotations;
     sendToAgentRef.current = sendToAgent;
   }, [browserAnnotations, sendToAgent]);
-  useEffect15(() => {
+  useEffect16(() => {
     return () => {
       clearTimeout(annotationCopyTimerRef.current);
     };
   }, []);
-  const handleCopyBrowserAnnotations = useCallback11(() => {
+  const handleCopyBrowserAnnotations = useCallback12(() => {
     if (!copyPrompt) {
       return;
     }
@@ -8721,7 +8985,7 @@ function useBrowserPageAnnotationSend({
     setBrowserAnnotationsCopied(true);
     annotationCopyTimerRef.current = setTimeout(() => setBrowserAnnotationsCopied(false), 1400);
   }, [copyPrompt]);
-  const handleSendBrowserAnnotationsToAgent = useCallback11(async () => {
+  const handleSendBrowserAnnotationsToAgent = useCallback12(async () => {
     const send = sendToAgentRef.current;
     const delivered = browserAnnotationsRef.current;
     const payload = buildAnnotationAgentPayload(delivered);
@@ -8744,7 +9008,7 @@ function useBrowserPageAnnotationSend({
       setBrowserAnnotationsSending(false);
     }
   }, [browserTabId, removeDeliveredBrowserPageAnnotations]);
-  const handleClearBrowserAnnotations = useCallback11(() => {
+  const handleClearBrowserAnnotations = useCallback12(() => {
     if (browserAnnotationsRef.current.length === 0) {
       return;
     }
@@ -8752,7 +9016,7 @@ function useBrowserPageAnnotationSend({
     setBrowserAnnotationsCopied(false);
     clearBrowserPageAnnotations(browserTabId);
   }, [browserTabId, clearBrowserPageAnnotations]);
-  const handleDeleteBrowserAnnotation = useCallback11(
+  const handleDeleteBrowserAnnotation = useCallback12(
     (annotationId) => {
       if (browserAnnotationsRef.current.length === 1) {
         clearTimeout(annotationCopyTimerRef.current);
@@ -8763,7 +9027,7 @@ function useBrowserPageAnnotationSend({
     },
     [browserTabId, deleteBrowserPageAnnotation, setBrowserAnnotationTrayOpen]
   );
-  const handleUpdateBrowserAnnotation = useCallback11(
+  const handleUpdateBrowserAnnotation = useCallback12(
     (annotationId, comment, intent) => {
       updateBrowserPageAnnotation(browserTabId, annotationId, { comment, intent });
     },
@@ -8785,16 +9049,16 @@ function useBrowserPageAnnotationSend({
 
 // src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
 import {
-  useCallback as useCallback12,
-  useEffect as useEffect17,
+  useCallback as useCallback13,
+  useEffect as useEffect18,
   useLayoutEffect as useLayoutEffect6,
-  useRef as useRef12,
+  useRef as useRef13,
   useState as useState14
 } from "react";
 import { toast as toast7 } from "sonner";
 
 // src/renderer/components/browser-pane/annotate/use-browser-page-annotation-viewport-tracking.ts
-import { useEffect as useEffect16 } from "react";
+import { useEffect as useEffect17 } from "react";
 function useBrowserPageAnnotationViewportTracking({
   isActive,
   pendingAnnotation,
@@ -8803,7 +9067,7 @@ function useBrowserPageAnnotationViewportTracking({
   scroller,
   setBrowserOverlayViewport
 }) {
-  useEffect16(() => {
+  useEffect17(() => {
     if (!isActive || !pendingAnnotation && annotationCount === 0) {
       return;
     }
@@ -8949,18 +9213,18 @@ function useBrowserPageGrabAnnotations({
   setBrowserAnnotationTrayOpen
 }) {
   const mountedRef = useMountedRef();
-  const toolTargetIdRef = useRef12(toolTargetId);
-  const grabToastTimerRef = useRef12(void 0);
+  const toolTargetIdRef = useRef13(toolTargetId);
+  const grabToastTimerRef = useRef13(void 0);
   const [grabIntent, setGrabIntent] = useState14("copy");
-  const grabIntentRef = useRef12(grabIntent);
+  const grabIntentRef = useRef13(grabIntent);
   const [pendingAnnotationPayload, setPendingAnnotationPayload] = useState14(null);
-  const pendingAnnotationPayloadRef = useRef12(null);
+  const pendingAnnotationPayloadRef = useRef13(null);
   const [grabToast, setGrabToast] = useState14(null);
-  const grabRef = useRef12(grab);
-  const grabPayloadRef = useRef12(grab.payload);
+  const grabRef = useRef13(grab);
+  const grabPayloadRef = useRef13(grab.payload);
   const sendToAgent = useSendToAgent();
-  const sendToAgentRef = useRef12(sendToAgent);
-  const grabSendInFlightRef = useRef12(false);
+  const sendToAgentRef = useRef13(sendToAgent);
+  const grabSendInFlightRef = useRef13(false);
   useLayoutEffect6(() => {
     toolTargetIdRef.current = toolTargetId;
     grabIntentRef.current = grabIntent;
@@ -8969,17 +9233,17 @@ function useBrowserPageGrabAnnotations({
     grabPayloadRef.current = grab.payload;
     sendToAgentRef.current = sendToAgent;
   }, [grab, grabIntent, pendingAnnotationPayload, sendToAgent, toolTargetId]);
-  const grabMenuActionTakenRef = useRef12(false);
+  const grabMenuActionTakenRef = useRef13(false);
   const addBrowserPageAnnotation = useBrowserAnnotationStore((s) => s.addBrowserPageAnnotation);
-  useEffect17(() => () => clearTimeout(grabToastTimerRef.current), []);
-  const dismissGrabToast = useCallback12(() => {
+  useEffect18(() => () => clearTimeout(grabToastTimerRef.current), []);
+  const dismissGrabToast = useCallback13(() => {
     clearTimeout(grabToastTimerRef.current);
     setGrabToast(null);
     if (grabRef.current.state === "confirming" && !(grabIntentRef.current === "annotate" && pendingAnnotationPayloadRef.current)) {
       grabRef.current.rearm();
     }
   }, []);
-  const showGrabToast = useCallback12(
+  const showGrabToast = useCallback13(
     (message, type, payload) => {
       if (!mountedRef.current) {
         return;
@@ -9010,7 +9274,7 @@ function useBrowserPageGrabAnnotations({
     },
     [containerRef, dismissGrabToast, mountedRef, webviewRef]
   );
-  useEffect17(() => {
+  useEffect18(() => {
     if (grab.state !== "confirming" || !grab.payload) {
       return;
     }
@@ -9044,7 +9308,7 @@ function useBrowserPageGrabAnnotations({
     scroller: trackingScroller ?? containerRef.current?.querySelector("[data-browser-page-scroller]") ?? null,
     setBrowserOverlayViewport
   });
-  const startGrabIntent = useCallback12(
+  const startGrabIntent = useCallback13(
     (nextIntent) => {
       setGrabIntent(nextIntent);
       if (nextIntent === "copy") {
@@ -9058,7 +9322,7 @@ function useBrowserPageGrabAnnotations({
     },
     [grab, grabIntent, setBrowserAnnotationTrayOpen]
   );
-  const handleGrabActionShortcut = useCallback12(
+  const handleGrabActionShortcut = useCallback13(
     (key) => {
       runBrowserGrabActionShortcut({
         key,
@@ -9071,7 +9335,7 @@ function useBrowserPageGrabAnnotations({
     },
     [grab, grabIntent, showGrabToast]
   );
-  const handleGrabCopy = useCallback12(() => {
+  const handleGrabCopy = useCallback13(() => {
     grabMenuActionTakenRef.current = true;
     const payload = grabPayloadRef.current;
     if (!payload) {
@@ -9082,7 +9346,7 @@ function useBrowserPageGrabAnnotations({
     showGrabToast(copiedGrabToastMessage(), "success", payload);
     grab.rearm();
   }, [grab, showGrabToast]);
-  const handleGrabCopyScreenshot = useCallback12(() => {
+  const handleGrabCopyScreenshot = useCallback13(() => {
     grabMenuActionTakenRef.current = true;
     const payload = grabPayloadRef.current;
     if (!payload) {
@@ -9096,7 +9360,7 @@ function useBrowserPageGrabAnnotations({
     showGrabToast(screenshottedGrabToastMessage(), "success", payload);
     grab.rearm();
   }, [grab, showGrabToast]);
-  const handleGrabSendToAgent = useCallback12(
+  const handleGrabSendToAgent = useCallback13(
     async (payload, options) => {
       const send = sendToAgentRef.current;
       if (!send || grabSendInFlightRef.current) {
@@ -9133,7 +9397,7 @@ function useBrowserPageGrabAnnotations({
     },
     []
   );
-  const handleAddBrowserAnnotation = useCallback12(
+  const handleAddBrowserAnnotation = useCallback13(
     (comment, intent) => {
       const payload = pendingAnnotationPayloadRef.current;
       if (!payload) {
@@ -9156,14 +9420,14 @@ function useBrowserPageGrabAnnotations({
     },
     [addBrowserPageAnnotation, browserTabId, grab, setBrowserAnnotationTrayOpen, showGrabToast]
   );
-  const handleCancelPendingBrowserAnnotation = useCallback12(() => {
+  const handleCancelPendingBrowserAnnotation = useCallback13(() => {
     pendingAnnotationPayloadRef.current = null;
     setPendingAnnotationPayload(null);
     if (grabIntent === "annotate" && grab.state === "confirming") {
       grab.rearm();
     }
   }, [grab, grabIntent]);
-  const cancelPendingBrowserCapture = useCallback12(() => {
+  const cancelPendingBrowserCapture = useCallback13(() => {
     grabRef.current.cancel();
     pendingAnnotationPayloadRef.current = null;
     grabPayloadRef.current = null;
@@ -9192,7 +9456,7 @@ function useBrowserPageGrabAnnotations({
 }
 
 // src/renderer/components/browser-pane/annotate/useGrabMode.ts
-import { useCallback as useCallback13, useEffect as useEffect18, useLayoutEffect as useLayoutEffect7, useRef as useRef13, useState as useState15 } from "react";
+import { useCallback as useCallback14, useEffect as useEffect19, useLayoutEffect as useLayoutEffect7, useRef as useRef14, useState as useState15 } from "react";
 var opIdCounter = 0;
 function nextOpId() {
   return `grab-${++opIdCounter}-${Date.now()}`;
@@ -9226,15 +9490,15 @@ function useGrabMode(browserPageId) {
   const [payload, setPayload] = useState15(null);
   const [error, setError] = useState15(null);
   const [contextMenu, setContextMenu] = useState15(false);
-  const activeOpIdRef = useRef13(null);
-  const grabTabIdRef = useRef13(null);
-  const armGenerationRef = useRef13(0);
-  const browserTabIdRef = useRef13(browserPageId);
+  const activeOpIdRef = useRef14(null);
+  const grabTabIdRef = useRef14(null);
+  const armGenerationRef = useRef14(0);
+  const browserTabIdRef = useRef14(browserPageId);
   const mountedRef = useMountedRef();
   useLayoutEffect7(() => {
     browserTabIdRef.current = browserPageId;
   }, [browserPageId]);
-  useEffect18(() => {
+  useEffect19(() => {
     return () => {
       const grabTabId = grabTabIdRef.current;
       if (grabTabId) {
@@ -9246,7 +9510,7 @@ function useGrabMode(browserPageId) {
       }
     };
   }, [browserPageId]);
-  const armAndAwait = useCallback13(async () => {
+  const armAndAwait = useCallback14(async () => {
     const tabId = browserPageId;
     const armGeneration = armGenerationRef.current += 1;
     grabTabIdRef.current = tabId;
@@ -9311,7 +9575,7 @@ function useGrabMode(browserPageId) {
       setError(result.reason);
     }
   }, [browserPageId, mountedRef]);
-  const cancel = useCallback13(() => {
+  const cancel = useCallback14(() => {
     const targetTabId = grabTabIdRef.current ?? browserPageId;
     armGenerationRef.current += 1;
     void window.browserAPI.setGrabMode({
@@ -9330,7 +9594,7 @@ function useGrabMode(browserPageId) {
     setError(null);
     setContextMenu(false);
   }, [browserPageId]);
-  const toggle = useCallback13(() => {
+  const toggle = useCallback14(() => {
     if ((state === "idle" || state === "error") && grabTabIdRef.current === null) {
       setError(null);
       setPayload(null);
@@ -9340,14 +9604,14 @@ function useGrabMode(browserPageId) {
       cancel();
     }
   }, [state, armAndAwait, cancel]);
-  const rearm = useCallback13(() => {
+  const rearm = useCallback14(() => {
     setState("armed");
     setPayload(null);
     setError(null);
     setContextMenu(false);
     void armAndAwait();
   }, [armAndAwait]);
-  const exit = useCallback13(() => {
+  const exit = useCallback14(() => {
     const targetTabId = grabTabIdRef.current ?? browserTabIdRef.current;
     armGenerationRef.current += 1;
     void window.browserAPI.setGrabMode({
@@ -9361,7 +9625,7 @@ function useGrabMode(browserPageId) {
     setError(null);
     setContextMenu(false);
   }, []);
-  useEffect18(() => {
+  useEffect19(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && state !== "idle") {
         const element = e.target && typeof e.target === "object" && "closest" in e.target ? e.target : null;
@@ -9381,6 +9645,600 @@ function useGrabMode(browserPageId) {
   return { state, payload, error, contextMenu, toggle, cancel, rearm, exit };
 }
 
+// src/renderer/components/browser-pane/annotate/use-browser-page-markup-capture.ts
+import { useCallback as useCallback16, useLayoutEffect as useLayoutEffect8, useRef as useRef16 } from "react";
+import { toast as toast10 } from "sonner";
+
+// src/renderer/components/browser-pane/annotate/markup-clipboard-delivery.ts
+import { toast as toast8 } from "sonner";
+async function deliverMarkupToClipboard(result) {
+  await writeClipboardImage(result.dataUrl);
+  const isMac = navigator.userAgent.includes("Mac");
+  toast8.success(
+    translate(
+      "auto.components.browser-pane.markup.copiedToast",
+      "Markup copied \u2014 paste it into your agent ({{value0}})",
+      { value0: isMac ? "\u2318V" : "Ctrl+V" }
+    )
+  );
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupMode.ts
+import { useCallback as useCallback15, useRef as useRef15, useState as useState16 } from "react";
+import { toast as toast9 } from "sonner";
+
+// src/shared/clipboard-image.ts
+var CLIPBOARD_IMAGE_MAX_BASE64_CHARS = 24 * 1024 * 1024;
+var CLIPBOARD_IMAGE_MAX_SOURCE_BYTES = Math.floor(
+  CLIPBOARD_IMAGE_MAX_BASE64_CHARS / 4 * 3
+);
+var CLIPBOARD_IMAGE_MAX_PIXELS = 32 * 1024 * 1024;
+
+// src/renderer/components/browser-pane/annotate/markup-base-image.ts
+async function captureMarkupBaseImage(source) {
+  if (source.kind === "webview") {
+    return captureFromWebview(source.webview);
+  }
+  return captureFromImage(source.element);
+}
+async function captureFromWebview(webview) {
+  const native = await webview.capturePage();
+  if (native.isEmpty()) {
+    throw new Error("markup: webview capturePage returned an empty image");
+  }
+  const size = native.getSize();
+  const image = await loadImage(native.toDataURL());
+  return { dataUrl: flattenToOpaquePng(image, size.width, size.height), ...size };
+}
+function captureFromImage(element) {
+  const width = element.naturalWidth || element.width;
+  const height = element.naturalHeight || element.height;
+  if (!element.complete || !element.isConnected || width <= 0 || height <= 0) {
+    throw new Error("markup: remote frame image is not ready");
+  }
+  return { dataUrl: flattenToOpaquePng(element, width, height), width, height };
+}
+function flattenToOpaquePng(image, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("markup: 2d context unavailable for base image");
+  }
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/png");
+}
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("markup: failed to decode captured screenshot"));
+    image.src = src;
+  });
+}
+
+// src/renderer/components/browser-pane/annotate/markup-drawing-model.ts
+var MARKUP_COLORS = [
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#3b82f6",
+  "#111827",
+  "#ffffff"
+];
+var DEFAULT_MARKUP_COLOR = MARKUP_COLORS[0];
+var MARKUP_WIDTHS = [2, 4, 8];
+var DEFAULT_MARKUP_WIDTH = 4;
+var MARKUP_FONT_SIZES = [14, 18, 24, 32, 48];
+var DEFAULT_MARKUP_FONT_SIZE = 18;
+var HIGHLIGHT_WIDTH_MULTIPLIER = 4;
+var HIGHLIGHT_ALPHA = 0.35;
+function createMarkupDocument() {
+  return { shapes: [], past: [], future: [] };
+}
+function setShapes(doc, shapes) {
+  return { shapes, past: [...doc.past, doc.shapes], future: [] };
+}
+function commitShape(doc, shape) {
+  return setShapes(doc, [...doc.shapes, shape]);
+}
+function undoShape(doc) {
+  const prev = doc.past.at(-1);
+  if (!prev) {
+    return doc;
+  }
+  return { shapes: prev, past: doc.past.slice(0, -1), future: [doc.shapes, ...doc.future] };
+}
+function redoShape(doc) {
+  const next = doc.future.at(0);
+  if (!next) {
+    return doc;
+  }
+  return { shapes: next, past: [...doc.past, doc.shapes], future: doc.future.slice(1) };
+}
+function clearShapes(doc) {
+  return doc.shapes.length === 0 ? doc : setShapes(doc, []);
+}
+function canUndo(doc) {
+  return doc.past.length > 0;
+}
+function canRedo(doc) {
+  return doc.future.length > 0;
+}
+function normalizeRect(from, to) {
+  return {
+    x: Math.min(from.x, to.x),
+    y: Math.min(from.y, to.y),
+    width: Math.abs(to.x - from.x),
+    height: Math.abs(to.y - from.y)
+  };
+}
+function scalePoint(point, scale) {
+  return { x: point.x * scale, y: point.y * scale };
+}
+function scaleShape(shape, scale) {
+  switch (shape.kind) {
+    case "pen":
+    case "highlight":
+      return {
+        ...shape,
+        width: shape.width * scale,
+        points: shape.points.map((point) => scalePoint(point, scale))
+      };
+    case "arrow":
+    case "rect":
+    case "ellipse":
+      return {
+        ...shape,
+        width: shape.width * scale,
+        from: scalePoint(shape.from, scale),
+        to: scalePoint(shape.to, scale)
+      };
+    case "text":
+      return {
+        ...shape,
+        fontSize: shape.fontSize * scale,
+        at: scalePoint(shape.at, scale)
+      };
+  }
+}
+var ARROW_HEAD_ANGLE = 0.45;
+function arrowHeadLength(width) {
+  return Math.max(10, width * 3.5);
+}
+function arrowHeadGeometry(from, to, width) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (dx === 0 && dy === 0) {
+    return null;
+  }
+  const angle = Math.atan2(dy, dx);
+  const size = arrowHeadLength(width);
+  const leftAngle = angle + Math.PI - ARROW_HEAD_ANGLE;
+  const rightAngle = angle + Math.PI + ARROW_HEAD_ANGLE;
+  return {
+    tip: to,
+    left: { x: to.x + size * Math.cos(leftAngle), y: to.y + size * Math.sin(leftAngle) },
+    right: { x: to.x + size * Math.cos(rightAngle), y: to.y + size * Math.sin(rightAngle) }
+  };
+}
+function highlightWidth(width) {
+  return width * HIGHLIGHT_WIDTH_MULTIPLIER;
+}
+function strokeDotRadius(width) {
+  return Math.max(width / 2, 1);
+}
+function textHaloWidth(fontSize) {
+  return Math.max(fontSize / 6, 2);
+}
+
+// src/renderer/components/browser-pane/annotate/markup-shape-render.ts
+var TEXT_FONT_FAMILY = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+function drawShape(ctx, shape) {
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = shape.color;
+  ctx.fillStyle = shape.color;
+  switch (shape.kind) {
+    case "pen":
+      drawStroke(ctx, shape);
+      break;
+    case "highlight":
+      drawHighlight(ctx, shape);
+      break;
+    case "arrow":
+      drawArrow(ctx, shape);
+      break;
+    case "rect":
+      drawRect(ctx, shape);
+      break;
+    case "ellipse":
+      drawEllipse(ctx, shape);
+      break;
+    case "text":
+      drawText(ctx, shape);
+      break;
+  }
+  ctx.restore();
+}
+function drawShapes(ctx, shapes) {
+  for (const shape of shapes) {
+    drawShape(ctx, shape);
+  }
+}
+function drawStroke(ctx, shape) {
+  ctx.lineWidth = shape.width;
+  strokePolyline(ctx, shape.points, shape.width);
+}
+function drawHighlight(ctx, shape) {
+  ctx.globalAlpha = HIGHLIGHT_ALPHA;
+  const width = highlightWidth(shape.width);
+  ctx.lineWidth = width;
+  strokePolyline(ctx, shape.points, width);
+}
+function strokePolyline(ctx, points, width) {
+  if (points.length === 0) {
+    return;
+  }
+  if (points.length === 1) {
+    const point = points[0];
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, strokeDotRadius(width), 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.stroke();
+}
+function drawArrow(ctx, shape) {
+  ctx.lineWidth = shape.width;
+  ctx.beginPath();
+  ctx.moveTo(shape.from.x, shape.from.y);
+  ctx.lineTo(shape.to.x, shape.to.y);
+  ctx.stroke();
+  const head = arrowHeadGeometry(shape.from, shape.to, shape.width);
+  if (!head) {
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(head.left.x, head.left.y);
+  ctx.lineTo(head.tip.x, head.tip.y);
+  ctx.lineTo(head.right.x, head.right.y);
+  ctx.stroke();
+}
+function drawRect(ctx, shape) {
+  ctx.lineWidth = shape.width;
+  const rect = normalizeRect(shape.from, shape.to);
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+}
+function drawEllipse(ctx, shape) {
+  ctx.lineWidth = shape.width;
+  const rect = normalizeRect(shape.from, shape.to);
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rect.width / 2, rect.height / 2, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+function applyTextStyle(ctx, shape) {
+  ctx.font = `600 ${shape.fontSize}px ${TEXT_FONT_FAMILY}`;
+  ctx.textBaseline = "top";
+  ctx.lineWidth = textHaloWidth(shape.fontSize);
+  ctx.lineJoin = "round";
+}
+function drawText(ctx, shape) {
+  applyTextStyle(ctx, shape);
+  ctx.strokeStyle = haloColor(shape.color);
+  ctx.strokeText(shape.text, shape.at.x, shape.at.y);
+  ctx.fillText(shape.text, shape.at.x, shape.at.y);
+}
+function textInkBox(ctx, shape) {
+  ctx.save();
+  applyTextStyle(ctx, shape);
+  const metrics = ctx.measureText(shape.text);
+  ctx.restore();
+  const halo = textHaloWidth(shape.fontSize);
+  return {
+    x: shape.at.x - metrics.actualBoundingBoxLeft - halo / 2,
+    y: shape.at.y - metrics.actualBoundingBoxAscent - halo / 2,
+    width: metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight + halo,
+    height: metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent + halo
+  };
+}
+function haloColor(color) {
+  return color.toLowerCase() === "#ffffff" ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.85)";
+}
+
+// src/renderer/components/browser-pane/annotate/markup-screenshot-compose.ts
+function clampMarkupScale(scale) {
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return 1;
+  }
+  return Math.min(Math.max(scale, 1), 4);
+}
+function effectiveMarkupScale(displayCssWidth, displayCssHeight, outputScale, maxPixels = Number.POSITIVE_INFINITY) {
+  const scale = clampMarkupScale(outputScale);
+  const area = displayCssWidth * displayCssHeight;
+  if (area <= 0 || !Number.isFinite(maxPixels) || maxPixels <= 0) {
+    return scale;
+  }
+  return Math.min(scale, Math.sqrt(maxPixels / area));
+}
+function markupCanvasSize(displayCssWidth, displayCssHeight, outputScale, maxPixels = Number.POSITIVE_INFINITY) {
+  const scale = effectiveMarkupScale(displayCssWidth, displayCssHeight, outputScale, maxPixels);
+  return {
+    width: Math.max(1, Math.floor(displayCssWidth * scale)),
+    height: Math.max(1, Math.floor(displayCssHeight * scale))
+  };
+}
+function dataUrlByteLength(dataUrl) {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex === -1) {
+    return 0;
+  }
+  const payload = dataUrl.slice(commaIndex + 1);
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
+}
+var MARKUP_DOWNSCALE_STEPS = [1, 0.85, 0.7, 0.55, 0.4, 0.3];
+function createCanvas(width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  return canvas;
+}
+function renderComposite(input) {
+  const scale = effectiveMarkupScale(
+    input.displayCssWidth,
+    input.displayCssHeight,
+    input.outputScale,
+    input.maxPixels
+  );
+  const size = markupCanvasSize(
+    input.displayCssWidth,
+    input.displayCssHeight,
+    input.outputScale,
+    input.maxPixels
+  );
+  const canvas = createCanvas(size.width, size.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("markup compose: 2d context unavailable");
+  }
+  ctx.drawImage(input.image, 0, 0, size.width, size.height);
+  for (const shape of input.shapes) {
+    drawShapes(ctx, [scaleShape(shape, scale)]);
+  }
+  return canvas;
+}
+function downscaleCanvas(source, factor) {
+  if (factor >= 1) {
+    return source;
+  }
+  const next = createCanvas(source.width * factor, source.height * factor);
+  const ctx = next.getContext("2d");
+  if (!ctx) {
+    return source;
+  }
+  ctx.drawImage(source, 0, 0, next.width, next.height);
+  return next;
+}
+function canvasToPngDataUrl(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        try {
+          resolve(canvas.toDataURL("image/png"));
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error("markup compose: toDataURL failed"));
+        }
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error ?? new Error("markup compose: blob read failed"));
+      reader.readAsDataURL(blob);
+    }, "image/png");
+  });
+}
+async function composeMarkupDataUrl(input) {
+  const composite = renderComposite(input);
+  let smallest = null;
+  for (const step of MARKUP_DOWNSCALE_STEPS) {
+    const canvas = downscaleCanvas(composite, step);
+    const dataUrl = await canvasToPngDataUrl(canvas);
+    const byteLength = dataUrlByteLength(dataUrl);
+    const result = {
+      dataUrl,
+      mimeType: "image/png",
+      width: canvas.width,
+      height: canvas.height,
+      byteLength
+    };
+    if (byteLength <= input.maxBytes) {
+      return result;
+    }
+    smallest = result;
+  }
+  if (!smallest) {
+    throw new Error("markup compose: no downscale step produced output");
+  }
+  return smallest;
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupMode.ts
+function useMarkupMode({
+  getCaptureContext,
+  onDeliver
+}) {
+  const [state, setState] = useState16("idle");
+  const [baseImage, setBaseImage] = useState16(null);
+  const contextRef = useRef15(null);
+  const captureTokenRef = useRef15(0);
+  const reset = useCallback15(() => {
+    captureTokenRef.current += 1;
+    contextRef.current = null;
+    setBaseImage(null);
+    setState("idle");
+  }, []);
+  const reportError = useCallback15((key, fallback) => {
+    toast9.error(translate(key, fallback));
+  }, []);
+  const start = useCallback15(async () => {
+    const context = getCaptureContext();
+    if (!context) {
+      reportError(
+        "auto.components.browser-pane.markup.errorUnavailable",
+        "Screenshot markup is not available on this page."
+      );
+      return;
+    }
+    const token = captureTokenRef.current += 1;
+    contextRef.current = context;
+    setState("capturing");
+    try {
+      const image = await captureMarkupBaseImage(context.source);
+      if (captureTokenRef.current !== token) {
+        return;
+      }
+      setBaseImage(image);
+      setState("drawing");
+    } catch {
+      if (captureTokenRef.current !== token) {
+        return;
+      }
+      reportError(
+        "auto.components.browser-pane.markup.errorCapture",
+        "Could not capture the page to draw on."
+      );
+      reset();
+    }
+  }, [getCaptureContext, reportError, reset]);
+  const cancel = useCallback15(() => {
+    reset();
+  }, [reset]);
+  const complete = useCallback15(
+    async ({ imageElement, shapes }) => {
+      const context = contextRef.current;
+      if (!context) {
+        reset();
+        return;
+      }
+      const token = captureTokenRef.current;
+      setState("composing");
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      if (captureTokenRef.current !== token) {
+        return;
+      }
+      try {
+        const result = await composeMarkupDataUrl({
+          image: imageElement,
+          displayCssWidth: context.cssWidth,
+          displayCssHeight: context.cssHeight,
+          outputScale: context.outputScale,
+          shapes,
+          // Why: target the clipboard handler's own ceilings — the byte limit
+          // (≈18 MB, well above a normal viewport PNG) and the pixel limit, which
+          // the handler otherwise enforces by silently dropping oversize images.
+          maxBytes: CLIPBOARD_IMAGE_MAX_SOURCE_BYTES,
+          maxPixels: CLIPBOARD_IMAGE_MAX_PIXELS
+        });
+        if (captureTokenRef.current !== token) {
+          return;
+        }
+        await onDeliver(result);
+        if (captureTokenRef.current !== token) {
+          return;
+        }
+        reset();
+      } catch {
+        if (captureTokenRef.current !== token) {
+          return;
+        }
+        reportError(
+          "auto.components.browser-pane.markup.errorAttach",
+          "Could not attach the markup screenshot."
+        );
+        setState("drawing");
+      }
+    },
+    [onDeliver, reset, reportError]
+  );
+  return {
+    state,
+    isActive: state !== "idle",
+    baseImage,
+    start,
+    cancel,
+    complete
+  };
+}
+
+// src/renderer/components/browser-pane/annotate/use-browser-page-markup-capture.ts
+function useBrowserPageMarkupCapture(webviewRef, page) {
+  const sendToAgent = useSendToAgent();
+  const sendRef = useRef16(sendToAgent);
+  const pageRef = useRef16(page);
+  useLayoutEffect8(() => {
+    sendRef.current = sendToAgent;
+    pageRef.current = page;
+  });
+  const onDeliver = useCallback16(async (result) => {
+    const send = sendRef.current;
+    if (!send) {
+      await deliverMarkupToClipboard(result);
+      return;
+    }
+    try {
+      await send(
+        buildMarkupAgentPayload({
+          pageUrl: pageRef.current.url,
+          pageTitle: pageRef.current.title,
+          result
+        })
+      );
+    } catch (error) {
+      if (!isSendToAgentCanceled(error)) {
+        toast10.error(
+          translate("auto.components.browser.pane.sendToAgent.failed", "Could not send to agent")
+        );
+      }
+      return;
+    }
+    toast10.success(
+      translate("auto.components.browser.pane.sendToAgent.markupSent", "Markup sent to agent")
+    );
+  }, []);
+  return useMarkupMode({
+    getCaptureContext: useCallback16(() => {
+      const webview = webviewRef.current;
+      if (!webview) {
+        return null;
+      }
+      const rect = webview.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return null;
+      }
+      return {
+        source: { kind: "webview", webview },
+        cssWidth: rect.width,
+        cssHeight: rect.height,
+        outputScale: window.devicePixelRatio || 1
+      };
+    }, [webviewRef]),
+    onDeliver
+  });
+}
+
 // src/renderer/components/browser-pane/annotate/browser-annotate-chord.ts
 function isAnnotateChord(event, platform) {
   if (event.repeat || event.nativeEvent.isComposing || isEditableKeyboardTarget(event.target)) {
@@ -9394,14 +10252,14 @@ function isAnnotateChord(event, platform) {
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
 import {
-  useCallback as useCallback14,
-  useEffect as useEffect19,
-  useLayoutEffect as useLayoutEffect8,
-  useRef as useRef14,
-  useState as useState16
+  useCallback as useCallback17,
+  useEffect as useEffect20,
+  useLayoutEffect as useLayoutEffect9,
+  useRef as useRef17,
+  useState as useState17
 } from "react";
 import { createPortal } from "react-dom";
-import { Fragment as Fragment7, jsx as jsx36, jsxs as jsxs29 } from "react/jsx-runtime";
+import { Fragment as Fragment7, jsx as jsx38, jsxs as jsxs30 } from "react/jsx-runtime";
 var MENU_ITEM_CLASS = "relative flex w-full cursor-default items-center gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium outline-none select-none hover:bg-black/8 focus:bg-black/8 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/14 dark:focus:bg-white/14";
 function BrowserPageContextMenu({
   browserPageId,
@@ -9412,9 +10270,9 @@ function BrowserPageContextMenu({
   onReload
 }) {
   const createBrowserPage = useBrowserStore((s) => s.createBrowserPage);
-  const [contextMenu, setContextMenu] = useState16(null);
-  const contextMenuRef = useRef14(null);
-  useEffect19(() => {
+  const [contextMenu, setContextMenu] = useState17(null);
+  const contextMenuRef = useRef17(null);
+  useEffect20(() => {
     return window.browserAPI.onContextMenuRequested((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -9430,7 +10288,7 @@ function BrowserPageContextMenu({
       });
     });
   }, [browserPageId]);
-  useEffect19(() => {
+  useEffect20(() => {
     return window.browserAPI.onContextMenuDismissed((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -9438,21 +10296,21 @@ function BrowserPageContextMenu({
       setContextMenu(null);
     });
   }, [browserPageId]);
-  const closeMenu = useCallback14(() => {
+  const closeMenu = useCallback17(() => {
     setContextMenu(null);
     try {
       webviewRef.current?.focus();
     } catch {
     }
   }, [webviewRef]);
-  const menuItems = useCallback14(() => {
+  const menuItems = useCallback17(() => {
     const el = contextMenuRef.current;
     if (!el) {
       return [];
     }
     return [...el.querySelectorAll('[role="menuitem"]:not(:disabled)')];
   }, []);
-  useEffect19(() => {
+  useEffect20(() => {
     if (!contextMenu) {
       return;
     }
@@ -9465,13 +10323,13 @@ function BrowserPageContextMenu({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [closeMenu, contextMenu]);
-  useEffect19(() => {
+  useEffect20(() => {
     if (!contextMenu) {
       return;
     }
     menuItems()[0]?.focus();
   }, [contextMenu, menuItems]);
-  const handleMenuKeyDown = useCallback14(
+  const handleMenuKeyDown = useCallback17(
     (e) => {
       const items = menuItems();
       if (items.length === 0) {
@@ -9496,7 +10354,7 @@ function BrowserPageContextMenu({
     },
     [menuItems]
   );
-  useLayoutEffect8(() => {
+  useLayoutEffect9(() => {
     const el = contextMenuRef.current;
     if (!el || !contextMenu) {
       return;
@@ -9523,9 +10381,9 @@ function BrowserPageContextMenu({
     return null;
   }
   return createPortal(
-    /* @__PURE__ */ jsxs29(Fragment7, { children: [
-      /* @__PURE__ */ jsx36("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
-      /* @__PURE__ */ jsxs29(
+    /* @__PURE__ */ jsxs30(Fragment7, { children: [
+      /* @__PURE__ */ jsx38("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
+      /* @__PURE__ */ jsxs30(
         "div",
         {
           ref: contextMenuRef,
@@ -9537,8 +10395,8 @@ function BrowserPageContextMenu({
           style: { left: contextMenu.x, top: contextMenu.y },
           className: "fixed z-50 min-w-[13rem] overflow-hidden rounded-[11px] border border-black/14 bg-[rgba(255,255,255,0.82)] p-1 text-black shadow-[0_16px_36px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:text-white dark:shadow-[0_20px_44px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)]",
           children: [
-            contextMenu.linkUrl ? /* @__PURE__ */ jsxs29(Fragment7, { children: [
-              /* @__PURE__ */ jsx36(
+            contextMenu.linkUrl ? /* @__PURE__ */ jsxs30(Fragment7, { children: [
+              /* @__PURE__ */ jsx38(
                 "button",
                 {
                   role: "menuitem",
@@ -9555,7 +10413,7 @@ function BrowserPageContextMenu({
                   )
                 }
               ),
-              /* @__PURE__ */ jsx36(
+              /* @__PURE__ */ jsx38(
                 "button",
                 {
                   role: "menuitem",
@@ -9573,7 +10431,7 @@ function BrowserPageContextMenu({
                   )
                 }
               ),
-              /* @__PURE__ */ jsx36(
+              /* @__PURE__ */ jsx38(
                 "button",
                 {
                   role: "menuitem",
@@ -9585,10 +10443,10 @@ function BrowserPageContextMenu({
                   children: translate("auto.components.browser.contextMenu.copyLink", "Copy Link")
                 }
               ),
-              /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" })
+              /* @__PURE__ */ jsx38("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs29(Fragment7, { children: [
-              /* @__PURE__ */ jsx36(
+            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs30(Fragment7, { children: [
+              /* @__PURE__ */ jsx38(
                 "button",
                 {
                   role: "menuitem",
@@ -9600,9 +10458,9 @@ function BrowserPageContextMenu({
                   children: translate("auto.components.browser.pane.BrowserPane.2a4c4b8e1f", "Copy")
                 }
               ),
-              /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" })
+              /* @__PURE__ */ jsx38("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            /* @__PURE__ */ jsx36(
+            /* @__PURE__ */ jsx38(
               "button",
               {
                 role: "menuitem",
@@ -9615,7 +10473,7 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.40edfa75cb", "Back")
               }
             ),
-            /* @__PURE__ */ jsx36(
+            /* @__PURE__ */ jsx38(
               "button",
               {
                 role: "menuitem",
@@ -9628,7 +10486,7 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.250a9b3e42", "Forward")
               }
             ),
-            /* @__PURE__ */ jsx36(
+            /* @__PURE__ */ jsx38(
               "button",
               {
                 role: "menuitem",
@@ -9640,8 +10498,8 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.0e080d820e", "Reload")
               }
             ),
-            /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" }),
-            /* @__PURE__ */ jsx36(
+            /* @__PURE__ */ jsx38("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx38(
               "button",
               {
                 role: "menuitem",
@@ -9659,7 +10517,7 @@ function BrowserPageContextMenu({
                 )
               }
             ),
-            /* @__PURE__ */ jsx36(
+            /* @__PURE__ */ jsx38(
               "button",
               {
                 role: "menuitem",
@@ -9671,8 +10529,8 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.1b179ab561", "Copy Page URL")
               }
             ),
-            /* @__PURE__ */ jsx36("div", { className: "my-1 h-px bg-border/70" }),
-            /* @__PURE__ */ jsx36(
+            /* @__PURE__ */ jsx38("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx38(
               "button",
               {
                 role: "menuitem",
@@ -9694,7 +10552,7 @@ function BrowserPageContextMenu({
 
 // src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.tsx
 import { Copy as Copy2, ExternalLink as ExternalLink2, Globe as Globe3, RefreshCw as RefreshCw3 } from "lucide-react";
-import { jsx as jsx37, jsxs as jsxs30 } from "react/jsx-runtime";
+import { jsx as jsx39, jsxs as jsxs31 } from "react/jsx-runtime";
 function getLoadErrorMetadata(loadError) {
   try {
     const parsed = new URL(loadError.validatedUrl);
@@ -9719,15 +10577,15 @@ function BrowserLoadFailureOverlay({
   const meta = getLoadErrorMetadata(loadError);
   const guestRecoveryError = loadError.code === BROWSER_GUEST_RECOVERY_ERROR_CODE;
   const recoveryHint = formatLoadFailureRecoveryHint(meta, loadError);
-  return /* @__PURE__ */ jsx37("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs30("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
-    /* @__PURE__ */ jsx37("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx37(Globe3, { className: "size-5" }) }),
-    /* @__PURE__ */ jsx37("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
+  return /* @__PURE__ */ jsx39("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs31("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
+    /* @__PURE__ */ jsx39("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx39(Globe3, { className: "size-5" }) }),
+    /* @__PURE__ */ jsx39("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
       value0: meta.host
     }) : translate("browser.loadFailure.cantLoadPage", "Can't load this page") }),
-    /* @__PURE__ */ jsx37("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
-    recoveryHint ? /* @__PURE__ */ jsx37("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
-    /* @__PURE__ */ jsxs30("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
-      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx37(
+    /* @__PURE__ */ jsx39("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
+    recoveryHint ? /* @__PURE__ */ jsx39("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
+    /* @__PURE__ */ jsxs31("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
+      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx39(
         Button,
         {
           size: "sm",
@@ -9736,11 +10594,11 @@ function BrowserLoadFailureOverlay({
           children: translate("browser.loadFailure.tryHttps", "Try HTTPS")
         }
       ) : null,
-      /* @__PURE__ */ jsxs30(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
-        /* @__PURE__ */ jsx37(RefreshCw3, { className: "size-4" }),
+      /* @__PURE__ */ jsxs31(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
+        /* @__PURE__ */ jsx39(RefreshCw3, { className: "size-4" }),
         translate("browser.loadFailure.retry", "Retry")
       ] }),
-      /* @__PURE__ */ jsxs30(
+      /* @__PURE__ */ jsxs31(
         Button,
         {
           size: "sm",
@@ -9748,12 +10606,12 @@ function BrowserLoadFailureOverlay({
           className: "h-9 gap-2 px-3",
           onClick: () => onCopy(currentUrl),
           children: [
-            /* @__PURE__ */ jsx37(Copy2, { className: "size-4" }),
+            /* @__PURE__ */ jsx39(Copy2, { className: "size-4" }),
             translate("browser.loadFailure.copyAddress", "Copy Address")
           ]
         }
       ),
-      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs30(
+      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs31(
         Button,
         {
           size: "sm",
@@ -9761,7 +10619,7 @@ function BrowserLoadFailureOverlay({
           className: "h-9 gap-2 px-3",
           onClick: () => onOpenExternal(externalUrl),
           children: [
-            /* @__PURE__ */ jsx37(ExternalLink2, { className: "size-4" }),
+            /* @__PURE__ */ jsx39(ExternalLink2, { className: "size-4" }),
             translate("browser.loadFailure.openExternally", "Open Externally")
           ]
         }
@@ -9771,12 +10629,12 @@ function BrowserLoadFailureOverlay({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.tsx
-import { jsxs as jsxs31 } from "react/jsx-runtime";
+import { jsxs as jsxs32 } from "react/jsx-runtime";
 function BrowserPageZoomIndicator({
   state,
   percent
 }) {
-  return /* @__PURE__ */ jsxs31(
+  return /* @__PURE__ */ jsxs32(
     "div",
     {
       role: "status",
@@ -9795,7 +10653,7 @@ function BrowserPageZoomIndicator({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { useCallback as useCallback15, useEffect as useEffect20, useRef as useRef15, useState as useState17 } from "react";
+import { useCallback as useCallback18, useEffect as useEffect21, useRef as useRef18, useState as useState18 } from "react";
 import { ChevronUp, ChevronDown, X as X3 } from "lucide-react";
 
 // src/renderer/lib/find-query-bounds.ts
@@ -9808,21 +10666,21 @@ function getFindRequestQuery(query) {
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { jsx as jsx38, jsxs as jsxs32 } from "react/jsx-runtime";
+import { jsx as jsx40, jsxs as jsxs33 } from "react/jsx-runtime";
 function BrowserFind({
   isOpen,
   onClose,
   webviewRef,
   guestGeneration = null
 }) {
-  const inputRef = useRef15(null);
-  const wasOpenRef = useRef15(isOpen);
-  const activeFindQueryRef = useRef15(null);
-  const [query, setQuery] = useState17("");
-  const [activeMatch, setActiveMatch] = useState17(0);
-  const [totalMatches, setTotalMatches] = useState17(0);
+  const inputRef = useRef18(null);
+  const wasOpenRef = useRef18(isOpen);
+  const activeFindQueryRef = useRef18(null);
+  const [query, setQuery] = useState18("");
+  const [activeMatch, setActiveMatch] = useState18(0);
+  const [totalMatches, setTotalMatches] = useState18(0);
   const requestQuery = getFindRequestQuery(query);
-  const safeFindInPage = useCallback15(
+  const safeFindInPage = useCallback18(
     (text, opts) => {
       const webview = webviewRef.current;
       if (!webview || !text) {
@@ -9835,7 +10693,7 @@ function BrowserFind({
     },
     [webviewRef]
   );
-  const safeStopFindInPage = useCallback15(() => {
+  const safeStopFindInPage = useCallback18(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
@@ -9845,21 +10703,21 @@ function BrowserFind({
     } catch {
     }
   }, [webviewRef]);
-  const findNext = useCallback15(() => {
+  const findNext = useCallback18(() => {
     if (requestQuery) {
       const findNext2 = activeFindQueryRef.current !== requestQuery;
       safeFindInPage(requestQuery, { forward: true, findNext: findNext2 });
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  const findPrevious = useCallback15(() => {
+  const findPrevious = useCallback18(() => {
     if (requestQuery) {
       const findNext2 = activeFindQueryRef.current !== requestQuery;
       safeFindInPage(requestQuery, { forward: false, findNext: findNext2 });
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  useEffect20(() => {
+  useEffect21(() => {
     if (isOpen) {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -9867,7 +10725,7 @@ function BrowserFind({
       safeStopFindInPage();
     }
   }, [isOpen, safeStopFindInPage]);
-  useEffect20(() => {
+  useEffect21(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
     if (!isOpen) {
@@ -9893,7 +10751,7 @@ function BrowserFind({
     const id = window.setTimeout(runFind, 200);
     return () => window.clearTimeout(id);
   }, [isOpen, requestQuery, safeFindInPage, safeStopFindInPage]);
-  useEffect20(() => {
+  useEffect21(() => {
     const webview = webviewRef.current;
     if (!webview || !isOpen) {
       return;
@@ -9915,7 +10773,7 @@ function BrowserFind({
     setActiveMatch(0);
     setTotalMatches(0);
   }
-  const handleKeyDown = useCallback15(
+  const handleKeyDown = useCallback18(
     (e) => {
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -9931,14 +10789,14 @@ function BrowserFind({
   if (!isOpen) {
     return null;
   }
-  return /* @__PURE__ */ jsxs32(
+  return /* @__PURE__ */ jsxs33(
     "div",
     {
       className: "absolute top-2 right-2 z-50 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/95 px-2 py-1 shadow-lg backdrop-blur-sm",
       style: { width: 300 },
       onKeyDown: handleKeyDown,
       children: [
-        /* @__PURE__ */ jsx38(
+        /* @__PURE__ */ jsx40(
           ImeInput,
           {
             ref: inputRef,
@@ -9952,13 +10810,13 @@ function BrowserFind({
             className: "min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
           }
         ),
-        query ? /* @__PURE__ */ jsx38("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
+        query ? /* @__PURE__ */ jsx40("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
           "auto.components.browser.pane.BrowserFind.fc63f336aa",
           "{{value0}} of {{value1}}",
           { value0: activeMatch, value1: totalMatches }
         ) : translate("auto.components.browser.pane.BrowserFind.7baca7b1b8", "No matches") }) : null,
-        /* @__PURE__ */ jsx38("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
-        /* @__PURE__ */ jsx38(
+        /* @__PURE__ */ jsx40("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx40(
           Button,
           {
             type: "button",
@@ -9967,10 +10825,10 @@ function BrowserFind({
             onClick: findPrevious,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.ca7aebbd7f", "Previous match"),
-            children: /* @__PURE__ */ jsx38(ChevronUp, { size: 14 })
+            children: /* @__PURE__ */ jsx40(ChevronUp, { size: 14 })
           }
         ),
-        /* @__PURE__ */ jsx38(
+        /* @__PURE__ */ jsx40(
           Button,
           {
             type: "button",
@@ -9979,11 +10837,11 @@ function BrowserFind({
             onClick: findNext,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.5c0c02ae76", "Next match"),
-            children: /* @__PURE__ */ jsx38(ChevronDown, { size: 14 })
+            children: /* @__PURE__ */ jsx40(ChevronDown, { size: 14 })
           }
         ),
-        /* @__PURE__ */ jsx38("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
-        /* @__PURE__ */ jsx38(
+        /* @__PURE__ */ jsx40("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx40(
           Button,
           {
             type: "button",
@@ -9992,7 +10850,7 @@ function BrowserFind({
             onClick: onClose,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.c9d5f63fdc", "Close"),
-            children: /* @__PURE__ */ jsx38(X3, { size: 14 })
+            children: /* @__PURE__ */ jsx40(X3, { size: 14 })
           }
         )
       ]
@@ -10001,22 +10859,23 @@ function BrowserFind({
 }
 
 // src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
-import { useRef as useRef16, useState as useState20 } from "react";
-import { Copy as Copy4, Image as Image3, MessageSquarePlus as MessageSquarePlus7 } from "lucide-react";
+import { useRef as useRef21, useState as useState23 } from "react";
+import { createPortal as createPortal2 } from "react-dom";
+import { Copy as Copy4, Image as Image4, MessageSquarePlus as MessageSquarePlus7 } from "lucide-react";
 
 // src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
-import { useEffect as useEffect21, useState as useState18 } from "react";
+import { useEffect as useEffect22, useState as useState19 } from "react";
 import { CircleCheck, Copy as Copy3, MessageSquarePlus as MessageSquarePlus4, Pencil, Send, Trash2 as Trash22 } from "lucide-react";
 
 // src/renderer/ui/toggle-group.tsx
-import * as React5 from "react";
+import * as React6 from "react";
 import * as ToggleGroupPrimitive from "radix-ui/toggle-group";
 
 // src/renderer/ui/toggle.tsx
-import { cva as cva5 } from "class-variance-authority";
+import { cva as cva6 } from "class-variance-authority";
 import * as TogglePrimitive from "radix-ui/toggle";
-import { jsx as jsx39 } from "react/jsx-runtime";
-var toggleVariants = cva5(
+import { jsx as jsx41 } from "react/jsx-runtime";
+var toggleVariants = cva6(
   "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-[color,box-shadow] outline-none hover:bg-muted hover:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
@@ -10038,8 +10897,8 @@ var toggleVariants = cva5(
 );
 
 // src/renderer/ui/toggle-group.tsx
-import { jsx as jsx40 } from "react/jsx-runtime";
-var ToggleGroupContext = React5.createContext({
+import { jsx as jsx42 } from "react/jsx-runtime";
+var ToggleGroupContext = React6.createContext({
   size: "default",
   variant: "default",
   spacing: 0
@@ -10052,8 +10911,8 @@ function ToggleGroup({
   children,
   ...props
 }) {
-  const contextValue = React5.useMemo(() => ({ variant, size, spacing }), [variant, size, spacing]);
-  return /* @__PURE__ */ jsx40(
+  const contextValue = React6.useMemo(() => ({ variant, size, spacing }), [variant, size, spacing]);
+  return /* @__PURE__ */ jsx42(
     ToggleGroupPrimitive.Root,
     {
       "data-slot": "toggle-group",
@@ -10066,7 +10925,7 @@ function ToggleGroup({
         className
       ),
       ...props,
-      children: /* @__PURE__ */ jsx40(ToggleGroupContext.Provider, { value: contextValue, children })
+      children: /* @__PURE__ */ jsx42(ToggleGroupContext.Provider, { value: contextValue, children })
     }
   );
 }
@@ -10077,8 +10936,8 @@ function ToggleGroupItem({
   size,
   ...props
 }) {
-  const context = React5.useContext(ToggleGroupContext);
-  return /* @__PURE__ */ jsx40(
+  const context = React6.useContext(ToggleGroupContext);
+  return /* @__PURE__ */ jsx42(
     ToggleGroupPrimitive.Item,
     {
       "data-slot": "toggle-group-item",
@@ -10116,7 +10975,7 @@ function getScreenSubmitModifierLabel() {
 }
 
 // src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
-import { Fragment as Fragment8, jsx as jsx41, jsxs as jsxs33 } from "react/jsx-runtime";
+import { Fragment as Fragment8, jsx as jsx43, jsxs as jsxs34 } from "react/jsx-runtime";
 function BrowserPageAnnotationTray({
   browserAnnotations,
   currentUrl,
@@ -10128,10 +10987,10 @@ function BrowserPageAnnotationTray({
   handleDeleteBrowserAnnotation,
   handleUpdateBrowserAnnotation
 }) {
-  const [editingAnnotationId, setEditingAnnotationId] = useState18(null);
-  const [editComment, setEditComment] = useState18("");
-  const [editIntent, setEditIntent] = useState18("change");
-  useEffect21(() => {
+  const [editingAnnotationId, setEditingAnnotationId] = useState19(null);
+  const [editComment, setEditComment] = useState19("");
+  const [editIntent, setEditIntent] = useState19("change");
+  useEffect22(() => {
     if (editingAnnotationId && !browserAnnotations.some((annotation) => annotation.id === editingAnnotationId)) {
       setEditingAnnotationId(null);
     }
@@ -10152,10 +11011,10 @@ function BrowserPageAnnotationTray({
     handleUpdateBrowserAnnotation(editingAnnotationId, trimmed, editIntent);
     setEditingAnnotationId(null);
   };
-  return /* @__PURE__ */ jsxs33("div", { className: "absolute right-3 bottom-3 z-30 flex max-h-[45%] w-[min(20rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-[0_10px_24px_rgba(0,0,0,0.18)]", children: [
-    /* @__PURE__ */ jsxs33("div", { className: "flex items-center gap-2 border-b border-border px-3 py-2", children: [
-      /* @__PURE__ */ jsx41(MessageSquarePlus4, { className: "size-4 text-muted-foreground" }),
-      /* @__PURE__ */ jsx41("div", { className: "min-w-0 flex-1 text-sm font-medium", children: browserAnnotations.length === 1 ? translate(
+  return /* @__PURE__ */ jsxs34("div", { className: "absolute right-3 bottom-3 z-30 flex max-h-[45%] w-[min(20rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-[0_10px_24px_rgba(0,0,0,0.18)]", children: [
+    /* @__PURE__ */ jsxs34("div", { className: "flex items-center gap-2 border-b border-border px-3 py-2", children: [
+      /* @__PURE__ */ jsx43(MessageSquarePlus4, { className: "size-4 text-muted-foreground" }),
+      /* @__PURE__ */ jsx43("div", { className: "min-w-0 flex-1 text-sm font-medium", children: browserAnnotations.length === 1 ? translate(
         "auto.components.browser.pane.BrowserPane.ea6af700da",
         "{{value0}} annotation",
         { value0: browserAnnotations.length }
@@ -10164,8 +11023,8 @@ function BrowserPageAnnotationTray({
         "{{value0}} annotations",
         { value0: browserAnnotations.length }
       ) }),
-      handleSendBrowserAnnotationsToAgent ? /* @__PURE__ */ jsxs33(Tooltip, { children: [
-        /* @__PURE__ */ jsx41(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsxs33(
+      handleSendBrowserAnnotationsToAgent ? /* @__PURE__ */ jsxs34(Tooltip, { children: [
+        /* @__PURE__ */ jsx43(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsxs34(
           Button,
           {
             size: "xs",
@@ -10174,17 +11033,17 @@ function BrowserPageAnnotationTray({
             disabled: browserAnnotationsSending,
             onClick: () => void handleSendBrowserAnnotationsToAgent(),
             children: [
-              /* @__PURE__ */ jsx41(Send, { className: "size-3" }),
+              /* @__PURE__ */ jsx43(Send, { className: "size-3" }),
               translate("auto.components.browser.pane.sendToAgent.annotations", "Send to agent")
             ]
           }
         ) }),
-        /* @__PURE__ */ jsx41(TooltipContent, { side: "bottom", sideOffset: 6, children: translate(
+        /* @__PURE__ */ jsx43(TooltipContent, { side: "bottom", sideOffset: 6, children: translate(
           "auto.components.browser.pane.BrowserPane.95af781091",
           "Send feedback to an agent"
         ) })
       ] }) : null,
-      /* @__PURE__ */ jsxs33(
+      /* @__PURE__ */ jsxs34(
         Button,
         {
           size: "xs",
@@ -10192,13 +11051,13 @@ function BrowserPageAnnotationTray({
           className: "gap-1.5",
           onClick: handleCopyBrowserAnnotations,
           children: [
-            browserAnnotationsCopied ? /* @__PURE__ */ jsx41(CircleCheck, { className: "size-3" }) : /* @__PURE__ */ jsx41(Copy3, { className: "size-3" }),
+            browserAnnotationsCopied ? /* @__PURE__ */ jsx43(CircleCheck, { className: "size-3" }) : /* @__PURE__ */ jsx43(Copy3, { className: "size-3" }),
             browserAnnotationsCopied ? translate("auto.components.browser.pane.BrowserPane.6f4ab3592b", "Copied") : translate("auto.components.browser.pane.BrowserPane.d51ef37351", "Copy")
           ]
         }
       ),
-      /* @__PURE__ */ jsxs33(Tooltip, { children: [
-        /* @__PURE__ */ jsx41(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx41(
+      /* @__PURE__ */ jsxs34(Tooltip, { children: [
+        /* @__PURE__ */ jsx43(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx43(
           Button,
           {
             size: "icon-xs",
@@ -10209,21 +11068,21 @@ function BrowserPageAnnotationTray({
               "auto.components.browser.pane.BrowserPane.734e4343ec",
               "Clear browser annotations"
             ),
-            children: /* @__PURE__ */ jsx41(Trash22, { className: "size-3" })
+            children: /* @__PURE__ */ jsx43(Trash22, { className: "size-3" })
           }
         ) }),
-        /* @__PURE__ */ jsx41(TooltipContent, { side: "bottom", sideOffset: 6, children: translate("auto.components.browser.pane.BrowserPane.11c5084aa2", "Clear annotations") })
+        /* @__PURE__ */ jsx43(TooltipContent, { side: "bottom", sideOffset: 6, children: translate("auto.components.browser.pane.BrowserPane.11c5084aa2", "Clear annotations") })
       ] })
     ] }),
-    /* @__PURE__ */ jsx41("div", { className: "min-h-0 flex-1 overflow-auto p-1.5", children: browserAnnotations.map((annotation, index) => {
+    /* @__PURE__ */ jsx43("div", { className: "min-h-0 flex-1 overflow-auto p-1.5", children: browserAnnotations.map((annotation, index) => {
       const isEditing = annotation.id === editingAnnotationId;
-      return /* @__PURE__ */ jsxs33(
+      return /* @__PURE__ */ jsxs34(
         "div",
         {
           className: "group flex gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent focus-within:bg-accent",
           children: [
-            /* @__PURE__ */ jsx41("div", { className: "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground", children: index + 1 }),
-            isEditing ? /* @__PURE__ */ jsxs33(
+            /* @__PURE__ */ jsx43("div", { className: "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground", children: index + 1 }),
+            isEditing ? /* @__PURE__ */ jsxs34(
               "div",
               {
                 className: "min-w-0 flex-1",
@@ -10236,7 +11095,7 @@ function BrowserPageAnnotationTray({
                   }
                 },
                 children: [
-                  /* @__PURE__ */ jsx41(
+                  /* @__PURE__ */ jsx43(
                     ImeTextarea,
                     {
                       value: editComment,
@@ -10257,7 +11116,7 @@ function BrowserPageAnnotationTray({
                       }
                     }
                   ),
-                  /* @__PURE__ */ jsx41(
+                  /* @__PURE__ */ jsx43(
                     ToggleGroup,
                     {
                       type: "single",
@@ -10276,15 +11135,15 @@ function BrowserPageAnnotationTray({
                       ),
                       children: BROWSER_ANNOTATION_INTENT_OPTIONS.map((option) => {
                         const Icon2 = option.icon;
-                        return /* @__PURE__ */ jsxs33(
+                        return /* @__PURE__ */ jsxs34(
                           ToggleGroupItem,
                           {
                             value: option.value,
                             "aria-label": option.label,
                             className: "gap-1 text-[11px] data-[state=on]:border-foreground/20 data-[state=on]:bg-foreground/10 data-[state=on]:text-foreground data-[state=on]:shadow-xs data-[state=on]:hover:bg-foreground/15 data-[state=on]:hover:text-foreground",
                             children: [
-                              /* @__PURE__ */ jsx41(Icon2, { className: "size-3" }),
-                              /* @__PURE__ */ jsx41("span", { children: option.label })
+                              /* @__PURE__ */ jsx43(Icon2, { className: "size-3" }),
+                              /* @__PURE__ */ jsx43("span", { children: option.label })
                             ]
                           },
                           option.value
@@ -10292,32 +11151,32 @@ function BrowserPageAnnotationTray({
                       })
                     }
                   ),
-                  /* @__PURE__ */ jsxs33("div", { className: "mt-1.5 flex justify-end gap-1.5", children: [
-                    /* @__PURE__ */ jsx41(Button, { size: "xs", variant: "ghost", onClick: handleCancelEdit, children: translate(
+                  /* @__PURE__ */ jsxs34("div", { className: "mt-1.5 flex justify-end gap-1.5", children: [
+                    /* @__PURE__ */ jsx43(Button, { size: "xs", variant: "ghost", onClick: handleCancelEdit, children: translate(
                       "auto.components.browser.pane.annotate.browser.page.annotation.tray.024467ceac",
                       "Cancel"
                     ) }),
-                    /* @__PURE__ */ jsx41(Button, { size: "xs", disabled: !editComment.trim(), onClick: handleSaveEdit, children: translate(
+                    /* @__PURE__ */ jsx43(Button, { size: "xs", disabled: !editComment.trim(), onClick: handleSaveEdit, children: translate(
                       "auto.components.browser.pane.annotate.browser.page.annotation.tray.c16f932cb3",
                       "Save"
                     ) })
                   ] })
                 ]
               }
-            ) : /* @__PURE__ */ jsxs33(Fragment8, { children: [
-              /* @__PURE__ */ jsxs33("div", { className: "min-w-0 flex-1", children: [
-                /* @__PURE__ */ jsx41("div", { className: "truncate font-medium text-foreground", children: annotation.payload.target.accessibility.accessibleName || annotation.payload.target.textSnippet || annotation.payload.target.tagName }),
-                /* @__PURE__ */ jsx41("div", { className: "mt-0.5 line-clamp-2 text-muted-foreground", children: annotation.comment }),
-                /* @__PURE__ */ jsxs33("div", { className: "mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground", children: [
-                  /* @__PURE__ */ jsx41("span", { children: annotation.intent }),
+            ) : /* @__PURE__ */ jsxs34(Fragment8, { children: [
+              /* @__PURE__ */ jsxs34("div", { className: "min-w-0 flex-1", children: [
+                /* @__PURE__ */ jsx43("div", { className: "truncate font-medium text-foreground", children: annotation.payload.target.accessibility.accessibleName || annotation.payload.target.textSnippet || annotation.payload.target.tagName }),
+                /* @__PURE__ */ jsx43("div", { className: "mt-0.5 line-clamp-2 text-muted-foreground", children: annotation.comment }),
+                /* @__PURE__ */ jsxs34("div", { className: "mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground", children: [
+                  /* @__PURE__ */ jsx43("span", { children: annotation.intent }),
                   currentUrl !== void 0 && !browserAnnotationMatchesPageUrl(
                     annotation.payload.page.sanitizedUrl,
                     currentUrl
-                  ) ? /* @__PURE__ */ jsx41("span", { className: "truncate", title: annotation.payload.page.sanitizedUrl, children: annotation.payload.page.sanitizedUrl }) : null
+                  ) ? /* @__PURE__ */ jsx43("span", { className: "truncate", title: annotation.payload.page.sanitizedUrl, children: annotation.payload.page.sanitizedUrl }) : null
                 ] })
               ] }),
-              /* @__PURE__ */ jsxs33("div", { className: "flex shrink-0 items-start gap-0.5", children: [
-                /* @__PURE__ */ jsx41(
+              /* @__PURE__ */ jsxs34("div", { className: "flex shrink-0 items-start gap-0.5", children: [
+                /* @__PURE__ */ jsx43(
                   Button,
                   {
                     size: "icon-xs",
@@ -10329,10 +11188,10 @@ function BrowserPageAnnotationTray({
                       "Edit annotation {{value0}}",
                       { value0: index + 1 }
                     ),
-                    children: /* @__PURE__ */ jsx41(Pencil, { className: "size-3" })
+                    children: /* @__PURE__ */ jsx43(Pencil, { className: "size-3" })
                   }
                 ),
-                /* @__PURE__ */ jsx41(
+                /* @__PURE__ */ jsx43(
                   Button,
                   {
                     size: "icon-xs",
@@ -10344,7 +11203,7 @@ function BrowserPageAnnotationTray({
                       "Delete annotation {{value0}}",
                       { value0: index + 1 }
                     ),
-                    children: /* @__PURE__ */ jsx41(Trash22, { className: "size-3" })
+                    children: /* @__PURE__ */ jsx43(Trash22, { className: "size-3" })
                   }
                 )
               ] })
@@ -10358,8 +11217,8 @@ function BrowserPageAnnotationTray({
 }
 
 // src/renderer/components/browser-pane/annotate/browser-page-grab-toast.tsx
-import { CircleCheck as CircleCheck2, Image as Image2, MessageSquarePlus as MessageSquarePlus5, OctagonX } from "lucide-react";
-import { jsx as jsx42, jsxs as jsxs34 } from "react/jsx-runtime";
+import { CircleCheck as CircleCheck2, Image as Image3, MessageSquarePlus as MessageSquarePlus5, OctagonX } from "lucide-react";
+import { jsx as jsx44, jsxs as jsxs35 } from "react/jsx-runtime";
 function BrowserPageGrabToast({
   grabToast,
   grabToastTimerRef,
@@ -10367,7 +11226,7 @@ function BrowserPageGrabToast({
   setGrabToast,
   onReviewForAgent
 }) {
-  return /* @__PURE__ */ jsxs34(
+  return /* @__PURE__ */ jsxs35(
     "div",
     {
       className: "absolute z-30 flex items-center animate-in fade-in zoom-in-95 duration-150",
@@ -10378,7 +11237,7 @@ function BrowserPageGrabToast({
         flexDirection: grabToast.below ? "column" : "column-reverse"
       },
       children: [
-        /* @__PURE__ */ jsx42(
+        /* @__PURE__ */ jsx44(
           "div",
           {
             className: "h-2 w-4 shrink-0",
@@ -10388,14 +11247,14 @@ function BrowserPageGrabToast({
             }
           }
         ),
-        /* @__PURE__ */ jsxs34(
+        /* @__PURE__ */ jsxs35(
           "div",
           {
             className: `flex items-center gap-1.5 rounded-full py-1.5 pl-3 pr-1.5 shadow-lg ${grabToast.type === "success" ? "bg-white text-gray-900" : "bg-white text-red-600"}`,
             children: [
-              grabToast.type === "success" ? /* @__PURE__ */ jsx42(CircleCheck2, { className: "size-4 fill-blue-600 text-white" }) : /* @__PURE__ */ jsx42(OctagonX, { className: "size-4 text-red-500" }),
-              /* @__PURE__ */ jsx42("span", { className: "text-sm font-semibold", children: grabToast.message }),
-              grabToast.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") || onReviewForAgent && grabToast.payload ? /* @__PURE__ */ jsxs34(
+              grabToast.type === "success" ? /* @__PURE__ */ jsx44(CircleCheck2, { className: "size-4 fill-blue-600 text-white" }) : /* @__PURE__ */ jsx44(OctagonX, { className: "size-4 text-red-500" }),
+              /* @__PURE__ */ jsx44("span", { className: "text-sm font-semibold", children: grabToast.message }),
+              grabToast.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") || onReviewForAgent && grabToast.payload ? /* @__PURE__ */ jsxs35(
                 DropdownMenu,
                 {
                   onOpenChange: (open) => {
@@ -10406,9 +11265,9 @@ function BrowserPageGrabToast({
                     }
                   },
                   children: [
-                    /* @__PURE__ */ jsx42(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx42("button", { className: "flex size-6 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-black/10 hover:text-gray-700", children: /* @__PURE__ */ jsx42("span", { className: "text-sm font-bold leading-none", children: "\xB7\xB7\xB7" }) }) }),
-                    /* @__PURE__ */ jsxs34(DropdownMenuContent, { align: "start", sideOffset: 4, children: [
-                      grabToast.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsxs34(
+                    /* @__PURE__ */ jsx44(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx44("button", { className: "flex size-6 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-black/10 hover:text-gray-700", children: /* @__PURE__ */ jsx44("span", { className: "text-sm font-bold leading-none", children: "\xB7\xB7\xB7" }) }) }),
+                    /* @__PURE__ */ jsxs35(DropdownMenuContent, { align: "start", sideOffset: 4, children: [
+                      grabToast.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsxs35(
                         DropdownMenuItem,
                         {
                           onSelect: () => {
@@ -10427,16 +11286,16 @@ function BrowserPageGrabToast({
                             }
                           },
                           children: [
-                            /* @__PURE__ */ jsx42(Image2, { className: "size-3.5" }),
+                            /* @__PURE__ */ jsx44(Image3, { className: "size-3.5" }),
                             translate(
                               "auto.components.browser.pane.BrowserPane.1ded0d3168",
                               "Copy Screenshot"
                             ),
-                            /* @__PURE__ */ jsx42(DropdownMenuShortcut, { children: "S" })
+                            /* @__PURE__ */ jsx44(DropdownMenuShortcut, { children: "S" })
                           ]
                         }
                       ) : null,
-                      onReviewForAgent && grabToast.payload ? /* @__PURE__ */ jsxs34(
+                      onReviewForAgent && grabToast.payload ? /* @__PURE__ */ jsxs35(
                         DropdownMenuItem,
                         {
                           onSelect: () => {
@@ -10445,7 +11304,7 @@ function BrowserPageGrabToast({
                             }
                           },
                           children: [
-                            /* @__PURE__ */ jsx42(MessageSquarePlus5, { className: "size-3.5" }),
+                            /* @__PURE__ */ jsx44(MessageSquarePlus5, { className: "size-3.5" }),
                             translate("auto.components.browser.pane.sendToAgent.grab", "Send to agent\u2026")
                           ]
                         }
@@ -10462,10 +11321,925 @@ function BrowserPageGrabToast({
   );
 }
 
+// src/renderer/components/browser-pane/annotate/MarkupOverlay.tsx
+import { useCallback as useCallback21, useRef as useRef20, useState as useState21 } from "react";
+import { Check as Check3, X as X4 } from "lucide-react";
+
+// src/renderer/components/browser-pane/annotate/MarkupToolbar.tsx
+import React7 from "react";
+import {
+  ArrowUpRight,
+  Circle,
+  Eraser,
+  Highlighter,
+  Pencil as Pencil2,
+  Redo2,
+  Square,
+  Trash2 as Trash23,
+  Type,
+  Undo2
+} from "lucide-react";
+import { jsx as jsx45, jsxs as jsxs36 } from "react/jsx-runtime";
+function toolItems() {
+  return [
+    {
+      kind: "pen",
+      icon: Pencil2,
+      label: translate("auto.components.browser-pane.markup.tool.pen", "Pen")
+    },
+    {
+      kind: "highlight",
+      icon: Highlighter,
+      label: translate("auto.components.browser-pane.markup.tool.highlight", "Highlighter")
+    },
+    {
+      kind: "arrow",
+      icon: ArrowUpRight,
+      label: translate("auto.components.browser-pane.markup.tool.arrow", "Arrow")
+    },
+    {
+      kind: "rect",
+      icon: Square,
+      label: translate("auto.components.browser-pane.markup.tool.rect", "Rectangle")
+    },
+    {
+      kind: "ellipse",
+      icon: Circle,
+      label: translate("auto.components.browser-pane.markup.tool.ellipse", "Ellipse")
+    },
+    {
+      kind: "text",
+      icon: Type,
+      label: translate("auto.components.browser-pane.markup.tool.text", "Text")
+    },
+    {
+      kind: "eraser",
+      icon: Eraser,
+      label: translate("auto.components.browser-pane.markup.tool.eraser", "Eraser")
+    }
+  ];
+}
+var MarkupToolbar = React7.memo(function MarkupToolbar2({
+  tool,
+  onToolChange,
+  color,
+  onColorChange,
+  width,
+  onWidthChange,
+  fontSize,
+  onFontSizeChange,
+  canUndo: canUndo2,
+  canRedo: canRedo2,
+  onUndo,
+  onRedo,
+  onClear
+}) {
+  return /* @__PURE__ */ jsx45(TooltipProvider, { delayDuration: 300, children: /* @__PURE__ */ jsxs36("div", { className: "flex flex-wrap items-center justify-center gap-1 rounded-md border border-border bg-card/95 px-1.5 py-1 shadow-md backdrop-blur", children: [
+    toolItems().map((item) => /* @__PURE__ */ jsx45(
+      IconButton,
+      {
+        label: item.label,
+        active: tool === item.kind,
+        onClick: () => onToolChange(item.kind),
+        children: /* @__PURE__ */ jsx45(item.icon, { className: "size-4" })
+      },
+      item.kind
+    )),
+    /* @__PURE__ */ jsx45(Divider, {}),
+    /* @__PURE__ */ jsxs36(Popover, { children: [
+      /* @__PURE__ */ jsxs36(Tooltip, { children: [
+        /* @__PURE__ */ jsx45(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx45(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsx45(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            size: "icon-sm",
+            "aria-label": translate(
+              "auto.components.browser-pane.markup.style",
+              "Color and thickness"
+            ),
+            children: /* @__PURE__ */ jsx45(
+              "span",
+              {
+                className: "size-4 rounded-full border border-border",
+                style: { backgroundColor: color }
+              }
+            )
+          }
+        ) }) }),
+        /* @__PURE__ */ jsx45(TooltipContent, { side: "top", sideOffset: 4, children: translate("auto.components.browser-pane.markup.style", "Color and thickness") })
+      ] }),
+      /* @__PURE__ */ jsxs36(PopoverContent, { side: "top", align: "start", className: "w-auto p-2", children: [
+        /* @__PURE__ */ jsx45("div", { className: "flex flex-wrap gap-1", children: MARKUP_COLORS.map((swatch) => /* @__PURE__ */ jsx45(
+          "button",
+          {
+            type: "button",
+            "aria-label": swatch,
+            onClick: () => onColorChange(swatch),
+            className: cn(
+              "size-6 rounded-full border",
+              color === swatch ? "border-ring ring-1 ring-ring" : "border-border"
+            ),
+            style: { backgroundColor: swatch }
+          },
+          swatch
+        )) }),
+        /* @__PURE__ */ jsx45("div", { className: "mt-2 flex items-center gap-1", children: MARKUP_WIDTHS.map((option) => /* @__PURE__ */ jsx45(
+          "button",
+          {
+            type: "button",
+            "aria-label": translate(
+              "auto.components.browser-pane.markup.widthOption",
+              "{{value0}} px",
+              { value0: option }
+            ),
+            onClick: () => onWidthChange(option),
+            className: cn(
+              "flex h-6 flex-1 items-center justify-center rounded-sm border",
+              width === option ? "border-ring bg-accent" : "border-border hover:bg-accent/50"
+            ),
+            children: /* @__PURE__ */ jsx45(
+              "span",
+              {
+                className: "rounded-full bg-foreground",
+                style: { width: option + 2, height: option + 2 }
+              }
+            )
+          },
+          option
+        )) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs36(Popover, { children: [
+      /* @__PURE__ */ jsxs36(Tooltip, { children: [
+        /* @__PURE__ */ jsx45(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx45(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsxs36(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            size: "sm",
+            className: "h-8 gap-1 px-2",
+            "aria-label": translate(
+              "auto.components.browser-pane.markup.fontSize",
+              "Font size"
+            ),
+            children: [
+              /* @__PURE__ */ jsx45(Type, { className: "size-3.5" }),
+              /* @__PURE__ */ jsx45("span", { className: "text-[11px] tabular-nums", children: fontSize })
+            ]
+          }
+        ) }) }),
+        /* @__PURE__ */ jsx45(TooltipContent, { side: "top", sideOffset: 4, children: translate("auto.components.browser-pane.markup.fontSize", "Font size") })
+      ] }),
+      /* @__PURE__ */ jsx45(PopoverContent, { side: "top", align: "start", className: "w-auto p-2", children: /* @__PURE__ */ jsx45("div", { className: "flex items-center gap-1", children: MARKUP_FONT_SIZES.map((size) => /* @__PURE__ */ jsx45(
+        "button",
+        {
+          type: "button",
+          "aria-label": translate(
+            "auto.components.browser-pane.markup.widthOption",
+            "{{value0}} px",
+            { value0: size }
+          ),
+          onClick: () => onFontSizeChange(size),
+          className: cn(
+            "flex h-6 min-w-7 items-center justify-center rounded-sm border px-1 text-[11px] tabular-nums",
+            fontSize === size ? "border-ring bg-accent" : "border-border hover:bg-accent/50"
+          ),
+          children: size
+        },
+        size
+      )) }) })
+    ] }),
+    /* @__PURE__ */ jsx45(Divider, {}),
+    /* @__PURE__ */ jsx45(
+      IconButton,
+      {
+        label: translate("auto.components.browser-pane.markup.undo", "Undo"),
+        disabled: !canUndo2,
+        onClick: onUndo,
+        children: /* @__PURE__ */ jsx45(Undo2, { className: "size-4" })
+      }
+    ),
+    /* @__PURE__ */ jsx45(
+      IconButton,
+      {
+        label: translate("auto.components.browser-pane.markup.redo", "Redo"),
+        disabled: !canRedo2,
+        onClick: onRedo,
+        children: /* @__PURE__ */ jsx45(Redo2, { className: "size-4" })
+      }
+    ),
+    /* @__PURE__ */ jsx45(
+      IconButton,
+      {
+        label: translate("auto.components.browser-pane.markup.clear", "Clear all"),
+        disabled: !canUndo2 && !canRedo2,
+        onClick: onClear,
+        children: /* @__PURE__ */ jsx45(Trash23, { className: "size-4" })
+      }
+    )
+  ] }) });
+});
+function Divider() {
+  return /* @__PURE__ */ jsx45("span", { className: "mx-0.5 h-5 w-px bg-border", "aria-hidden": true });
+}
+function IconButton({
+  label,
+  active,
+  disabled,
+  onClick,
+  children
+}) {
+  return /* @__PURE__ */ jsxs36(Tooltip, { children: [
+    /* @__PURE__ */ jsx45(TooltipTrigger, { asChild: true, children: /* @__PURE__ */ jsx45(
+      Button,
+      {
+        type: "button",
+        variant: active ? "default" : "ghost",
+        size: "icon-sm",
+        disabled,
+        "aria-label": label,
+        "aria-pressed": active,
+        onClick,
+        children
+      }
+    ) }),
+    /* @__PURE__ */ jsx45(TooltipContent, { side: "top", sideOffset: 4, children: label })
+  ] });
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupEditor.ts
+import { useCallback as useCallback20, useEffect as useEffect24, useMemo as useMemo8, useRef as useRef19, useState as useState20 } from "react";
+
+// src/renderer/components/browser-pane/annotate/markup-canvas-render.ts
+function sceneDevicePixels(cssWidth, cssHeight, dpr) {
+  const scale = clampMarkupScale(dpr);
+  return {
+    scale,
+    width: Math.max(1, Math.round(cssWidth * scale)),
+    height: Math.max(1, Math.round(cssHeight * scale))
+  };
+}
+function renderCommittedLayer(layer, shapes, cssWidth, cssHeight, dpr) {
+  const { scale, width, height } = sceneDevicePixels(cssWidth, cssHeight, dpr);
+  if (layer.width !== width || layer.height !== height) {
+    layer.width = width;
+    layer.height = height;
+  }
+  const ctx = layer.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  drawShapes(ctx, shapes);
+}
+function blitMarkupScene(canvas, committedLayer, inProgress, cssWidth, cssHeight, dpr) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+  const { scale, width, height } = sceneDevicePixels(cssWidth, cssHeight, dpr);
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  if (committedLayer.width > 0 && committedLayer.height > 0) {
+    ctx.drawImage(committedLayer, 0, 0, width, height);
+  }
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  if (inProgress) {
+    drawShapes(ctx, [inProgress]);
+  }
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupKeyboardShortcuts.ts
+import { useEffect as useEffect23 } from "react";
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
+}
+function useMarkupKeyboardShortcuts(params) {
+  const { pendingText, setPendingText, undo, redo, onCancel } = params;
+  useEffect23(() => {
+    const isMac = navigator.userAgent.includes("Mac");
+    const onKeyDown = (event) => {
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+      if (event.key === "Escape") {
+        if (pendingText) {
+          setPendingText(null);
+        } else {
+          onCancel();
+        }
+        return;
+      }
+      const mod = isMac ? event.metaKey : event.ctrlKey;
+      if (mod && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingText, setPendingText, undo, redo, onCancel]);
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupPointerHandlers.ts
+import { useCallback as useCallback19 } from "react";
+
+// src/renderer/components/browser-pane/annotate/markup-shape-hit-test.ts
+var ERASER_RADIUS = 8;
+var ELLIPSE_MAX_CHORD = 12;
+var ELLIPSE_MIN_SEGMENTS = 16;
+function shapesTouchedBySweep(shapes, from, to, measureTextInkBox) {
+  return shapes.filter((shape) => sweepTouchesShape(shape, from, to, measureTextInkBox));
+}
+function topmostShapeAt(shapes, point, measureTextInkBox) {
+  for (let i = shapes.length - 1; i >= 0; i -= 1) {
+    if (sweepTouchesShape(shapes[i], point, point, measureTextInkBox)) {
+      return shapes[i];
+    }
+  }
+  return void 0;
+}
+function sweepTouchesShape(shape, from, to, measureTextInkBox) {
+  return shape.kind === "text" ? sweepTouchesBox(from, to, measureTextInkBox(shape)) : sweepTouchesStroke(from, to, strokedInk(shape));
+}
+function sweepTouchesStroke(from, to, ink) {
+  const reach = ink.halfWidth + ERASER_RADIUS;
+  return ink.paths.some((path) => sweepDistanceToPath(from, to, path) <= reach);
+}
+function sweepTouchesBox(from, to, box) {
+  if (!box) {
+    return false;
+  }
+  const inside = from.x >= box.x && from.x <= box.x + box.width && from.y >= box.y && from.y <= box.y + box.height;
+  return inside || sweepDistanceToPath(from, to, rectOutline(box)) <= ERASER_RADIUS;
+}
+function strokedInk(shape) {
+  switch (shape.kind) {
+    case "pen":
+      return { paths: [shape.points], halfWidth: strokeDotRadius(shape.width) };
+    case "highlight":
+      return { paths: [shape.points], halfWidth: strokeDotRadius(highlightWidth(shape.width)) };
+    case "arrow": {
+      const head = arrowHeadGeometry(shape.from, shape.to, shape.width);
+      const shaft = [shape.from, shape.to];
+      return {
+        paths: head ? [shaft, [head.left, head.tip, head.right]] : [shaft],
+        halfWidth: shape.width / 2
+      };
+    }
+    case "rect":
+      return {
+        paths: [rectOutline(normalizeRect(shape.from, shape.to))],
+        halfWidth: shape.width / 2
+      };
+    case "ellipse":
+      return {
+        paths: [ellipseOutline(normalizeRect(shape.from, shape.to))],
+        halfWidth: shape.width / 2
+      };
+  }
+}
+function rectOutline(rect) {
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.height;
+  return [
+    { x: rect.x, y: rect.y },
+    { x: right, y: rect.y },
+    { x: right, y: bottom },
+    { x: rect.x, y: bottom },
+    { x: rect.x, y: rect.y }
+  ];
+}
+function ellipseOutline(rect) {
+  const rx = rect.width / 2;
+  const ry = rect.height / 2;
+  const segments = Math.max(
+    ELLIPSE_MIN_SEGMENTS,
+    Math.ceil(2 * Math.PI * Math.max(rx, ry) / ELLIPSE_MAX_CHORD)
+  );
+  const outline = [];
+  for (let i = 0; i <= segments; i += 1) {
+    const angle = i / segments * 2 * Math.PI;
+    outline.push({ x: rect.x + rx + rx * Math.cos(angle), y: rect.y + ry + ry * Math.sin(angle) });
+  }
+  return outline;
+}
+function sweepDistanceToPath(from, to, path) {
+  let nearest = path.length === 1 ? pointToSegmentDistance(path[0], from, to) : Infinity;
+  for (let i = 1; i < path.length; i += 1) {
+    nearest = Math.min(nearest, segmentDistance(from, to, path[i - 1], path[i]));
+  }
+  return nearest;
+}
+function segmentDistance(a1, a2, b1, b2) {
+  if (segmentsCross(a1, a2, b1, b2)) {
+    return 0;
+  }
+  return Math.min(
+    pointToSegmentDistance(a1, b1, b2),
+    pointToSegmentDistance(a2, b1, b2),
+    pointToSegmentDistance(b1, a1, a2),
+    pointToSegmentDistance(b2, a1, a2)
+  );
+}
+function segmentsCross(a1, a2, b1, b2) {
+  return cross(a1, a2, b1) * cross(a1, a2, b2) < 0 && cross(b1, b2, a1) * cross(b1, b2, a2) < 0;
+}
+function cross(origin, a, b) {
+  return (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+}
+function pointToSegmentDistance(point, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared === 0 ? 0 : Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+}
+
+// src/renderer/components/browser-pane/annotate/markup-gesture.ts
+var ERASER_CLICK_SLOP = 4;
+function beginDrawGesture(state, pointerId, shape) {
+  const settled = settleMissedRelease(state, pointerId);
+  return settled.gesture ? settled : { ...settled, gesture: { kind: "draw", pointerId, shape } };
+}
+function beginEraseGesture(state, pointerId, point, measureTextInkBox) {
+  const settled = settleMissedRelease(state, pointerId);
+  if (settled.gesture) {
+    return settled;
+  }
+  const topmost = topmostShapeAt(settled.doc.shapes, point, measureTextInkBox);
+  return {
+    ...settled,
+    gesture: {
+      kind: "erase",
+      pointerId,
+      origin: point,
+      phase: "pressed",
+      last: point,
+      erasedIds: new Set(topmost ? [topmost.id] : [])
+    }
+  };
+}
+function settleMissedRelease(state, pointerId) {
+  return state.gesture?.pointerId === pointerId ? endGesture(state, pointerId) : state;
+}
+function moveGesture(state, pointerId, point, measureTextInkBox) {
+  const { gesture } = state;
+  if (gesture?.pointerId !== pointerId) {
+    return state;
+  }
+  if (gesture.kind === "erase") {
+    if (gesture.phase === "pressed") {
+      const { origin } = gesture;
+      if (Math.hypot(point.x - origin.x, point.y - origin.y) < ERASER_CLICK_SLOP) {
+        return state;
+      }
+      const dragging = { ...gesture, phase: "dragging" };
+      return {
+        ...state,
+        gesture: sweepEraser(dragging, state.doc.shapes, point, measureTextInkBox)
+      };
+    }
+    return { ...state, gesture: sweepEraser(gesture, state.doc.shapes, point, measureTextInkBox) };
+  }
+  return { ...state, gesture: { ...gesture, shape: dragShapeTo(gesture.shape, point) } };
+}
+function endGesture(state, pointerId) {
+  const { doc, gesture } = state;
+  if (gesture?.pointerId !== pointerId) {
+    return state;
+  }
+  if (gesture.kind === "draw") {
+    return { doc: hasNoSize(gesture.shape) ? doc : commitShape(doc, gesture.shape), gesture: null };
+  }
+  const remaining = doc.shapes.filter((shape) => !gesture.erasedIds.has(shape.id));
+  return {
+    doc: remaining.length === doc.shapes.length ? doc : setShapes(doc, remaining),
+    gesture: null
+  };
+}
+function cancelGesture(state, pointerId) {
+  return state.gesture?.pointerId === pointerId ? { ...state, gesture: null } : state;
+}
+function undoMarkup(state) {
+  if (gestureHasEffect(state.gesture)) {
+    return { ...state, gesture: null };
+  }
+  return canUndo(state.doc) ? { doc: undoShape(state.doc), gesture: null } : state;
+}
+function canUndoMarkup(state) {
+  return gestureHasEffect(state.gesture) || canUndo(state.doc);
+}
+function gestureHasEffect(gesture) {
+  if (gesture === null) {
+    return false;
+  }
+  return gesture.kind === "draw" ? !hasNoSize(gesture.shape) : gesture.erasedIds.size > 0;
+}
+function hasNoSize(shape) {
+  return shape.kind !== "pen" && shape.kind !== "highlight" && shape.from.x === shape.to.x && shape.from.y === shape.to.y;
+}
+function redoMarkup(state) {
+  return canRedo(state.doc) ? applyDocumentCommand(state, redoShape) : state;
+}
+function applyDocumentCommand(state, command) {
+  return { doc: command(state.doc), gesture: null };
+}
+function sweepEraser(gesture, shapes, point, measureTextInkBox) {
+  const touched = shapesTouchedBySweep(
+    shapes.filter((shape) => !gesture.erasedIds.has(shape.id)),
+    gesture.last,
+    point,
+    measureTextInkBox
+  );
+  const erasedIds = touched.length === 0 ? gesture.erasedIds : /* @__PURE__ */ new Set([...gesture.erasedIds, ...touched.map((shape) => shape.id)]);
+  return { ...gesture, last: point, erasedIds };
+}
+function dragShapeTo(shape, point) {
+  if (shape.kind === "pen" || shape.kind === "highlight") {
+    return { ...shape, points: [...shape.points, point] };
+  }
+  return { ...shape, to: point };
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupPointerHandlers.ts
+function useMarkupPointerHandlers(params) {
+  const {
+    busy,
+    tool,
+    color,
+    width,
+    pendingText,
+    canvasRef,
+    measureTextInkBox,
+    setPendingText,
+    setState
+  } = params;
+  const pointFromEvent = useCallback19(
+    (event) => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        return { x: 0, y: 0 };
+      }
+      const rect = canvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    },
+    [canvasRef]
+  );
+  const onPointerDown = useCallback19(
+    (event) => {
+      if (busy || event.button !== 0) {
+        return;
+      }
+      const point = pointFromEvent(event);
+      if (tool === "text") {
+        if (pendingText) {
+          return;
+        }
+        event.preventDefault();
+        setPendingText({ x: point.x, y: point.y, initial: "" });
+        return;
+      }
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const { pointerId } = event;
+      if (tool === "eraser") {
+        setState((state) => beginEraseGesture(state, pointerId, point, measureTextInkBox));
+        return;
+      }
+      const id = createNonSecureContextUuid();
+      const shape = tool === "pen" || tool === "highlight" ? { id, kind: tool, color, width, points: [point] } : { id, kind: tool, color, width, from: point, to: point };
+      setState((state) => beginDrawGesture(state, pointerId, shape));
+    },
+    [
+      busy,
+      color,
+      measureTextInkBox,
+      pendingText,
+      pointFromEvent,
+      setPendingText,
+      setState,
+      tool,
+      width
+    ]
+  );
+  const onPointerMove = useCallback19(
+    (event) => {
+      const point = pointFromEvent(event);
+      const { pointerId } = event;
+      setState((state) => moveGesture(state, pointerId, point, measureTextInkBox));
+    },
+    [measureTextInkBox, pointFromEvent, setState]
+  );
+  const onPointerUp = useCallback19(
+    (event) => {
+      const { pointerId } = event;
+      setState((state) => endGesture(state, pointerId));
+    },
+    [setState]
+  );
+  const onPointerCancel = useCallback19(
+    (event) => {
+      const { pointerId } = event;
+      setState((state) => cancelGesture(state, pointerId));
+    },
+    [setState]
+  );
+  return { onPointerDown, onPointerMove, onPointerUp, onPointerCancel };
+}
+
+// src/renderer/components/browser-pane/annotate/useMarkupEditor.ts
+function useMarkupEditor(busy, onCancel) {
+  const rootRef = useRef19(null);
+  const canvasRef = useRef19(null);
+  const textInputRef = useRef19(null);
+  const committedLayerRef = useRef19(null);
+  if (committedLayerRef.current === null) {
+    committedLayerRef.current = document.createElement("canvas");
+  }
+  const [size, setSize] = useState20({ width: 0, height: 0, dpr: 1 });
+  const [{ doc, gesture }, setState] = useState20(() => ({
+    doc: createMarkupDocument(),
+    gesture: null
+  }));
+  const drawing = gesture?.kind === "draw" ? gesture.shape : null;
+  const erasedIds = gesture?.kind === "erase" ? gesture.erasedIds : null;
+  const shapes = useMemo8(
+    () => erasedIds && erasedIds.size > 0 ? doc.shapes.filter((shape) => !erasedIds.has(shape.id)) : doc.shapes,
+    [doc.shapes, erasedIds]
+  );
+  const [tool, setTool] = useState20("pen");
+  const [color, setColor] = useState20(DEFAULT_MARKUP_COLOR);
+  const [width, setWidth] = useState20(DEFAULT_MARKUP_WIDTH);
+  const [fontSize, setFontSize] = useState20(DEFAULT_MARKUP_FONT_SIZE);
+  const [pendingText, setPendingText] = useState20(null);
+  useEffect24(() => {
+    const root = rootRef.current;
+    if (!root) {
+      return void 0;
+    }
+    const measure = () => {
+      const rect = root.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      setSize(
+        (prev) => prev.width === rect.width && prev.height === rect.height && prev.dpr === dpr ? prev : { width: rect.width, height: rect.height, dpr }
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+  useEffect24(() => {
+    const layer = committedLayerRef.current;
+    if (!layer) {
+      return;
+    }
+    renderCommittedLayer(layer, shapes, size.width, size.height, size.dpr);
+  }, [shapes, size]);
+  useEffect24(() => {
+    const canvas = canvasRef.current;
+    const layer = committedLayerRef.current;
+    if (!canvas || !layer) {
+      return void 0;
+    }
+    const handle = requestAnimationFrame(() => {
+      blitMarkupScene(canvas, layer, drawing, size.width, size.height, size.dpr);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [shapes, drawing, size]);
+  useEffect24(() => {
+    if (!pendingText) {
+      return void 0;
+    }
+    const handle = requestAnimationFrame(() => textInputRef.current?.focus());
+    return () => cancelAnimationFrame(handle);
+  }, [pendingText]);
+  const undo = useCallback20(() => setState(undoMarkup), []);
+  const redo = useCallback20(() => setState(redoMarkup), []);
+  const clear = useCallback20(() => {
+    setPendingText(null);
+    setState((state) => applyDocumentCommand(state, clearShapes));
+  }, []);
+  const measureTextInkBox = useCallback20((shape) => {
+    const ctx = committedLayerRef.current?.getContext("2d");
+    return ctx ? textInkBox(ctx, shape) : null;
+  }, []);
+  useMarkupKeyboardShortcuts({ pendingText, setPendingText, undo, redo, onCancel });
+  const pointerHandlers = useMarkupPointerHandlers({
+    busy,
+    tool,
+    color,
+    width,
+    pendingText,
+    canvasRef,
+    measureTextInkBox,
+    setPendingText,
+    setState
+  });
+  const commitPendingText = useCallback20(
+    (text) => {
+      const at = pendingText;
+      setPendingText(null);
+      const trimmed = text.trim();
+      if (!at || trimmed.length === 0) {
+        return;
+      }
+      setState((state) => ({
+        ...state,
+        doc: commitShape(state.doc, {
+          id: createNonSecureContextUuid(),
+          kind: "text",
+          color,
+          at,
+          text: trimmed,
+          fontSize
+        })
+      }));
+    },
+    [color, fontSize, pendingText]
+  );
+  const cancelPendingText = useCallback20(() => setPendingText(null), []);
+  return {
+    rootRef,
+    canvasRef,
+    textInputRef,
+    tool,
+    color,
+    width,
+    fontSize,
+    pendingText,
+    shapes,
+    canUndo: canUndoMarkup({ doc, gesture }),
+    canRedo: canRedo(doc),
+    setTool,
+    setColor,
+    setWidth,
+    setFontSize,
+    undo,
+    redo,
+    clear,
+    ...pointerHandlers,
+    commitPendingText,
+    cancelPendingText
+  };
+}
+
+// src/renderer/components/browser-pane/annotate/MarkupOverlay.tsx
+import { jsx as jsx46, jsxs as jsxs37 } from "react/jsx-runtime";
+function MarkupOverlay({
+  baseImage,
+  busy,
+  onComplete,
+  onCancel
+}) {
+  const baseImgRef = useRef20(null);
+  const [baseLoaded, setBaseLoaded] = useState21(false);
+  const editor = useMarkupEditor(busy, onCancel);
+  const { pendingText } = editor;
+  const handleDone = useCallback21(() => {
+    const imageElement = baseImgRef.current;
+    if (!imageElement || !baseLoaded) {
+      return;
+    }
+    onComplete({ imageElement, shapes: editor.shapes });
+  }, [baseLoaded, editor.shapes, onComplete]);
+  return /* @__PURE__ */ jsxs37(
+    "div",
+    {
+      ref: editor.rootRef,
+      "data-orca-markup-overlay": true,
+      className: "absolute inset-0 z-20 overflow-hidden",
+      children: [
+        /* @__PURE__ */ jsx46(
+          "img",
+          {
+            ref: baseImgRef,
+            src: baseImage.dataUrl,
+            alt: "",
+            draggable: false,
+            onLoad: () => setBaseLoaded(true),
+            onError: () => {
+              console.error("markup: base screenshot failed to load");
+              onCancel();
+            },
+            className: "pointer-events-none absolute inset-0 block h-full w-full select-none",
+            style: { objectFit: "fill" }
+          }
+        ),
+        /* @__PURE__ */ jsx46(
+          "canvas",
+          {
+            ref: editor.canvasRef,
+            className: cn(
+              "absolute inset-0 h-full w-full touch-none",
+              busy ? "cursor-progress" : "cursor-crosshair"
+            ),
+            onPointerDown: editor.onPointerDown,
+            onPointerMove: editor.onPointerMove,
+            onPointerUp: editor.onPointerUp,
+            onPointerCancel: editor.onPointerCancel,
+            onLostPointerCapture: editor.onPointerUp
+          }
+        ),
+        pendingText ? /* @__PURE__ */ jsx46(
+          ImeInput,
+          {
+            ref: editor.textInputRef,
+            defaultValue: pendingText.initial,
+            "aria-label": translate("auto.components.browser-pane.markup.textInput", "Annotation text"),
+            onPointerDown: (event) => event.stopPropagation(),
+            onBlur: (event) => editor.commitPendingText(event.target.value),
+            onKeyDown: (event) => {
+              event.stopPropagation();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                editor.commitPendingText(event.currentTarget.value);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                editor.cancelPendingText();
+              }
+            },
+            className: "absolute z-30 min-w-0 border-0 bg-transparent p-0 leading-none outline-none [field-sizing:content]",
+            style: {
+              left: pendingText.x,
+              top: pendingText.y,
+              color: editor.color,
+              fontSize: editor.fontSize,
+              fontWeight: 600,
+              fontFamily: TEXT_FONT_FAMILY,
+              // Why: force line-height to 1 (the UA default ~1.2 pushes the glyph
+              // down) and zero the height so the text top aligns with the canvas's
+              // textBaseline:'top' render — otherwise editing text sits slightly low.
+              lineHeight: 1,
+              height: "1em",
+              boxSizing: "content-box",
+              padding: 0,
+              textShadow: editor.color.toLowerCase() === "#ffffff" ? "0 0 3px rgba(0,0,0,0.7)" : "0 0 3px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)"
+            }
+          },
+          `${pendingText.x},${pendingText.y}`
+        ) : null,
+        /* @__PURE__ */ jsxs37("div", { className: "pointer-events-none absolute inset-x-0 bottom-3 flex flex-col items-center gap-2 px-3", children: [
+          /* @__PURE__ */ jsx46("div", { className: "pointer-events-auto max-w-full", children: /* @__PURE__ */ jsx46(
+            MarkupToolbar,
+            {
+              tool: editor.tool,
+              onToolChange: editor.setTool,
+              color: editor.color,
+              onColorChange: editor.setColor,
+              width: editor.width,
+              onWidthChange: editor.setWidth,
+              fontSize: editor.fontSize,
+              onFontSizeChange: editor.setFontSize,
+              canUndo: editor.canUndo,
+              canRedo: editor.canRedo,
+              onUndo: editor.undo,
+              onRedo: editor.redo,
+              onClear: editor.clear
+            }
+          ) }),
+          /* @__PURE__ */ jsxs37("div", { className: "pointer-events-auto flex items-center gap-2 rounded-md border border-border bg-card/95 p-1.5 shadow-md backdrop-blur", children: [
+            /* @__PURE__ */ jsx46("span", { className: "px-1 text-xs text-muted-foreground", children: translate(
+              "auto.components.browser-pane.markup.hint",
+              "Draw on the page, then copy the markup to paste into your agent."
+            ) }),
+            /* @__PURE__ */ jsxs37(Button, { type: "button", variant: "ghost", size: "sm", onClick: onCancel, disabled: busy, children: [
+              /* @__PURE__ */ jsx46(X4, { className: "size-4" }),
+              translate("auto.components.browser-pane.markup.cancel", "Cancel")
+            ] }),
+            /* @__PURE__ */ jsxs37(Button, { type: "button", size: "sm", onClick: handleDone, disabled: busy || !baseLoaded, children: [
+              /* @__PURE__ */ jsx46(Check3, { className: "size-4" }),
+              translate("auto.components.browser-pane.markup.copy", "Copy Markup")
+            ] })
+          ] })
+        ] })
+      ]
+    }
+  );
+}
+
 // src/renderer/components/browser-pane/annotate/pending-browser-annotation-card.tsx
-import { useEffect as useEffect22, useState as useState19 } from "react";
+import { useEffect as useEffect25, useState as useState22 } from "react";
 import { CornerDownLeft, MessageSquarePlus as MessageSquarePlus6 } from "lucide-react";
-import { jsx as jsx43, jsxs as jsxs35 } from "react/jsx-runtime";
+import { jsx as jsx47, jsxs as jsxs38 } from "react/jsx-runtime";
 function PendingBrowserAnnotationCard({
   payload,
   resolveAnchor,
@@ -10473,9 +12247,9 @@ function PendingBrowserAnnotationCard({
   onAdd,
   onCancel
 }) {
-  const [card, setCard] = useState19(null);
-  const [cardHeight, setCardHeight] = useState19(null);
-  useEffect22(() => {
+  const [card, setCard] = useState22(null);
+  const [cardHeight, setCardHeight] = useState22(null);
+  useEffect25(() => {
     if (!card || typeof ResizeObserver === "undefined") {
       return;
     }
@@ -10484,11 +12258,11 @@ function PendingBrowserAnnotationCard({
     return () => observer.disconnect();
   }, [card]);
   const anchor = resolveAnchor(cardHeight);
-  const [comment, setComment] = useState19("");
-  const [intent, setIntent] = useState19("change");
+  const [comment, setComment] = useState22("");
+  const [intent, setIntent] = useState22("change");
   const trimmed = comment.trim();
   const submitModifierLabel = getScreenSubmitModifierLabel();
-  return /* @__PURE__ */ jsxs35(
+  return /* @__PURE__ */ jsxs38(
     Popover,
     {
       open: true,
@@ -10498,14 +12272,14 @@ function PendingBrowserAnnotationCard({
         }
       },
       children: [
-        /* @__PURE__ */ jsx43(PopoverAnchor, { asChild: true, children: /* @__PURE__ */ jsx43(
+        /* @__PURE__ */ jsx47(PopoverAnchor, { asChild: true, children: /* @__PURE__ */ jsx47(
           "span",
           {
             className: "pointer-events-none absolute size-px",
             style: { left: anchor.x, top: anchor.y }
           }
         ) }),
-        /* @__PURE__ */ jsxs35(
+        /* @__PURE__ */ jsxs38(
           PopoverContent,
           {
             ref: setCard,
@@ -10525,12 +12299,12 @@ function PendingBrowserAnnotationCard({
               onCancel();
             },
             children: [
-              /* @__PURE__ */ jsxs35("div", { className: "mb-2 flex min-w-0 items-center gap-1.5", title: payload.target.selector, children: [
-                /* @__PURE__ */ jsx43("span", { className: "shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground", children: payload.target.tagName }),
-                /* @__PURE__ */ jsx43("span", { className: "truncate text-xs font-medium text-foreground", children: payload.target.accessibility.accessibleName || payload.target.textSnippet || payload.target.selector })
+              /* @__PURE__ */ jsxs38("div", { className: "mb-2 flex min-w-0 items-center gap-1.5", title: payload.target.selector, children: [
+                /* @__PURE__ */ jsx47("span", { className: "shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground", children: payload.target.tagName }),
+                /* @__PURE__ */ jsx47("span", { className: "truncate text-xs font-medium text-foreground", children: payload.target.accessibility.accessibleName || payload.target.textSnippet || payload.target.selector })
               ] }),
-              /* @__PURE__ */ jsx43(Label2, { htmlFor: "browser-annotation-comment", className: "sr-only", children: translate("auto.components.browser.pane.BrowserPane.d2a7092e6e", "Annotation comment") }),
-              /* @__PURE__ */ jsx43(
+              /* @__PURE__ */ jsx47(Label2, { htmlFor: "browser-annotation-comment", className: "sr-only", children: translate("auto.components.browser.pane.BrowserPane.d2a7092e6e", "Annotation comment") }),
+              /* @__PURE__ */ jsx47(
                 ImeTextarea,
                 {
                   id: "browser-annotation-comment",
@@ -10560,7 +12334,7 @@ function PendingBrowserAnnotationCard({
                   }
                 }
               ),
-              /* @__PURE__ */ jsx43(
+              /* @__PURE__ */ jsx47(
                 ToggleGroup,
                 {
                   type: "single",
@@ -10579,15 +12353,15 @@ function PendingBrowserAnnotationCard({
                   ),
                   children: BROWSER_ANNOTATION_INTENT_OPTIONS.map((option) => {
                     const Icon2 = option.icon;
-                    return /* @__PURE__ */ jsxs35(
+                    return /* @__PURE__ */ jsxs38(
                       ToggleGroupItem,
                       {
                         value: option.value,
                         "aria-label": option.label,
                         className: "gap-1.5 text-xs data-[state=on]:border-foreground/20 data-[state=on]:bg-foreground/10 data-[state=on]:text-foreground data-[state=on]:shadow-xs data-[state=on]:hover:bg-foreground/15 data-[state=on]:hover:text-foreground",
                         children: [
-                          /* @__PURE__ */ jsx43(Icon2, { className: "size-3.5" }),
-                          /* @__PURE__ */ jsx43("span", { children: option.label })
+                          /* @__PURE__ */ jsx47(Icon2, { className: "size-3.5" }),
+                          /* @__PURE__ */ jsx47("span", { children: option.label })
                         ]
                       },
                       option.value
@@ -10595,9 +12369,9 @@ function PendingBrowserAnnotationCard({
                   })
                 }
               ),
-              /* @__PURE__ */ jsxs35("div", { className: "mt-3 flex justify-end gap-2", children: [
-                /* @__PURE__ */ jsx43(Button, { size: "sm", variant: "ghost", className: "h-8", onClick: onCancel, children: translate("auto.components.browser.pane.BrowserPane.fa6ea61de3", "Cancel") }),
-                /* @__PURE__ */ jsxs35(
+              /* @__PURE__ */ jsxs38("div", { className: "mt-3 flex justify-end gap-2", children: [
+                /* @__PURE__ */ jsx47(Button, { size: "sm", variant: "ghost", className: "h-8", onClick: onCancel, children: translate("auto.components.browser.pane.BrowserPane.fa6ea61de3", "Cancel") }),
+                /* @__PURE__ */ jsxs38(
                   Button,
                   {
                     size: "sm",
@@ -10605,11 +12379,11 @@ function PendingBrowserAnnotationCard({
                     disabled: !trimmed,
                     onClick: () => onAdd(trimmed, intent),
                     children: [
-                      /* @__PURE__ */ jsx43(MessageSquarePlus6, { className: "size-3.5" }),
+                      /* @__PURE__ */ jsx47(MessageSquarePlus6, { className: "size-3.5" }),
                       translate("auto.components.browser.pane.BrowserPane.90d021f2ad", "Add"),
-                      /* @__PURE__ */ jsxs35("span", { className: "ml-1 inline-flex items-center gap-0.5 rounded border border-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none text-current/80", children: [
-                        /* @__PURE__ */ jsx43("span", { children: submitModifierLabel }),
-                        /* @__PURE__ */ jsx43(CornerDownLeft, { className: "size-3" })
+                      /* @__PURE__ */ jsxs38("span", { className: "ml-1 inline-flex items-center gap-0.5 rounded border border-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none text-current/80", children: [
+                        /* @__PURE__ */ jsx47("span", { children: submitModifierLabel }),
+                        /* @__PURE__ */ jsx47(CornerDownLeft, { className: "size-3" })
                       ] })
                     ]
                   }
@@ -10624,14 +12398,16 @@ function PendingBrowserAnnotationCard({
 }
 
 // src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
-import { Fragment as Fragment9, jsx as jsx44, jsxs as jsxs36 } from "react/jsx-runtime";
+import { Fragment as Fragment9, jsx as jsx48, jsxs as jsxs39 } from "react/jsx-runtime";
 function BrowserGuestAnnotateOverlays({
   grab,
+  markup,
   annotationSend,
   grabAnnotations,
   containerRef,
   webviewRef,
   browserOverlayViewport,
+  markupPortalContainer,
   currentUrl
 }) {
   const {
@@ -10648,9 +12424,10 @@ function BrowserGuestAnnotateOverlays({
     dismissGrabToast,
     setGrabToast
   } = grabAnnotations;
-  const [grabReviewPayload, setGrabReviewPayloadState] = useState20(null);
-  const [grabReviewSending, setGrabReviewSending] = useState20(false);
-  const grabReviewOpenRef = useRef16(false);
+  const markupTarget = markupPortalContainer ?? containerRef.current;
+  const [grabReviewPayload, setGrabReviewPayloadState] = useState23(null);
+  const [grabReviewSending, setGrabReviewSending] = useState23(false);
+  const grabReviewOpenRef = useRef21(false);
   const setGrabReviewPayload = (next) => {
     grabReviewOpenRef.current = next !== null;
     setGrabReviewPayloadState(next);
@@ -10672,8 +12449,20 @@ function BrowserGuestAnnotateOverlays({
       grab.rearm();
     }
   };
-  return /* @__PURE__ */ jsxs36(Fragment9, { children: [
-    pendingAnnotationPayload ? /* @__PURE__ */ jsx44(
+  return /* @__PURE__ */ jsxs39(Fragment9, { children: [
+    markup.isActive && markup.baseImage && markupTarget ? createPortal2(
+      /* @__PURE__ */ jsx48(
+        MarkupOverlay,
+        {
+          baseImage: markup.baseImage,
+          busy: markup.state === "composing",
+          onComplete: (input) => void markup.complete(input),
+          onCancel: markup.cancel
+        }
+      ),
+      markupTarget
+    ) : null,
+    pendingAnnotationPayload ? /* @__PURE__ */ jsx48(
       PendingBrowserAnnotationCard,
       {
         payload: pendingAnnotationPayload,
@@ -10689,7 +12478,7 @@ function BrowserGuestAnnotateOverlays({
         onCancel: handleCancelPendingBrowserAnnotation
       }
     ) : null,
-    browserAnnotations.length > 0 && browserAnnotationTrayOpen ? /* @__PURE__ */ jsx44(
+    browserAnnotations.length > 0 && browserAnnotationTrayOpen ? /* @__PURE__ */ jsx48(
       BrowserPageAnnotationTray,
       {
         browserAnnotations,
@@ -10703,7 +12492,7 @@ function BrowserGuestAnnotateOverlays({
         handleUpdateBrowserAnnotation
       }
     ) : null,
-    /* @__PURE__ */ jsxs36(
+    /* @__PURE__ */ jsxs39(
       DropdownMenu,
       {
         open: grab.state === "confirming" && grab.contextMenu && grabIntent === "copy" && grabReviewPayload === null,
@@ -10717,7 +12506,7 @@ function BrowserGuestAnnotateOverlays({
           }
         },
         children: [
-          /* @__PURE__ */ jsx44(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx44(
+          /* @__PURE__ */ jsx48(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx48(
             "button",
             {
               "aria-hidden": true,
@@ -10740,18 +12529,18 @@ function BrowserGuestAnnotateOverlays({
               })()
             }
           ) }),
-          /* @__PURE__ */ jsxs36(DropdownMenuContent, { align: "start", sideOffset: 4, children: [
-            /* @__PURE__ */ jsxs36(DropdownMenuItem, { onSelect: handleGrabCopy, children: [
-              /* @__PURE__ */ jsx44(Copy4, { className: "size-3.5" }),
+          /* @__PURE__ */ jsxs39(DropdownMenuContent, { align: "start", sideOffset: 4, children: [
+            /* @__PURE__ */ jsxs39(DropdownMenuItem, { onSelect: handleGrabCopy, children: [
+              /* @__PURE__ */ jsx48(Copy4, { className: "size-3.5" }),
               translate("auto.components.browser.pane.BrowserPane.c2ef0359b9", "Copy Contents"),
-              /* @__PURE__ */ jsx44(DropdownMenuShortcut, { children: "C" })
+              /* @__PURE__ */ jsx48(DropdownMenuShortcut, { children: "C" })
             ] }),
-            grab.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsxs36(DropdownMenuItem, { onSelect: handleGrabCopyScreenshot, children: [
-              /* @__PURE__ */ jsx44(Image3, { className: "size-3.5" }),
+            grab.payload?.screenshot?.dataUrl?.startsWith("data:image/png;base64,") ? /* @__PURE__ */ jsxs39(DropdownMenuItem, { onSelect: handleGrabCopyScreenshot, children: [
+              /* @__PURE__ */ jsx48(Image4, { className: "size-3.5" }),
               translate("auto.components.browser.pane.BrowserPane.1ded0d3168", "Copy Screenshot"),
-              /* @__PURE__ */ jsx44(DropdownMenuShortcut, { children: "S" })
+              /* @__PURE__ */ jsx48(DropdownMenuShortcut, { children: "S" })
             ] }) : null,
-            handleGrabSendToAgent && grab.payload ? /* @__PURE__ */ jsxs36(
+            handleGrabSendToAgent && grab.payload ? /* @__PURE__ */ jsxs39(
               DropdownMenuItem,
               {
                 onSelect: () => {
@@ -10759,13 +12548,13 @@ function BrowserGuestAnnotateOverlays({
                   setGrabReviewPayload(grab.payload);
                 },
                 children: [
-                  /* @__PURE__ */ jsx44(MessageSquarePlus7, { className: "size-3.5" }),
+                  /* @__PURE__ */ jsx48(MessageSquarePlus7, { className: "size-3.5" }),
                   translate("auto.components.browser.pane.sendToAgent.grab", "Send to agent\u2026")
                 ]
               }
             ) : null,
-            /* @__PURE__ */ jsx44(DropdownMenuSeparator, {}),
-            /* @__PURE__ */ jsx44(
+            /* @__PURE__ */ jsx48(DropdownMenuSeparator, {}),
+            /* @__PURE__ */ jsx48(
               DropdownMenuItem,
               {
                 onSelect: () => {
@@ -10779,7 +12568,7 @@ function BrowserGuestAnnotateOverlays({
         ]
       }
     ),
-    grabToast ? /* @__PURE__ */ jsx44(
+    grabToast ? /* @__PURE__ */ jsx48(
       BrowserPageGrabToast,
       {
         grabToast,
@@ -10789,7 +12578,7 @@ function BrowserGuestAnnotateOverlays({
         onReviewForAgent: handleGrabSendToAgent ? setGrabReviewPayload : null
       }
     ) : null,
-    grabReviewPayload && handleGrabSendToAgent ? /* @__PURE__ */ jsx44(
+    grabReviewPayload && handleGrabSendToAgent ? /* @__PURE__ */ jsx48(
       GrabConfirmationSheet,
       {
         payload: grabReviewPayload,
@@ -10822,7 +12611,7 @@ function BrowserGuestAnnotateOverlays({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
-import { Fragment as Fragment10, jsx as jsx45, jsxs as jsxs37 } from "react/jsx-runtime";
+import { Fragment as Fragment10, jsx as jsx49, jsxs as jsxs40 } from "react/jsx-runtime";
 function BrowserPageViewportOverlays({
   browserZoomIndicatorState,
   browserZoomPercent,
@@ -10841,13 +12630,15 @@ function BrowserPageViewportOverlays({
   browserOverlayViewport,
   scopeId,
   grab,
+  markup,
   annotationSend,
-  grabAnnotations
+  grabAnnotations,
+  markupPortalContainer
 }) {
-  return /* @__PURE__ */ jsxs37(Fragment10, { children: [
-    /* @__PURE__ */ jsx45(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
-    /* @__PURE__ */ jsx45(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
-    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx45(
+  return /* @__PURE__ */ jsxs40(Fragment10, { children: [
+    /* @__PURE__ */ jsx49(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
+    /* @__PURE__ */ jsx49(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
+    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx49(
       BrowserLoadFailureOverlay,
       {
         loadError: browserTab.loadError,
@@ -10876,16 +12667,18 @@ function BrowserPageViewportOverlays({
         onOpenExternal: (url) => void window.browserAPI.openExternal({ url })
       }
     ) : null,
-    /* @__PURE__ */ jsx45(
+    /* @__PURE__ */ jsx49(
       BrowserGuestAnnotateOverlays,
       {
         grab,
+        markup,
         annotationSend,
         grabAnnotations,
         containerRef,
         webviewRef,
         browserOverlayViewport,
         scopeId,
+        markupPortalContainer,
         currentUrl: browserTab.url
       }
     )
@@ -10893,7 +12686,7 @@ function BrowserPageViewportOverlays({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
-import { useEffect as useEffect23 } from "react";
+import { useEffect as useEffect26 } from "react";
 function useBrowserPageFindShortcuts({
   browserTabId,
   workspaceId,
@@ -10901,7 +12694,7 @@ function useBrowserPageFindShortcuts({
   chromeShortcutScope,
   setFindOpen
 }) {
-  useEffect23(() => {
+  useEffect26(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -10919,7 +12712,7 @@ function useBrowserPageFindShortcuts({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, setFindOpen, workspaceId]);
-  useEffect23(() => {
+  useEffect26(() => {
     if (!isActive) {
       return;
     }
@@ -10930,7 +12723,7 @@ function useBrowserPageFindShortcuts({
       }
     );
   }, [browserTabId, isActive, setFindOpen, workspaceId]);
-  useEffect23(() => {
+  useEffect26(() => {
     if (!isActive) {
       setFindOpen(false);
     }
@@ -10938,7 +12731,7 @@ function useBrowserPageFindShortcuts({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { jsx as jsx46, jsxs as jsxs38 } from "react/jsx-runtime";
+import { jsx as jsx50, jsxs as jsxs41 } from "react/jsx-runtime";
 function BrowserPagePane({
   browserTab,
   workspaceId,
@@ -10956,11 +12749,11 @@ function BrowserPagePane({
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
   const pageViewportScroller = pageViewport?.scroller ?? null;
   const pageViewportContainer = pageViewport?.container ?? null;
-  const containerRef = useRef17(pageViewportContainer);
-  useLayoutEffect9(() => {
+  const containerRef = useRef22(pageViewportContainer);
+  useLayoutEffect10(() => {
     containerRef.current = pageViewportContainer;
   }, [pageViewportContainer]);
-  useLayoutEffect9(() => {
+  useLayoutEffect10(() => {
     const preset = getBrowserViewportPreset(browserTab.viewportPresetId ?? null);
     setBrowserPageViewportPresetSize(
       browserTab.id,
@@ -10972,7 +12765,7 @@ function BrowserPagePane({
     pageViewportScroller,
     browserTab.viewportPresetId ?? null
   );
-  useEffect24(() => {
+  useEffect27(() => {
     const subscribe = window.browserAPI?.onScrollPage;
     if (!subscribe || !pageViewportScroller || !browserTab.viewportPresetId) {
       return;
@@ -10984,46 +12777,46 @@ function BrowserPagePane({
       scrollBrowserPageViewport(browserTab.id, event.deltaX, event.deltaY);
     });
   }, [browserTab.id, browserTab.viewportPresetId, pageViewportScroller]);
-  const chromeHeaderRef = useRef17(null);
-  const webviewRef = useRef17(null);
-  const addressBarInputRef = useRef17(null);
-  const dismissAddressBarSuggestionsRef = useRef17(null);
-  const addressBarValueRef = useRef17(toDisplayUrl(browserTab.url));
-  const browserTabUrlRef = useRef17(browserTab.url);
-  const lastKnownWebviewUrlRef = useRef17(null);
-  const trackNextLoadingEventRef = useRef17(false);
-  const recoveryNavigationValidationRef = useRef17(
+  const chromeHeaderRef = useRef22(null);
+  const webviewRef = useRef22(null);
+  const addressBarInputRef = useRef22(null);
+  const dismissAddressBarSuggestionsRef = useRef22(null);
+  const addressBarValueRef = useRef22(toDisplayUrl(browserTab.url));
+  const browserTabUrlRef = useRef22(browserTab.url);
+  const lastKnownWebviewUrlRef = useRef22(null);
+  const trackNextLoadingEventRef = useRef22(false);
+  const recoveryNavigationValidationRef = useRef22(
     null
   );
-  const activeLoadFailureRef = useRef17(browserTab.loadError);
-  const retryGuestRecoveryRef = useRef17(() => {
+  const activeLoadFailureRef = useRef22(browserTab.loadError);
+  const retryGuestRecoveryRef = useRef22(() => {
   });
-  const onUpdatePageStateRef = useRef17(onUpdatePageState);
-  const onSetUrlRef = useRef17(onSetUrl);
-  const isActiveRef = useRef17(isActive);
-  useLayoutEffect9(() => {
+  const onUpdatePageStateRef = useRef22(onUpdatePageState);
+  const onSetUrlRef = useRef22(onSetUrl);
+  const isActiveRef = useRef22(isActive);
+  useLayoutEffect10(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  const handleInternalFileDragOverRef = useRef17(() => {
+  const handleInternalFileDragOverRef = useRef22(() => {
   });
-  const handleInternalFileDropRef = useRef17(() => {
+  const handleInternalFileDropRef = useRef22(() => {
   });
-  const [findOpen, setFindOpen] = useState21(false);
-  const [browserOverlayViewport, setBrowserOverlayViewport] = useState21({
+  const [findOpen, setFindOpen] = useState24(false);
+  const [browserOverlayViewport, setBrowserOverlayViewport] = useState24({
     scrollX: 0,
     scrollY: 0,
     version: 0
   });
   const zoom = useBrowserPageZoomFeedback(browserTab.id);
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
-  const [addressBarValue, setAddressBarValue] = useState21(() => toDisplayUrl(browserTab.url));
-  useEffect24(() => {
+  const [addressBarValue, setAddressBarValue] = useState24(() => toDisplayUrl(browserTab.url));
+  useEffect27(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
     }
     setAddressBarValue(toDisplayUrl(browserTab.url));
   }, [browserTab.url]);
-  useEffect24(() => {
+  useEffect27(() => {
     addressBarValueRef.current = addressBarValue;
   }, [addressBarValue]);
   const guestFocus = useWebviewGuestFocus(webviewRef);
@@ -11041,6 +12834,10 @@ function BrowserPagePane({
   });
   const annotationSend = useBrowserPageAnnotationSend({ browserTabId: browserTab.id, scopeId });
   const grab = useGrabMode(browserTab.id);
+  const markup = useBrowserPageMarkupCapture(webviewRef, {
+    url: browserTab.url,
+    title: browserTab.title
+  });
   const grabAnnotations = useBrowserPageGrabAnnotations({
     browserTabId: browserTab.id,
     isActive,
@@ -11053,22 +12850,22 @@ function BrowserPagePane({
     browserAnnotationsLength: annotationSend.browserAnnotations.length,
     setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen
   });
-  const startGrabIntentRef = useRef17(grabAnnotations.startGrabIntent);
-  const handleGrabActionShortcutRef = useRef17(grabAnnotations.handleGrabActionShortcut);
-  useLayoutEffect9(() => {
+  const startGrabIntentRef = useRef22(grabAnnotations.startGrabIntent);
+  const handleGrabActionShortcutRef = useRef22(grabAnnotations.handleGrabActionShortcut);
+  useLayoutEffect10(() => {
     startGrabIntentRef.current = grabAnnotations.startGrabIntent;
     handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut;
   }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent]);
-  const markupIsActive = false;
+  const markupIsActive = markup.isActive;
   const grabIsInteractive = grab.state !== "idle" && grab.state !== "error";
-  useEffect24(() => {
+  useEffect27(() => {
     return window.browserAPI.onGrabModeToggle((pageId, intent) => {
       if (pageId === browserTab.id && !markupIsActive) {
         startGrabIntentRef.current(intent);
       }
     });
   }, [browserTab.id, markupIsActive]);
-  useEffect24(() => {
+  useEffect27(() => {
     if (!grabIsInteractive) {
       return;
     }
@@ -11085,7 +12882,7 @@ function BrowserPagePane({
     event.preventDefault();
     startGrabIntentRef.current("annotate");
   };
-  const navigateToUrl = useCallback16(
+  const navigateToUrl = useCallback22(
     (url) => {
       navigateBrowserPageToUrl({
         url,
@@ -11210,21 +13007,21 @@ function BrowserPagePane({
     feedbackVisible: zoom.browserZoomFeedbackVisible,
     isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
   });
-  useEffect24(() => {
+  useEffect27(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.pointerEvents = inputLocked ? "none" : "auto";
   }, [inputLocked]);
-  useEffect24(() => {
+  useEffect27(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.display = showFailureOverlay ? "none" : "flex";
   }, [showFailureOverlay]);
-  return /* @__PURE__ */ jsxs38(
+  return /* @__PURE__ */ jsxs41(
     "div",
     {
       "data-browser-page-pane-id": browserTab.id,
@@ -11236,7 +13033,7 @@ function BrowserPagePane({
       "aria-hidden": !isActive,
       onKeyDown: handlePaneKeyDown,
       children: [
-        /* @__PURE__ */ jsx46(
+        /* @__PURE__ */ jsx50(
           BrowserPageContextMenu,
           {
             browserPageId: browserTab.id,
@@ -11247,7 +13044,7 @@ function BrowserPagePane({
             onReload: () => reload.reloadWebviewOrRecoverGuest(false)
           }
         ),
-        /* @__PURE__ */ jsx46(
+        /* @__PURE__ */ jsx50(
           BrowserPageChromeHeader,
           {
             chromeHeaderRef,
@@ -11266,12 +13063,15 @@ function BrowserPagePane({
             grabAnnotations,
             annotationSend,
             isBlankTab,
+            markupIsActive: markup.isActive,
+            markupStart: markup.start,
+            markupCancel: markup.cancel,
             resourceNotice,
             setResourceNotice
           }
         ),
-        pageViewport?.container ? createPortal2(
-          /* @__PURE__ */ jsx46(
+        pageViewport?.container ? createPortal3(
+          /* @__PURE__ */ jsx50(
             BrowserPageViewportOverlays,
             {
               browserZoomIndicatorState,
@@ -11291,8 +13091,10 @@ function BrowserPagePane({
               browserOverlayViewport,
               scopeId,
               grab,
+              markup,
               annotationSend,
-              grabAnnotations
+              grabAnnotations,
+              markupPortalContainer: pageViewport?.content ?? null
             }
           ),
           pageViewport.container
@@ -11303,26 +13105,26 @@ function BrowserPagePane({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/DeferredBrowserContent.tsx
-import { useLayoutEffect as useLayoutEffect10, useState as useState22 } from "react";
-import { Fragment as Fragment11, jsx as jsx47 } from "react/jsx-runtime";
+import { useLayoutEffect as useLayoutEffect11, useState as useState25 } from "react";
+import { Fragment as Fragment11, jsx as jsx51 } from "react/jsx-runtime";
 function DeferredBrowserContent({
   mountEligible,
   retainMounted = true,
   children
 }) {
-  const [hasCommittedMount, setHasCommittedMount] = useState22(false);
-  useLayoutEffect10(() => {
+  const [hasCommittedMount, setHasCommittedMount] = useState25(false);
+  useLayoutEffect11(() => {
     if (!retainMounted) {
       setHasCommittedMount(false);
     } else if (mountEligible && !hasCommittedMount) {
       setHasCommittedMount(true);
     }
   }, [hasCommittedMount, mountEligible, retainMounted]);
-  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx47(Fragment11, { children }) : null;
+  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx51(Fragment11, { children }) : null;
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { jsx as jsx48, jsxs as jsxs39 } from "react/jsx-runtime";
+import { jsx as jsx52, jsxs as jsxs42 } from "react/jsx-runtime";
 function BrowserScopePane({
   scopeId,
   isActive
@@ -11334,10 +13136,10 @@ function BrowserScopePane({
   const setActiveBrowserPage = useBrowserStore((s) => s.setActiveBrowserPage);
   const closeBrowserPage = useBrowserStore((s) => s.closeBrowserPage);
   const activeBrowserPage = browserPages.find((page) => page.id === activePageId) ?? browserPages[0] ?? null;
-  const browserPageIds = useMemo8(() => browserPages.map((page) => page.id), [browserPages]);
+  const browserPageIds = useMemo9(() => browserPages.map((page) => page.id), [browserPages]);
   const hasAdmittedPage = useAnyBrowserPageMountAdmission(browserPageIds);
-  return /* @__PURE__ */ jsxs39("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
-    browserPages.length >= 2 ? /* @__PURE__ */ jsx48(
+  return /* @__PURE__ */ jsxs42("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
+    browserPages.length >= 2 ? /* @__PURE__ */ jsx52(
       BrowserPageStrip,
       {
         pages: browserPages,
@@ -11346,14 +13148,14 @@ function BrowserScopePane({
         onClose: closeBrowserPage
       }
     ) : null,
-    /* @__PURE__ */ jsx48("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx48(
+    /* @__PURE__ */ jsx52("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx52(
       DeferredBrowserContent,
       {
         retainMounted: isActive,
         mountEligible: isBrowserPagePanePaintable({
           isActive: isActive && page.id === activeBrowserPage?.id || hasAdmittedPage && isBrowserPageMountAdmitted(page.id)
         }),
-        children: /* @__PURE__ */ jsx48(
+        children: /* @__PURE__ */ jsx52(
           BrowserPagePane,
           {
             browserTab: page,
@@ -11376,19 +13178,19 @@ function BrowserScopePane({
 var browser_workspace_pane_default = BrowserScopePane;
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { Fragment as Fragment12, jsx as jsx49, jsxs as jsxs40 } from "react/jsx-runtime";
+import { Fragment as Fragment12, jsx as jsx53, jsxs as jsxs43 } from "react/jsx-runtime";
 var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
   scopeId
 }) {
   const isActive = useBrowserStore((state) => state.paneMountByScope[scopeId]?.active === true);
-  const setSlotViewportRef = useCallback17(
+  const setSlotViewportRef = useCallback23(
     (node) => {
       registerBrowserOverlaySlotViewport(scopeId, node);
     },
     [scopeId]
   );
   const anchorName = browserScopeAnchorName(scopeId);
-  const style = useMemo9(
+  const style = useMemo10(
     () => ({
       position: "fixed",
       positionAnchor: anchorName,
@@ -11401,7 +13203,7 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
     }),
     [anchorName, isActive]
   );
-  return /* @__PURE__ */ jsxs40(
+  return /* @__PURE__ */ jsxs43(
     "div",
     {
       style,
@@ -11410,21 +13212,21 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
       "data-orca-browser-anchor": anchorName,
       "data-browser-overlay-tab-id": scopeId,
       children: [
-        /* @__PURE__ */ jsx49("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
-        /* @__PURE__ */ jsx49(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx49(browser_workspace_pane_default, { scopeId, isActive }) })
+        /* @__PURE__ */ jsx53("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
+        /* @__PURE__ */ jsx53(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx53(browser_workspace_pane_default, { scopeId, isActive }) })
       ]
     }
   );
 });
 var BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer2() {
   const scopeIds = useBrowserStore(useShallow((state) => Object.keys(state.pagesByScope)));
-  return /* @__PURE__ */ jsx49(Fragment12, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx49(BrowserOverlaySlot, { scopeId }, scopeId)) });
+  return /* @__PURE__ */ jsx53(Fragment12, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx53(BrowserOverlaySlot, { scopeId }, scopeId)) });
 });
 
 // src/renderer/ipc/browser-state-ipc-bridge.ts
-import { useEffect as useEffect25 } from "react";
+import { useEffect as useEffect28 } from "react";
 function useBrowserStateIpcBridge() {
-  useEffect25(() => {
+  useEffect28(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -11437,7 +13239,7 @@ function useBrowserStateIpcBridge() {
       useBrowserStore.getState().createBrowserPage(scopeId, url, { activate: activate ?? true });
     });
   }, []);
-  useEffect25(() => {
+  useEffect28(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -11451,7 +13253,7 @@ function useBrowserStateIpcBridge() {
       });
     });
   }, []);
-  useEffect25(() => {
+  useEffect28(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -11478,17 +13280,17 @@ function useBrowserStateIpcBridge() {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { jsx as jsx50, jsxs as jsxs41 } from "react/jsx-runtime";
+import { jsx as jsx54, jsxs as jsxs44 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
-  useEffect26(() => {
+  useEffect29(() => {
     setBrowserRendererHost(host);
     return () => clearBrowserRendererHost(host);
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  useEffect26(() => {
+  useEffect29(() => {
     if (!hasBrowserApi) {
       return;
     }
@@ -11497,9 +13299,9 @@ function BrowserPluginProvider(props) {
     void state.fetchBrowserSessionProfiles();
     void state.loadIdentity();
   }, [hasBrowserApi]);
-  return /* @__PURE__ */ jsxs41(BrowserRendererHostContext.Provider, { value: host, children: [
+  return /* @__PURE__ */ jsxs44(BrowserRendererHostContext.Provider, { value: host, children: [
     children,
-    hasBrowserApi ? /* @__PURE__ */ jsx50(BrowserPaneOverlayLayer, {}) : null
+    hasBrowserApi ? /* @__PURE__ */ jsx54(BrowserPaneOverlayLayer, {}) : null
   ] });
 }
 export {

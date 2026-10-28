@@ -32,6 +32,9 @@ const idleGrab: GrabModeHook = {
   exit: vi.fn()
 }
 
+const markupStart = vi.fn()
+const markupCancel = vi.fn()
+
 function renderToolbar(currentUrl = 'https://a.test/'): void {
   render(
     <BrowserPageToolbar
@@ -74,6 +77,9 @@ function renderToolbar(currentUrl = 'https://a.test/'): void {
       startGrabIntent={vi.fn()}
       browserAnnotationsLength={0}
       isBlankTab={false}
+      markupIsActive={false}
+      markupStart={markupStart}
+      markupCancel={markupCancel}
     />
   )
 }
@@ -83,6 +89,15 @@ function documentOrder(elements: HTMLElement[]): number[] {
 }
 
 describe('BrowserPageToolbar', () => {
+  it('starts markup from the Draw button', () => {
+    renderToolbar()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Draw on screenshot' }))
+
+    expect(markupStart).toHaveBeenCalledTimes(1)
+    expect(markupCancel).not.toHaveBeenCalled()
+  })
+
   it('renders the P1 tools in order', () => {
     renderToolbar()
 

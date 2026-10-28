@@ -33,6 +33,7 @@ import { useBrowserPageResourceNotices } from '../navigate/use-browser-page-reso
 import { useBrowserPageAnnotationSend } from '../annotate/use-browser-page-annotation-send'
 import { useBrowserPageGrabAnnotations } from '../annotate/use-browser-page-grab-annotations'
 import { useGrabMode } from '../annotate/useGrabMode'
+import { useBrowserPageMarkupCapture } from '../annotate/use-browser-page-markup-capture'
 import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 import { getRendererPlatform } from '../../../lib/platform'
 import { isAnnotateChord } from '../annotate/browser-annotate-chord'
@@ -164,6 +165,10 @@ export function BrowserPagePane({
 
   const annotationSend = useBrowserPageAnnotationSend({ browserTabId: browserTab.id, scopeId })
   const grab = useGrabMode(browserTab.id)
+  const markup = useBrowserPageMarkupCapture(webviewRef, {
+    url: browserTab.url,
+    title: browserTab.title
+  })
   const grabAnnotations = useBrowserPageGrabAnnotations({
     browserTabId: browserTab.id,
     isActive,
@@ -182,8 +187,8 @@ export function BrowserPagePane({
     startGrabIntentRef.current = grabAnnotations.startGrabIntent
     handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut
   }, [grabAnnotations.handleGrabActionShortcut, grabAnnotations.startGrabIntent])
-  // Seam for the markup tool: while its overlay is open the picker must not start behind it.
-  const markupIsActive = false
+  // While the markup overlay is open the picker must not start behind it.
+  const markupIsActive = markup.isActive
   const grabIsInteractive = grab.state !== 'idle' && grab.state !== 'error'
 
   // A focused guest keeps its key events; main forwards the grab and annotate chords with their intent.
@@ -412,6 +417,9 @@ export function BrowserPagePane({
         grabAnnotations={grabAnnotations}
         annotationSend={annotationSend}
         isBlankTab={isBlankTab}
+        markupIsActive={markup.isActive}
+        markupStart={markup.start}
+        markupCancel={markup.cancel}
         resourceNotice={resourceNotice}
         setResourceNotice={setResourceNotice}
       />
@@ -435,8 +443,10 @@ export function BrowserPagePane({
               browserOverlayViewport={browserOverlayViewport}
               scopeId={scopeId}
               grab={grab}
+              markup={markup}
               annotationSend={annotationSend}
               grabAnnotations={grabAnnotations}
+              markupPortalContainer={pageViewport?.content ?? null}
             />,
             pageViewport.container
           )

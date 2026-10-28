@@ -40,7 +40,10 @@ export function BrowserPageToolbar({
   grabIntent,
   startGrabIntent,
   browserAnnotationsLength,
-  isBlankTab
+  isBlankTab,
+  markupIsActive,
+  markupStart,
+  markupCancel
 }: {
   page: BrowserPage
   isActive: boolean
@@ -68,6 +71,9 @@ export function BrowserPageToolbar({
   startGrabIntent: (intent: GrabIntent) => void
   browserAnnotationsLength: number
   isBlankTab: boolean
+  markupIsActive: boolean
+  markupStart: () => Promise<void>
+  markupCancel: () => void
 }): React.JSX.Element {
   const browserPageId = page.id
   const externalUrl = getOpenableExternalUrl(currentUrl)
@@ -115,10 +121,16 @@ export function BrowserPageToolbar({
         elementTools={{
           activeIntent: grab.state !== 'idle' ? grabIntent : null,
           onStartIntent: startGrabIntent,
-          disabled: isBlankTab,
+          disabled: isBlankTab || markupIsActive,
           grabShortcutLabel: isMac ? '⌘C' : 'Ctrl+C',
           annotateShortcutLabel: isMac ? '⌘⇧C' : 'Alt+Shift+N',
           annotationCount: browserAnnotationsLength
+        }}
+        markup={{
+          active: markupIsActive,
+          disabled: isBlankTab || grab.state !== 'idle',
+          onToggle: () => (markupIsActive ? markupCancel() : void markupStart()),
+          canShowDiscoveryHint: isActive
         }}
         overflowMenu={(overflow) => (
           <BrowserToolbarMenu

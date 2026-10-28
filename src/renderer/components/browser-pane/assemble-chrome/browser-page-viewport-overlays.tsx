@@ -12,6 +12,7 @@ import { BrowserGuestAnnotateOverlays } from '../annotate/browser-guest-annotate
 import type { useBrowserPageAnnotationSend } from '../annotate/use-browser-page-annotation-send'
 import type { useBrowserPageGrabAnnotations } from '../annotate/use-browser-page-grab-annotations'
 import type { GrabModeHook } from '../annotate/useGrabMode'
+import type { MarkupModeController } from '../annotate/useMarkupMode'
 import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 
 export function BrowserPageViewportOverlays({
@@ -32,8 +33,10 @@ export function BrowserPageViewportOverlays({
   browserOverlayViewport,
   scopeId,
   grab,
+  markup,
   annotationSend,
-  grabAnnotations
+  grabAnnotations,
+  markupPortalContainer
 }: {
   browserZoomIndicatorState: { ariaHidden: boolean; opacityClassName: string }
   browserZoomPercent: number
@@ -52,8 +55,10 @@ export function BrowserPageViewportOverlays({
   browserOverlayViewport: BrowserOverlayViewport
   scopeId: string
   grab: GrabModeHook
+  markup: MarkupModeController
   annotationSend: ReturnType<typeof useBrowserPageAnnotationSend>
   grabAnnotations: ReturnType<typeof useBrowserPageGrabAnnotations>
+  markupPortalContainer: HTMLDivElement | null
 }): React.JSX.Element {
   return (
     <>
@@ -89,12 +94,14 @@ export function BrowserPageViewportOverlays({
       ) : null}
       <BrowserGuestAnnotateOverlays
         grab={grab}
+        markup={markup}
         annotationSend={annotationSend}
         grabAnnotations={grabAnnotations}
         containerRef={containerRef}
         webviewRef={webviewRef}
         browserOverlayViewport={browserOverlayViewport}
         scopeId={scopeId}
+        markupPortalContainer={markupPortalContainer}
         currentUrl={browserTab.url}
       />
     </>

@@ -1,4 +1,5 @@
 import { useRef, useState, type MutableRefObject, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Copy, Image, MessageSquarePlus } from 'lucide-react'
 import {
   DropdownMenu,
@@ -19,12 +20,14 @@ import {
 } from '../describe-page/browser-annotation-geometry'
 import { BrowserPageAnnotationTray } from './browser-page-annotation-tray'
 import { BrowserPageGrabToast } from './browser-page-grab-toast'
+import { MarkupOverlay } from './MarkupOverlay'
 import { PendingBrowserAnnotationCard } from './pending-browser-annotation-card'
+import type { MarkupModeController } from './useMarkupMode'
 import type { useBrowserPageAnnotationSend } from './use-browser-page-annotation-send'
 import type { useBrowserPageGrabAnnotations } from './use-browser-page-grab-annotations'
 
 /**
- * Everything the annotate tools paint over a guest: the pending comment card, the annotation
+ * Everything the annotate and markup tools paint over a guest: the pending comment card, the annotation
  * tray, the right-click grab menu, the inline confirmation toast and the send-to-agent review.
  *
  * These overlays are the other half of the toolbar's tool cluster: a surface that offers the
@@ -32,20 +35,25 @@ import type { useBrowserPageGrabAnnotations } from './use-browser-page-grab-anno
  */
 export function BrowserGuestAnnotateOverlays({
   grab,
+  markup,
   annotationSend,
   grabAnnotations,
   containerRef,
   webviewRef,
   browserOverlayViewport,
+  markupPortalContainer,
   currentUrl
 }: {
   grab: GrabModeHook
+  markup: MarkupModeController
   annotationSend: ReturnType<typeof useBrowserPageAnnotationSend>
   grabAnnotations: ReturnType<typeof useBrowserPageGrabAnnotations>
   containerRef: RefObject<HTMLDivElement | null>
   webviewRef: MutableRefObject<Electron.WebviewTag | null>
   browserOverlayViewport: BrowserOverlayViewport
   scopeId: string
+  /** Where the draw surface mounts; falls back to the viewport container. */
+  markupPortalContainer?: HTMLDivElement | null
   currentUrl?: string
 }): React.JSX.Element {
   const {
@@ -62,6 +70,8 @@ export function BrowserGuestAnnotateOverlays({
     dismissGrabToast,
     setGrabToast
   } = grabAnnotations
+  // oxlint-disable-next-line react/refs -- Intentional: the portal target only changes with the pane.
+  const markupTarget = markupPortalContainer ?? containerRef.current
   const [grabReviewPayload, setGrabReviewPayloadState] = useState<BrowserGrabPayload | null>(null)
   const [grabReviewSending, setGrabReviewSending] = useState(false)
   const grabReviewOpenRef = useRef(false)
@@ -91,6 +101,17 @@ export function BrowserGuestAnnotateOverlays({
 
   return (
     <>
+      {markup.isActive && markup.baseImage && markupTarget
+        ? createPortal(
+            <MarkupOverlay
+              baseImage={markup.baseImage}
+              busy={markup.state === 'composing'}
+              onComplete={(input) => void markup.complete(input)}
+              onCancel={markup.cancel}
+            />,
+            markupTarget
+          )
+        : null}
       {pendingAnnotationPayload ? (
         <PendingBrowserAnnotationCard
           payload={pendingAnnotationPayload}
