@@ -343,3 +343,105 @@ describe('sending a grab to the agent', () => {
     expect(grab.exit).not.toHaveBeenCalled()
   })
 })
+
+describe('grab review lifecycle', () => {
+  function mountReview(initial: { state: 'idle' | 'confirming'; currentUrl?: string }) {
+    const capture = vi.fn().mockResolvedValue({
+      ok: true,
+      screenshot: { dataUrl: 'data:image/png;base64,QQ==', width: 10, height: 10 }
+    })
+    Object.defineProperty(window, 'browserAPI', {
+      configurable: true,
+      value: { captureSelectionScreenshot: capture }
+    })
+    const grab = {
+      payload: null,
+      error: null,
+      contextMenu: false,
+      toggle: vi.fn(),
+      cancel: vi.fn(),
+      rearm: vi.fn(),
+      exit: vi.fn()
+    }
+    const view = renderHook(
+      (props: { state: 'idle' | 'confirming'; currentUrl?: string }) =>
+        useBrowserPageGrabAnnotations({
+          browserTabId: 'page-1',
+          isActive: false,
+          grab: { ...grab, state: props.state },
+          containerRef: { current: null },
+          webviewRef: { current: null },
+          setBrowserOverlayViewport: vi.fn(),
+          setBrowserAnnotationTrayOpen: vi.fn(),
+          browserAnnotationsLength: 0,
+          currentUrl: props.currentUrl
+        }),
+      { wrapper: hostWrapper, initialProps: initial }
+    )
+    return { view, capture, grab }
+  }
+  const reviewPayload = () => ({ ...makeAnnotation('page-1').payload, screenshot: null })
+
+  it('closes the review sheet when the page navigates', () => {
+    onSendToAgent = vi.fn()
+    const { view } = mountReview({ state: 'confirming' })
+    act(() => view.result.current.openGrabReview(reviewPayload()))
+    expect(view.result.current.grabReviewPayload).not.toBeNull()
+
+    act(() => view.result.current.cancelPendingBrowserCapture())
+
+    expect(view.result.current.grabReviewPayload).toBeNull()
+  })
+
+  it('closes the review sheet when the grab returns to idle (Escape)', () => {
+    onSendToAgent = vi.fn()
+    const { view } = mountReview({ state: 'confirming' })
+    act(() => view.result.current.openGrabReview(reviewPayload()))
+    expect(view.result.current.grabReviewPayload).not.toBeNull()
+
+    view.rerender({ state: 'idle' })
+
+    expect(view.result.current.grabReviewPayload).toBeNull()
+  })
+
+  it('sends no image when the page no longer matches the grabbed payload', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    onSendToAgent = send
+    const { view, capture } = mountReview({
+      state: 'confirming',
+      currentUrl: 'https://other.test/x'
+    })
+    const payload = {
+      ...reviewPayload(),
+      screenshot: {
+        mimeType: 'image/png',
+        dataUrl: 'data:image/png;base64,Qg==',
+        width: 1,
+        height: 1
+      }
+    } as never
+
+    await act(async () => {
+      await view.result.current.handleGrabSendToAgent?.(payload)
+    })
+
+    expect(capture).not.toHaveBeenCalled()
+    expect(send.mock.calls[0][0].images).toEqual([])
+  })
+
+  it('still captures when the current page matches the grabbed payload', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    onSendToAgent = send
+    const { view, capture } = mountReview({
+      state: 'confirming',
+      currentUrl: 'https://example.com/?token=1'
+    })
+
+    await act(async () => {
+      await view.result.current.handleGrabSendToAgent?.(reviewPayload())
+    })
+
+    expect(capture).toHaveBeenCalledOnce()
+    expect(send.mock.calls[0][0].images).toHaveLength(1)
+  })
+})

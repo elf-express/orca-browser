@@ -55,6 +55,8 @@ export type BrowserPageGrabAnnotationsOptions = {
   setBrowserOverlayViewport: Dispatch<SetStateAction<BrowserOverlayViewport>>
   browserAnnotationsLength: number
   setBrowserAnnotationTrayOpen: Dispatch<SetStateAction<boolean>>
+  /** The page's live URL; a send is not allowed to re-capture a page other than the grabbed one. */
+  currentUrl?: string
 }
 
 export type BrowserPageRecoveryNavigationValidation = {

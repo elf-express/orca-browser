@@ -18,6 +18,7 @@ import type {
   BrowserGrabScreenshot
 } from '../../../../shared/browser-grab-types'
 import { formatGrabPayloadAsText } from './GrabConfirmationSheet'
+import { sanitizeAgentPageUrl } from '../../../../shared/agent-payload'
 import { buildGrabAgentPayload, isSendToAgentCanceled, useSendToAgent } from './browser-agent-send'
 import {
   createBrowserAnnotationId,
@@ -62,7 +63,8 @@ export function useBrowserPageGrabAnnotations({
   webviewRef,
   setBrowserOverlayViewport,
   browserAnnotationsLength,
-  setBrowserAnnotationTrayOpen
+  setBrowserAnnotationTrayOpen,
+  currentUrl
 }: BrowserPageGrabAnnotationsOptions): {
   grabIntent: GrabIntent
   startGrabIntent: (nextIntent: GrabIntent) => void
@@ -75,6 +77,14 @@ export function useBrowserPageGrabAnnotations({
   handleGrabCopy: () => void
   handleGrabCopyScreenshot: () => void
   /** Null when the host does not provide onSendToAgent. Resolves true once the host accepted the payload. */
+  /** The payload shown in the send-to-agent review sheet; cleared when the grab ends or the page navigates. */
+  grabReviewPayload: BrowserGrabPayload | null
+  grabReviewSending: boolean
+  openGrabReview: (payload: BrowserGrabPayload) => void
+  /** Closes the review and resumes the picker when it is waiting on a confirmation. */
+  closeGrabReview: () => void
+  /** Sends the open review; closes it once the host accepted the payload. */
+  handleSendGrabReview: () => Promise<void>
   handleGrabSendToAgent:
     | ((
         payload: BrowserGrabPayload,
@@ -102,6 +112,11 @@ export function useBrowserPageGrabAnnotations({
   const sendToAgent = useSendToAgent()
   const sendToAgentRef = useRef(sendToAgent)
   const grabSendInFlightRef = useRef(false)
+  const grabReviewPayloadRef = useRef<BrowserGrabPayload | null>(null)
+  const currentUrlRef = useRef(currentUrl)
+  const [grabReviewPayload, setGrabReviewPayload] = useState<BrowserGrabPayload | null>(null)
+  const [grabReviewSending, setGrabReviewSending] = useState(false)
+  const grabReviewOpenRef = useRef(false)
 
   useLayoutEffect(() => {
     toolTargetIdRef.current = toolTargetId
@@ -110,7 +125,17 @@ export function useBrowserPageGrabAnnotations({
     grabRef.current = grab
     grabPayloadRef.current = grab.payload
     sendToAgentRef.current = sendToAgent
-  }, [grab, grabIntent, pendingAnnotationPayload, sendToAgent, toolTargetId])
+    currentUrlRef.current = currentUrl
+    grabReviewPayloadRef.current = grabReviewPayload
+  }, [
+    grab,
+    grabIntent,
+    pendingAnnotationPayload,
+    sendToAgent,
+    toolTargetId,
+    currentUrl,
+    grabReviewPayload
+  ])
   // Why: Radix fires onOpenChange(false) before onSelect, so this flag lets onOpenChange skip the rearm that would clear the payload first.
   const grabMenuActionTakenRef = useRef(false)
   const addBrowserPageAnnotation = useBrowserAnnotationStore((s) => s.addBrowserPageAnnotation)
@@ -275,16 +300,25 @@ export function useBrowserPageGrabAnnotations({
       grabSendInFlightRef.current = true
       try {
         let screenshot: BrowserGrabScreenshot | null = payload.screenshot
-        try {
-          const result = await window.browserAPI!.captureSelectionScreenshot({
-            browserPageId: toolTargetIdRef.current,
-            rect: payload.target.rectViewport
-          })
-          if (result.ok) {
-            screenshot = result.screenshot
+        const liveUrl = currentUrlRef.current
+        const pageStillMatches =
+          liveUrl === undefined ||
+          sanitizeAgentPageUrl(liveUrl) === sanitizeAgentPageUrl(payload.page.sanitizedUrl)
+        if (!pageStillMatches) {
+          // The rect and any earlier image belong to the page that was grabbed, not the current one.
+          screenshot = null
+        } else {
+          try {
+            const result = await window.browserAPI!.captureSelectionScreenshot({
+              browserPageId: toolTargetIdRef.current,
+              rect: payload.target.rectViewport
+            })
+            if (result.ok) {
+              screenshot = result.screenshot
+            }
+          } catch {
+            // A destroyed guest still allows a text-only send.
           }
-        } catch {
-          // A destroyed guest still allows a text-only send.
         }
         await send(buildGrabAgentPayload({ ...payload, screenshot }))
         // A review closed while the send was on its way must not tear down a picker the user resumed.
@@ -305,6 +339,46 @@ export function useBrowserPageGrabAnnotations({
     },
     []
   )
+
+  const updateGrabReview = useCallback((next: BrowserGrabPayload | null): void => {
+    grabReviewOpenRef.current = next !== null
+    setGrabReviewPayload(next)
+  }, [])
+  const openGrabReview = useCallback(
+    (payload: BrowserGrabPayload): void => updateGrabReview(payload),
+    [updateGrabReview]
+  )
+  const closeGrabReview = useCallback((): void => {
+    updateGrabReview(null)
+    if (grabRef.current.state === 'confirming') {
+      grabRef.current.rearm()
+    }
+  }, [updateGrabReview])
+  const handleSendGrabReview = useCallback(async (): Promise<void> => {
+    const payload = grabReviewPayloadRef.current
+    if (!payload || grabSendInFlightRef.current) {
+      return
+    }
+    setGrabReviewSending(true)
+    try {
+      const sent = await handleGrabSendToAgent(payload, {
+        isReviewOpen: () => grabReviewOpenRef.current
+      })
+      if (sent) {
+        updateGrabReview(null)
+      }
+    } finally {
+      setGrabReviewSending(false)
+    }
+  }, [handleGrabSendToAgent, updateGrabReview])
+
+  // The review belongs to one grab: once the picker is idle again it has nothing left to send.
+  useEffect(() => {
+    if (grab.state === 'idle') {
+      // oxlint-disable-next-line react/set-state-in-effect -- Intentional: the review must end with the grab, whatever ended it.
+      updateGrabReview(null)
+    }
+  }, [grab.state, updateGrabReview])
 
   const handleAddBrowserAnnotation = useCallback(
     (comment: string, intent: BrowserAnnotationIntent): void => {
@@ -343,9 +417,10 @@ export function useBrowserPageGrabAnnotations({
     pendingAnnotationPayloadRef.current = null
     grabPayloadRef.current = null
     setPendingAnnotationPayload(null)
+    updateGrabReview(null)
     clearTimeout(grabToastTimerRef.current)
     setGrabToast(null)
-  }, [])
+  }, [updateGrabReview])
 
   return {
     grabIntent,
@@ -358,6 +433,11 @@ export function useBrowserPageGrabAnnotations({
     dismissGrabToast,
     handleGrabCopy,
     handleGrabCopyScreenshot,
+    grabReviewPayload,
+    grabReviewSending,
+    openGrabReview,
+    closeGrabReview,
+    handleSendGrabReview,
     handleGrabSendToAgent: sendToAgent ? handleGrabSendToAgent : null,
     grabMenuActionTakenRef,
     handleAddBrowserAnnotation,

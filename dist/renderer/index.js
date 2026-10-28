@@ -1451,7 +1451,7 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback22, useEffect as useEffect27, useLayoutEffect as useLayoutEffect10, useRef as useRef22, useState as useState24 } from "react";
+import { useCallback as useCallback22, useEffect as useEffect27, useLayoutEffect as useLayoutEffect10, useRef as useRef21, useState as useState23 } from "react";
 import { createPortal as createPortal3 } from "react-dom";
 
 // src/renderer/store/browser-session-store.ts
@@ -9210,7 +9210,8 @@ function useBrowserPageGrabAnnotations({
   webviewRef,
   setBrowserOverlayViewport,
   browserAnnotationsLength,
-  setBrowserAnnotationTrayOpen
+  setBrowserAnnotationTrayOpen,
+  currentUrl
 }) {
   const mountedRef = useMountedRef();
   const toolTargetIdRef = useRef13(toolTargetId);
@@ -9225,6 +9226,11 @@ function useBrowserPageGrabAnnotations({
   const sendToAgent = useSendToAgent();
   const sendToAgentRef = useRef13(sendToAgent);
   const grabSendInFlightRef = useRef13(false);
+  const grabReviewPayloadRef = useRef13(null);
+  const currentUrlRef = useRef13(currentUrl);
+  const [grabReviewPayload, setGrabReviewPayload] = useState14(null);
+  const [grabReviewSending, setGrabReviewSending] = useState14(false);
+  const grabReviewOpenRef = useRef13(false);
   useLayoutEffect6(() => {
     toolTargetIdRef.current = toolTargetId;
     grabIntentRef.current = grabIntent;
@@ -9232,7 +9238,17 @@ function useBrowserPageGrabAnnotations({
     grabRef.current = grab;
     grabPayloadRef.current = grab.payload;
     sendToAgentRef.current = sendToAgent;
-  }, [grab, grabIntent, pendingAnnotationPayload, sendToAgent, toolTargetId]);
+    currentUrlRef.current = currentUrl;
+    grabReviewPayloadRef.current = grabReviewPayload;
+  }, [
+    grab,
+    grabIntent,
+    pendingAnnotationPayload,
+    sendToAgent,
+    toolTargetId,
+    currentUrl,
+    grabReviewPayload
+  ]);
   const grabMenuActionTakenRef = useRef13(false);
   const addBrowserPageAnnotation = useBrowserAnnotationStore((s) => s.addBrowserPageAnnotation);
   useEffect18(() => () => clearTimeout(grabToastTimerRef.current), []);
@@ -9369,15 +9385,21 @@ function useBrowserPageGrabAnnotations({
       grabSendInFlightRef.current = true;
       try {
         let screenshot = payload.screenshot;
-        try {
-          const result = await window.browserAPI.captureSelectionScreenshot({
-            browserPageId: toolTargetIdRef.current,
-            rect: payload.target.rectViewport
-          });
-          if (result.ok) {
-            screenshot = result.screenshot;
+        const liveUrl = currentUrlRef.current;
+        const pageStillMatches = liveUrl === void 0 || sanitizeAgentPageUrl(liveUrl) === sanitizeAgentPageUrl(payload.page.sanitizedUrl);
+        if (!pageStillMatches) {
+          screenshot = null;
+        } else {
+          try {
+            const result = await window.browserAPI.captureSelectionScreenshot({
+              browserPageId: toolTargetIdRef.current,
+              rect: payload.target.rectViewport
+            });
+            if (result.ok) {
+              screenshot = result.screenshot;
+            }
+          } catch {
           }
-        } catch {
         }
         await send(buildGrabAgentPayload({ ...payload, screenshot }));
         if (options?.isReviewOpen?.() ?? true) {
@@ -9397,6 +9419,42 @@ function useBrowserPageGrabAnnotations({
     },
     []
   );
+  const updateGrabReview = useCallback13((next) => {
+    grabReviewOpenRef.current = next !== null;
+    setGrabReviewPayload(next);
+  }, []);
+  const openGrabReview = useCallback13(
+    (payload) => updateGrabReview(payload),
+    [updateGrabReview]
+  );
+  const closeGrabReview = useCallback13(() => {
+    updateGrabReview(null);
+    if (grabRef.current.state === "confirming") {
+      grabRef.current.rearm();
+    }
+  }, [updateGrabReview]);
+  const handleSendGrabReview = useCallback13(async () => {
+    const payload = grabReviewPayloadRef.current;
+    if (!payload || grabSendInFlightRef.current) {
+      return;
+    }
+    setGrabReviewSending(true);
+    try {
+      const sent = await handleGrabSendToAgent(payload, {
+        isReviewOpen: () => grabReviewOpenRef.current
+      });
+      if (sent) {
+        updateGrabReview(null);
+      }
+    } finally {
+      setGrabReviewSending(false);
+    }
+  }, [handleGrabSendToAgent, updateGrabReview]);
+  useEffect18(() => {
+    if (grab.state === "idle") {
+      updateGrabReview(null);
+    }
+  }, [grab.state, updateGrabReview]);
   const handleAddBrowserAnnotation = useCallback13(
     (comment, intent) => {
       const payload = pendingAnnotationPayloadRef.current;
@@ -9432,9 +9490,10 @@ function useBrowserPageGrabAnnotations({
     pendingAnnotationPayloadRef.current = null;
     grabPayloadRef.current = null;
     setPendingAnnotationPayload(null);
+    updateGrabReview(null);
     clearTimeout(grabToastTimerRef.current);
     setGrabToast(null);
-  }, []);
+  }, [updateGrabReview]);
   return {
     grabIntent,
     startGrabIntent,
@@ -9446,6 +9505,11 @@ function useBrowserPageGrabAnnotations({
     dismissGrabToast,
     handleGrabCopy,
     handleGrabCopyScreenshot,
+    grabReviewPayload,
+    grabReviewSending,
+    openGrabReview,
+    closeGrabReview,
+    handleSendGrabReview,
     handleGrabSendToAgent: sendToAgent ? handleGrabSendToAgent : null,
     grabMenuActionTakenRef,
     handleAddBrowserAnnotation,
@@ -10867,7 +10931,6 @@ function BrowserFind({
 }
 
 // src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
-import { useRef as useRef21, useState as useState23 } from "react";
 import { createPortal as createPortal2 } from "react-dom";
 import { Copy as Copy4, Image as Image4, MessageSquarePlus as MessageSquarePlus7 } from "lucide-react";
 
@@ -12427,19 +12490,17 @@ function BrowserGuestAnnotateOverlays({
     handleGrabCopy,
     handleGrabCopyScreenshot,
     handleGrabSendToAgent,
+    grabReviewPayload,
+    grabReviewSending,
+    openGrabReview,
+    closeGrabReview,
+    handleSendGrabReview,
     grabToast,
     grabToastTimerRef,
     dismissGrabToast,
     setGrabToast
   } = grabAnnotations;
   const markupTarget = markupPortalContainer ?? containerRef.current;
-  const [grabReviewPayload, setGrabReviewPayloadState] = useState23(null);
-  const [grabReviewSending, setGrabReviewSending] = useState23(false);
-  const grabReviewOpenRef = useRef21(false);
-  const setGrabReviewPayload = (next) => {
-    grabReviewOpenRef.current = next !== null;
-    setGrabReviewPayloadState(next);
-  };
   const {
     browserAnnotations,
     browserAnnotationTrayOpen,
@@ -12451,12 +12512,6 @@ function BrowserGuestAnnotateOverlays({
     handleDeleteBrowserAnnotation,
     handleUpdateBrowserAnnotation
   } = annotationSend;
-  const closeGrabReview = () => {
-    setGrabReviewPayload(null);
-    if (grab.state === "confirming") {
-      grab.rearm();
-    }
-  };
   return /* @__PURE__ */ jsxs39(Fragment9, { children: [
     markup.isActive && markup.baseImage && markupTarget ? createPortal2(
       /* @__PURE__ */ jsx48(
@@ -12553,7 +12608,9 @@ function BrowserGuestAnnotateOverlays({
               {
                 onSelect: () => {
                   grabMenuActionTakenRef.current = true;
-                  setGrabReviewPayload(grab.payload);
+                  if (grab.payload) {
+                    openGrabReview(grab.payload);
+                  }
                 },
                 children: [
                   /* @__PURE__ */ jsx48(MessageSquarePlus7, { className: "size-3.5" }),
@@ -12583,7 +12640,7 @@ function BrowserGuestAnnotateOverlays({
         grabToastTimerRef,
         dismissGrabToast,
         setGrabToast,
-        onReviewForAgent: handleGrabSendToAgent ? setGrabReviewPayload : null
+        onReviewForAgent: handleGrabSendToAgent ? openGrabReview : null
       }
     ) : null,
     grabReviewPayload && handleGrabSendToAgent ? /* @__PURE__ */ jsx48(
@@ -12598,19 +12655,7 @@ function BrowserGuestAnnotateOverlays({
           void copyGrabScreenshotToClipboard(grabReviewPayload.screenshot.dataUrl);
           closeGrabReview();
         } : null,
-        onAttach: () => {
-          if (grabReviewSending) {
-            return;
-          }
-          setGrabReviewSending(true);
-          void handleGrabSendToAgent(grabReviewPayload, {
-            isReviewOpen: () => grabReviewOpenRef.current
-          }).then((sent) => {
-            if (sent) {
-              setGrabReviewPayload(null);
-            }
-          }).finally(() => setGrabReviewSending(false));
-        },
+        onAttach: () => void handleSendGrabReview(),
         onCancel: closeGrabReview,
         busy: grabReviewSending
       }
@@ -12757,7 +12802,7 @@ function BrowserPagePane({
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
   const pageViewportScroller = pageViewport?.scroller ?? null;
   const pageViewportContainer = pageViewport?.container ?? null;
-  const containerRef = useRef22(pageViewportContainer);
+  const containerRef = useRef21(pageViewportContainer);
   useLayoutEffect10(() => {
     containerRef.current = pageViewportContainer;
   }, [pageViewportContainer]);
@@ -12785,39 +12830,39 @@ function BrowserPagePane({
       scrollBrowserPageViewport(browserTab.id, event.deltaX, event.deltaY);
     });
   }, [browserTab.id, browserTab.viewportPresetId, pageViewportScroller]);
-  const chromeHeaderRef = useRef22(null);
-  const webviewRef = useRef22(null);
-  const addressBarInputRef = useRef22(null);
-  const dismissAddressBarSuggestionsRef = useRef22(null);
-  const addressBarValueRef = useRef22(toDisplayUrl(browserTab.url));
-  const browserTabUrlRef = useRef22(browserTab.url);
-  const lastKnownWebviewUrlRef = useRef22(null);
-  const trackNextLoadingEventRef = useRef22(false);
-  const recoveryNavigationValidationRef = useRef22(
+  const chromeHeaderRef = useRef21(null);
+  const webviewRef = useRef21(null);
+  const addressBarInputRef = useRef21(null);
+  const dismissAddressBarSuggestionsRef = useRef21(null);
+  const addressBarValueRef = useRef21(toDisplayUrl(browserTab.url));
+  const browserTabUrlRef = useRef21(browserTab.url);
+  const lastKnownWebviewUrlRef = useRef21(null);
+  const trackNextLoadingEventRef = useRef21(false);
+  const recoveryNavigationValidationRef = useRef21(
     null
   );
-  const activeLoadFailureRef = useRef22(browserTab.loadError);
-  const retryGuestRecoveryRef = useRef22(() => {
+  const activeLoadFailureRef = useRef21(browserTab.loadError);
+  const retryGuestRecoveryRef = useRef21(() => {
   });
-  const onUpdatePageStateRef = useRef22(onUpdatePageState);
-  const onSetUrlRef = useRef22(onSetUrl);
-  const isActiveRef = useRef22(isActive);
+  const onUpdatePageStateRef = useRef21(onUpdatePageState);
+  const onSetUrlRef = useRef21(onSetUrl);
+  const isActiveRef = useRef21(isActive);
   useLayoutEffect10(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  const handleInternalFileDragOverRef = useRef22(() => {
+  const handleInternalFileDragOverRef = useRef21(() => {
   });
-  const handleInternalFileDropRef = useRef22(() => {
+  const handleInternalFileDropRef = useRef21(() => {
   });
-  const [findOpen, setFindOpen] = useState24(false);
-  const [browserOverlayViewport, setBrowserOverlayViewport] = useState24({
+  const [findOpen, setFindOpen] = useState23(false);
+  const [browserOverlayViewport, setBrowserOverlayViewport] = useState23({
     scrollX: 0,
     scrollY: 0,
     version: 0
   });
   const zoom = useBrowserPageZoomFeedback(browserTab.id);
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
-  const [addressBarValue, setAddressBarValue] = useState24(() => toDisplayUrl(browserTab.url));
+  const [addressBarValue, setAddressBarValue] = useState23(() => toDisplayUrl(browserTab.url));
   useEffect27(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
@@ -12856,10 +12901,11 @@ function BrowserPagePane({
     webviewRef,
     setBrowserOverlayViewport,
     browserAnnotationsLength: annotationSend.browserAnnotations.length,
-    setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen
+    setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen,
+    currentUrl: getLiveBrowserUrl(browserTab.id) ?? browserTab.url
   });
-  const startGrabIntentRef = useRef22(grabAnnotations.startGrabIntent);
-  const handleGrabActionShortcutRef = useRef22(grabAnnotations.handleGrabActionShortcut);
+  const startGrabIntentRef = useRef21(grabAnnotations.startGrabIntent);
+  const handleGrabActionShortcutRef = useRef21(grabAnnotations.handleGrabActionShortcut);
   useLayoutEffect10(() => {
     startGrabIntentRef.current = grabAnnotations.startGrabIntent;
     handleGrabActionShortcutRef.current = grabAnnotations.handleGrabActionShortcut;
@@ -13113,14 +13159,14 @@ function BrowserPagePane({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/DeferredBrowserContent.tsx
-import { useLayoutEffect as useLayoutEffect11, useState as useState25 } from "react";
+import { useLayoutEffect as useLayoutEffect11, useState as useState24 } from "react";
 import { Fragment as Fragment11, jsx as jsx51 } from "react/jsx-runtime";
 function DeferredBrowserContent({
   mountEligible,
   retainMounted = true,
   children
 }) {
-  const [hasCommittedMount, setHasCommittedMount] = useState25(false);
+  const [hasCommittedMount, setHasCommittedMount] = useState24(false);
   useLayoutEffect11(() => {
     if (!retainMounted) {
       setHasCommittedMount(false);

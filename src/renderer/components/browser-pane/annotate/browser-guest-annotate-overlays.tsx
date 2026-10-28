@@ -1,4 +1,4 @@
-import { useRef, useState, type MutableRefObject, type RefObject } from 'react'
+import type { MutableRefObject, RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { Copy, Image, MessageSquarePlus } from 'lucide-react'
 import {
@@ -10,7 +10,6 @@ import {
   DropdownMenuTrigger
 } from '../../../ui/dropdown-menu'
 import { translate } from '../../../i18n'
-import type { BrowserGrabPayload } from '../../../../shared/browser-grab-types'
 import GrabConfirmationSheet, { formatGrabPayloadAsText } from './GrabConfirmationSheet'
 import { copyGrabScreenshotToClipboard } from './browser-page-grab-action'
 import type { GrabModeHook } from './useGrabMode'
@@ -65,6 +64,11 @@ export function BrowserGuestAnnotateOverlays({
     handleGrabCopy,
     handleGrabCopyScreenshot,
     handleGrabSendToAgent,
+    grabReviewPayload,
+    grabReviewSending,
+    openGrabReview,
+    closeGrabReview,
+    handleSendGrabReview,
     grabToast,
     grabToastTimerRef,
     dismissGrabToast,
@@ -72,13 +76,6 @@ export function BrowserGuestAnnotateOverlays({
   } = grabAnnotations
   // oxlint-disable-next-line react/refs -- Intentional: the portal target only changes with the pane.
   const markupTarget = markupPortalContainer ?? containerRef.current
-  const [grabReviewPayload, setGrabReviewPayloadState] = useState<BrowserGrabPayload | null>(null)
-  const [grabReviewSending, setGrabReviewSending] = useState(false)
-  const grabReviewOpenRef = useRef(false)
-  const setGrabReviewPayload = (next: BrowserGrabPayload | null): void => {
-    grabReviewOpenRef.current = next !== null
-    setGrabReviewPayloadState(next)
-  }
   const {
     browserAnnotations,
     browserAnnotationTrayOpen,
@@ -90,14 +87,6 @@ export function BrowserGuestAnnotateOverlays({
     handleDeleteBrowserAnnotation,
     handleUpdateBrowserAnnotation
   } = annotationSend
-
-  // Closing the review resumes the picker the way dismissing a confirmation does.
-  const closeGrabReview = (): void => {
-    setGrabReviewPayload(null)
-    if (grab.state === 'confirming') {
-      grab.rearm()
-    }
-  }
 
   return (
     <>
@@ -203,7 +192,9 @@ export function BrowserGuestAnnotateOverlays({
             <DropdownMenuItem
               onSelect={() => {
                 grabMenuActionTakenRef.current = true
-                setGrabReviewPayload(grab.payload)
+                if (grab.payload) {
+                  openGrabReview(grab.payload)
+                }
               }}
             >
               <MessageSquarePlus className="size-3.5" />
@@ -229,7 +220,7 @@ export function BrowserGuestAnnotateOverlays({
           grabToastTimerRef={grabToastTimerRef}
           dismissGrabToast={dismissGrabToast}
           setGrabToast={setGrabToast}
-          onReviewForAgent={handleGrabSendToAgent ? setGrabReviewPayload : null}
+          onReviewForAgent={handleGrabSendToAgent ? openGrabReview : null}
         />
       ) : null}
       {grabReviewPayload && handleGrabSendToAgent ? (
@@ -247,21 +238,7 @@ export function BrowserGuestAnnotateOverlays({
                 }
               : null
           }
-          onAttach={() => {
-            if (grabReviewSending) {
-              return
-            }
-            setGrabReviewSending(true)
-            void handleGrabSendToAgent(grabReviewPayload, {
-              isReviewOpen: () => grabReviewOpenRef.current
-            })
-              .then((sent) => {
-                if (sent) {
-                  setGrabReviewPayload(null)
-                }
-              })
-              .finally(() => setGrabReviewSending(false))
-          }}
+          onAttach={() => void handleSendGrabReview()}
           onCancel={closeGrabReview}
           busy={grabReviewSending}
         />

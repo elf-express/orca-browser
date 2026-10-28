@@ -179,7 +179,8 @@ export function BrowserPagePane({
     webviewRef,
     setBrowserOverlayViewport,
     browserAnnotationsLength: annotationSend.browserAnnotations.length,
-    setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen
+    setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen,
+    currentUrl: getLiveBrowserUrl(browserTab.id) ?? browserTab.url
   })
   const startGrabIntentRef = useRef(grabAnnotations.startGrabIntent)
   const handleGrabActionShortcutRef = useRef(grabAnnotations.handleGrabActionShortcut)
