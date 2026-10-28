@@ -6,6 +6,12 @@ export function setBrowserRendererHost(host: BrowserRendererHost | null): void {
   currentHost = host
 }
 
+export function clearBrowserRendererHost(host: BrowserRendererHost): void {
+  if (currentHost === host) {
+    currentHost = null
+  }
+}
+
 export function translate(
   key: string,
   fallback: string,

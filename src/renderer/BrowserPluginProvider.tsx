@@ -1,16 +1,20 @@
-import { useEffect } from 'react'
+import { useEffect, type JSX, type ReactNode } from 'react'
 import { BrowserRendererHostContext, type BrowserRendererHost } from './host-context'
-import { setBrowserRendererHost } from './i18n'
+import { clearBrowserRendererHost, setBrowserRendererHost } from './i18n'
 
 export function BrowserPluginProvider(props: {
   host: BrowserRendererHost
-  children: React.ReactNode
-}): React.JSX.Element {
+  children: ReactNode
+}): JSX.Element {
   const { host, children } = props
 
+  // Set during render so children calling translate() in their first render see the host.
+  setBrowserRendererHost(host)
+
   useEffect(() => {
+    // Re-set after mount: a strict-mode effect cleanup clears the host before the re-run.
     setBrowserRendererHost(host)
-    return () => setBrowserRendererHost(null)
+    return () => clearBrowserRendererHost(host)
   }, [host])
 
   return (

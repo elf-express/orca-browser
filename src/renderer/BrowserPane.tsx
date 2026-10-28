@@ -1,6 +1,7 @@
+import type { JSX } from 'react'
 import { useBrowserRendererHost } from './host-context'
 
-export function BrowserPane(props: { scopeId: string; active: boolean }): React.JSX.Element {
+export function BrowserPane(props: { scopeId: string; active: boolean }): JSX.Element {
   useBrowserRendererHost()
 
   return (

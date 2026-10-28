@@ -32,14 +32,20 @@ var currentHost = null;
 function setBrowserRendererHost(host) {
   currentHost = host;
 }
+function clearBrowserRendererHost(host) {
+  if (currentHost === host) {
+    currentHost = null;
+  }
+}
 
 // src/renderer/BrowserPluginProvider.tsx
 import { jsx as jsx2 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
+  setBrowserRendererHost(host);
   useEffect(() => {
     setBrowserRendererHost(host);
-    return () => setBrowserRendererHost(null);
+    return () => clearBrowserRendererHost(host);
   }, [host]);
   return /* @__PURE__ */ jsx2(BrowserRendererHostContext.Provider, { value: host, children });
 }

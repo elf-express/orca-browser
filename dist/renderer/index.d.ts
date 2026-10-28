@@ -1,7 +1,9 @@
+import { JSX, ReactNode } from 'react';
+
 declare function BrowserPane(props: {
     scopeId: string;
     active: boolean;
-}): React.JSX.Element;
+}): JSX.Element;
 
 type BrowserAgentPayload = {
     kind: 'grab' | 'annotation' | 'markup';
@@ -36,7 +38,7 @@ declare function useBrowserRendererHost(): BrowserRendererHost;
 
 declare function BrowserPluginProvider(props: {
     host: BrowserRendererHost;
-    children: React.ReactNode;
-}): React.JSX.Element;
+    children: ReactNode;
+}): JSX.Element;
 
 export { type BrowserAgentPayload, BrowserPane, BrowserPluginProvider, type BrowserRendererHost, useBrowserRendererHost };
