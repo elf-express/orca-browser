@@ -1,0 +1,179 @@
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_95e2f8129dc41d 1-152
+src/renderer/ipc/browser-state-ipc-bridge.ts
+  s_aa47a447e01641::t_500acb763bdc91 1-48
+src/renderer/store/browser-store.ts
+  s_aa47a447e01641::t_4ee6fd9a0c2fe4 1-238
+  s_aa47a447e01641::t_9ba7a322a640f6 239-243
+src/renderer/BrowserPane.tsx
+  s_aa47a447e01641::t_1933719b797af9 1-2,4,8-24,29-31,33
+src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
+  s_aa47a447e01641::t_802129b9b8b7a0 1-73
+src/renderer/BrowserPluginProvider.tsx
+  s_aa47a447e01641::t_955764fdc39aac 4-5,22-26,30
+src/renderer/BrowserPane.keep-alive.test.tsx
+  s_aa47a447e01641::t_f96dddf6333aa1 1-158
+src/renderer/ipc/browser-state-ipc-bridge.test.ts
+  s_aa47a447e01641::t_52da57afdea3e4 1-109
+  s_aa47a447e01641::t_397acfff5345d0 110
+src/renderer/components/browser-pane/assemble-chrome/BrowserPageStrip.tsx
+  s_aa47a447e01641::t_e11b4d35dfe569 1-61
+src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
+  s_aa47a447e01641::t_91eceed631d608 3-63
+  s_aa47a447e01641::t_052545eb1ff78d 1-2
+  s_aa47a447e01641::t_d381b2490554b0 64-66
+  s_4ba84239639b64::t_e472ea1993cf11 67-68
+src/renderer/store/browser-store.test.ts
+  s_aa47a447e01641::t_61c50ab9bda913 1-126
+  s_aa47a447e01641::t_67fbec0784e53a 127-128
+src/renderer/components/browser-pane/assemble-chrome/browser-scope-anchor.test.ts
+  s_aa47a447e01641::t_95e4aea93484de 1-13
+dist/renderer/index.js
+  s_aa47a447e01641::t_881e3fbee60d57 1-13,25-894,899-910,915-919,925,937-2534,2537,2541,2545-2550
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_1b75a3e243fc83 112-119,472
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_55468747faf2bb 112-119,472
+package.json
+  s_aa47a447e01641::t_1a485ab2b21c23 49-52
+pnpm-lock.yaml
+  s_aa47a447e01641::t_b9464a2736e602 10-16,970-973,1408-1410,2202-2203,2654-2655
+src/renderer/components/browser-pane/assemble-chrome/BrowserPane.webview-preferences.test.ts
+  s_aa47a447e01641::t_f3b934af3ac234 1-143
+src/renderer/components/browser-pane/assemble-chrome/DeferredBrowserContent.tsx
+  s_aa47a447e01641::t_4cbe1eff578fa8 1-24
+src/renderer/components/browser-pane/assemble-chrome/browser-pane-page-selection.test.ts
+  s_aa47a447e01641::t_21370fb8f3a5b7 1-39
+src/renderer/components/browser-pane/assemble-chrome/browser-pane-page-selection.ts
+  s_aa47a447e01641::t_c004a8b27a7a39 1-10
+src/renderer/components/browser-pane/assemble-chrome/browser-scope-anchor.ts
+  s_aa47a447e01641::t_fd10eaaba1256c 1-15
+src/renderer/components/browser-pane/describe-page/browser-favicon-url.test.ts
+  s_aa47a447e01641::t_4112ba0eb6de73 1-90
+src/renderer/components/browser-pane/describe-page/browser-favicon-url.ts
+  s_aa47a447e01641::t_8f807d736a381f 1-63
+src/renderer/components/browser-pane/describe-page/browser-overlay-shortcut-target.test.ts
+  s_aa47a447e01641::t_cba7c9b856fa80 1-18
+src/renderer/components/browser-pane/describe-page/browser-overlay-shortcut-target.ts
+  s_aa47a447e01641::t_77a4712b7b1a92 1-27
+src/renderer/components/browser-pane/describe-page/browser-page-load-error.ts
+  s_aa47a447e01641::t_1aaa53cf4bf524 1-7
+src/renderer/components/browser-pane/describe-page/browser-page-types.ts
+  s_aa47a447e01641::t_bbb5766ce94235 1-42
+src/renderer/components/browser-pane/describe-page/browser-page-url-display.test.ts
+  s_aa47a447e01641::t_e81b1058472f21 1-63
+src/renderer/components/browser-pane/describe-page/browser-page-url-display.ts
+  s_aa47a447e01641::t_93461ac485a37d 1-57
+src/renderer/components/browser-pane/describe-page/live-browser-url-registry.test.ts
+  s_aa47a447e01641::t_81fb28c2f29222 1-42
+src/renderer/components/browser-pane/describe-page/live-browser-url-registry.ts
+  s_aa47a447e01641::t_68058a6d045059 1-19
+src/renderer/components/browser-pane/host-guest/attach-browser-page-webview.ts
+  s_aa47a447e01641::t_1c7a84840c6f96 1-138
+src/renderer/components/browser-pane/host-guest/bind-browser-page-webview-listeners.ts
+  s_aa47a447e01641::t_087597911ebfcf 1-201
+src/renderer/components/browser-pane/host-guest/browser-focus.test.ts
+  s_aa47a447e01641::t_4466c78a28b66b 1-53
+src/renderer/components/browser-pane/host-guest/browser-focus.ts
+  s_aa47a447e01641::t_0683af70d2ffd5 1-82
+src/renderer/components/browser-pane/host-guest/browser-keyboard.test.ts
+  s_aa47a447e01641::t_47b064b76874a9 1-50
+src/renderer/components/browser-pane/host-guest/browser-keyboard.ts
+  s_aa47a447e01641::t_90853389fba180 1-56
+src/renderer/components/browser-pane/host-guest/browser-page-guest-recovery.test.ts
+  s_aa47a447e01641::t_6e17792ceb39e1 1-479
+src/renderer/components/browser-pane/host-guest/browser-page-guest-recovery.ts
+  s_aa47a447e01641::t_aff1c7e945f066 1-290
+src/renderer/components/browser-pane/host-guest/browser-page-mount-admission.test.ts
+  s_aa47a447e01641::t_6bf71dbe49545f 1-64
+src/renderer/components/browser-pane/host-guest/browser-page-mount-admission.ts
+  s_aa47a447e01641::t_bee6cbabf750a1 1-49
+src/renderer/components/browser-pane/host-guest/browser-page-paintability.test.ts
+  s_aa47a447e01641::t_7d47c82394c21e 1-16
+src/renderer/components/browser-pane/host-guest/browser-page-paintability.ts
+  s_aa47a447e01641::t_18d08f746bd110 1-7
+src/renderer/components/browser-pane/host-guest/browser-page-registration-ownership.test.ts
+  s_aa47a447e01641::t_a575d3736b9054 1-339
+src/renderer/components/browser-pane/host-guest/browser-page-viewport.test.ts
+  s_aa47a447e01641::t_7fa8f8c74a3879 1-321
+src/renderer/components/browser-pane/host-guest/browser-page-viewport.ts
+  s_aa47a447e01641::t_10121159611840 1-295
+src/renderer/components/browser-pane/host-guest/browser-page-webview-guest-session.ts
+  s_aa47a447e01641::t_75cbcc22dc1665 1-265
+src/renderer/components/browser-pane/host-guest/browser-page-webview-loading-handlers.ts
+  s_aa47a447e01641::t_f43ca4183c241b 1-180
+src/renderer/components/browser-pane/host-guest/browser-page-webview-navigation-handlers.ts
+  s_aa47a447e01641::t_2895811409eef0 1-179
+src/renderer/components/browser-pane/host-guest/browser-page-webview-surface.test.ts
+  s_aa47a447e01641::t_012c177111313f 1-93
+src/renderer/components/browser-pane/host-guest/browser-page-webview.test.ts
+  s_aa47a447e01641::t_7da53dab535730 1-16
+src/renderer/components/browser-pane/host-guest/browser-page-webview.ts
+  s_aa47a447e01641::t_25cbc8494aede6 1-91
+src/renderer/components/browser-pane/host-guest/browser-page-zoom.test.ts
+  s_aa47a447e01641::t_42ee457c03654c 1-330
+src/renderer/components/browser-pane/host-guest/browser-page-zoom.ts
+  s_aa47a447e01641::t_cff2a906994160 1-117
+src/renderer/components/browser-pane/host-guest/browser-system-resume.test.ts
+  s_aa47a447e01641::t_793e48da70efbf 1-60
+src/renderer/components/browser-pane/host-guest/browser-system-resume.ts
+  s_aa47a447e01641::t_0bbfa79ff43e22 1-25
+src/renderer/components/browser-pane/host-guest/use-browser-page-keyboard-shortcuts.split.test.tsx
+  s_aa47a447e01641::t_fe0220f6d11cd6 1-194
+src/renderer/components/browser-pane/host-guest/use-browser-page-keyboard-shortcuts.ts
+  s_aa47a447e01641::t_7463d18b90c917 1-40
+src/renderer/components/browser-pane/host-guest/use-browser-page-slot-viewport.test.ts
+  s_aa47a447e01641::t_f2937377389a30 1-28
+src/renderer/components/browser-pane/host-guest/use-browser-page-slot-viewport.ts
+  s_aa47a447e01641::t_fde9ad3f711e28 1-15
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
+  s_aa47a447e01641::t_ecc70828f0862f 1-227
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-partition.ts
+  s_aa47a447e01641::t_4bb8f11e296dab 1-9
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-shortcuts.ts
+  s_aa47a447e01641::t_2b6b1e9d79140e 1-178
+src/renderer/components/browser-pane/host-guest/use-webview-drag-passthrough-active.test.tsx
+  s_aa47a447e01641::t_a38f5d886baff2 1-81
+src/renderer/components/browser-pane/host-guest/use-webview-drag-passthrough-active.ts
+  s_aa47a447e01641::t_60c257c20032de 1-16
+src/renderer/components/browser-pane/host-guest/webview-drag-passthrough.ts
+  s_aa47a447e01641::t_182a66c32f978b 1-59
+src/renderer/components/browser-pane/host-guest/webview-registry.test.ts
+  s_aa47a447e01641::t_93e56b5ef65cbe 1-383
+src/renderer/components/browser-pane/host-guest/webview-registry.ts
+  s_aa47a447e01641::t_7e82d5d3dc9071 1-302
+src/renderer/components/browser-pane/navigate/browser-webview-load-failure.test.ts
+  s_aa47a447e01641::t_74b65248d6eecb 1-69
+src/renderer/components/browser-pane/navigate/browser-webview-load-failure.ts
+  s_aa47a447e01641::t_8d086e07883ab5 1-30
+src/renderer/lib/platform.ts
+  s_aa47a447e01641::t_79f0bf3bf06701 1-13
+src/renderer/lib/utils.ts
+  s_aa47a447e01641::t_77afa07b3ac9bb 1-6
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_cfe8c082b43e2a 33-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4750ac301faa8fedb7a5d04f990242fa33a6653d",
+  "prompts": {},
+  "sessions": {
+    "s_4ba84239639b64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a6c780bed7b5688ac",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
