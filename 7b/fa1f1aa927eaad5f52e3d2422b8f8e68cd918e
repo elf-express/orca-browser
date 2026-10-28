@@ -1,0 +1,39 @@
+dist/renderer/index.js
+  s_aa47a447e01641::t_9886616cf4ab50 3900,3912-3914,3916-3954,5299,5421,5423,5435,5448,5467,5480,5485,5553,5592,5617,5624,5634,5638,5651,5669,5674,5706,5829,5899,5915,5996,6197,6232-6234,6283,6297,6337,6362,6425,6435
+src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
+  s_aa47a447e01641::t_84f49917511170 3,18-20,33-34,59-71
+src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.test.tsx
+  s_aa47a447e01641::t_3e3cd4b8cd033f 97-103
+src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
+  s_31577236ef6a79::t_bbed4e8c64eaab 196,213,224,290
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_a1d044b49fe6c3 298-299
+src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.test.tsx
+  s_aa47a447e01641::t_6ecdc6438675eb 84-85
+dist/i18n-keys.json
+  s_aa47a447e01641::t_df1d9c1ffd1182 2-3,20,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bfa1f1aa927eaad5f52e3d2422b8f8e68cd918e",
+  "prompts": {},
+  "sessions": {
+    "s_31577236ef6a79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "904cb848-f443-43b4-8afc-4a6e8fcb3d0e",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
