@@ -80,3 +80,17 @@ export type BrowserCookieImportSummary = {
         reason: 'app-bound-encryption' | 'linux-keyring-unavailable' | 'unknown'
       }
 }
+
+export type BrowserSessionProfileScope = 'default' | 'isolated' | 'imported'
+
+export type BrowserSessionProfile = {
+  id: string
+  scope: BrowserSessionProfileScope
+  partition: string
+  label: string
+  source: BrowserSessionProfileSource | null
+}
+
+export type BrowserCookieImportResult =
+  | { ok: true; profileId: string; summary: BrowserCookieImportSummary }
+  | { ok: false; reason: string }
