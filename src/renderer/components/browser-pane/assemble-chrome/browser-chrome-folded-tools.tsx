@@ -135,6 +135,7 @@ export function BrowserChromeDefaultOverflowMenu({
           size="icon"
           variant="ghost"
           className="h-8 w-8"
+          aria-label={translate('auto.components.browser.toolbar.moreTools', 'More tools')}
           title={translate(
             'auto.components.browser.pane.BrowserToolbarMenu.7b838540c7',
             'Browser menu'

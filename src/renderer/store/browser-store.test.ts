@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ORCA_BROWSER_BLANK_URL } from '../../shared/constants'
 import { MAX_BROWSER_HISTORY_ENTRIES } from '../../shared/workspace-session-browser-history'
+import {
+  admitBrowserPageMount,
+  isBrowserPageMountAdmitted
+} from '../components/browser-pane/host-guest/browser-page-mount-admission'
+import { setBrowserRendererHost } from '../i18n'
 import { destroyPersistentWebview } from '../components/browser-pane/host-guest/webview-registry'
 import { BROWSER_HISTORY_STORAGE_KEY, useBrowserStore } from './browser-store'
 
@@ -63,6 +68,29 @@ describe('useBrowserStore', () => {
     useBrowserStore.getState().closeBrowserPage(page.id)
     expect(destroyPersistentWebview).toHaveBeenCalledTimes(1)
     expect(destroyPersistentWebview).toHaveBeenCalledWith(page.id)
+  })
+
+  it('releases the mount admission when a page closes', () => {
+    const page = useBrowserStore.getState().ensureScopePage('ws-1')
+    admitBrowserPageMount(page.id)
+    expect(isBrowserPageMountAdmitted(page.id)).toBe(true)
+
+    useBrowserStore.getState().closeBrowserPage(page.id)
+
+    expect(isBrowserPageMountAdmitted(page.id)).toBe(false)
+  })
+
+  it('titles a blank page through the translate host', () => {
+    setBrowserRendererHost({
+      t: (key, fallback) =>
+        key === 'auto.components.browser.pane.BrowserPane.366bf5d62c' ? 'Tab baru' : fallback
+    })
+    try {
+      expect(useBrowserStore.getState().ensureScopePage('ws-1').title).toBe('Tab baru')
+    } finally {
+      setBrowserRendererHost(null)
+    }
+    expect(useBrowserStore.getState().ensureScopePage('ws-2').title).toBe('New Tab')
   })
 
   it('leaves an empty scope after closing its last page', () => {

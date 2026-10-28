@@ -310,6 +310,29 @@ function useAnyBrowserPageMountAdmission(pageIds) {
   return pageIds.some(isBrowserPageMountAdmitted);
 }
 
+// src/renderer/i18n.ts
+var currentHost = null;
+function setBrowserRendererHost(host) {
+  currentHost = host;
+}
+function clearBrowserRendererHost(host) {
+  if (currentHost === host) {
+    currentHost = null;
+  }
+}
+function translate(key, fallback, vars) {
+  if (currentHost) {
+    return currentHost.t(key, fallback, vars);
+  }
+  if (!vars) {
+    return fallback;
+  }
+  return fallback.replace(
+    /\{\{(\w+)\}\}/g,
+    (match, name) => Object.hasOwn(vars, name) ? String(vars[name]) : match
+  );
+}
+
 // src/renderer/components/browser-pane/describe-page/live-browser-url-registry.ts
 var liveBrowserUrlByTabId = /* @__PURE__ */ new Map();
 function seedLiveBrowserUrl(browserTabId, initialUrl) {
@@ -829,7 +852,7 @@ function makePage(scopeId, url) {
     id: globalThis.crypto.randomUUID(),
     scopeId,
     url,
-    title: url === ORCA_BROWSER_BLANK_URL ? "New Tab" : url,
+    title: url === ORCA_BROWSER_BLANK_URL ? translate("auto.components.browser.pane.BrowserPane.366bf5d62c", "New Tab") : url,
     loading: false,
     faviconUrl: null,
     canGoBack: false,
@@ -893,6 +916,7 @@ var useBrowserStore = create()(
             return;
           }
           void destroyPersistentWebview(pageId);
+          releaseBrowserPageMount(pageId);
           set((state) => {
             const pages = state.pagesByScope[scopeId] ?? [];
             const index = pages.findIndex((page) => page.id === pageId);
@@ -913,7 +937,10 @@ var useBrowserStore = create()(
             return;
           }
           set((state) => ({
-            activePageIdByScope: { ...state.activePageIdByScope, [scopeId]: pageId }
+            activePageIdByScope: {
+              ...state.activePageIdByScope,
+              [scopeId]: pageId
+            }
           }));
         },
         updateBrowserPageState: (pageId, updates) => {
@@ -946,7 +973,9 @@ var useBrowserStore = create()(
             const others = state.browserUrlHistory.filter(
               (candidate) => candidate.normalizedUrl !== normalizedUrl
             );
-            return { browserUrlHistory: [entry, ...others].slice(0, MAX_BROWSER_HISTORY_ENTRIES) };
+            return {
+              browserUrlHistory: [entry, ...others].slice(0, MAX_BROWSER_HISTORY_ENTRIES)
+            };
           });
         },
         clearBrowserHistory: () => set({ browserUrlHistory: [] }),
@@ -981,7 +1010,9 @@ var useBrowserStore = create()(
             if (current?.active === mount.active) {
               return state;
             }
-            return { paneMountByScope: { ...state.paneMountByScope, [scopeId]: mount } };
+            return {
+              paneMountByScope: { ...state.paneMountByScope, [scopeId]: mount }
+            };
           });
         }
       };
@@ -1032,29 +1063,6 @@ function BrowserPane(props) {
 
 // src/renderer/BrowserPluginProvider.tsx
 import { useEffect as useEffect16 } from "react";
-
-// src/renderer/i18n.ts
-var currentHost = null;
-function setBrowserRendererHost(host) {
-  currentHost = host;
-}
-function clearBrowserRendererHost(host) {
-  if (currentHost === host) {
-    currentHost = null;
-  }
-}
-function translate(key, fallback, vars) {
-  if (currentHost) {
-    return currentHost.t(key, fallback, vars);
-  }
-  if (!vars) {
-    return fallback;
-  }
-  return fallback.replace(
-    /\{\{(\w+)\}\}/g,
-    (match, name) => Object.hasOwn(vars, name) ? String(vars[name]) : match
-  );
-}
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
 import { memo, useCallback as useCallback13, useMemo as useMemo6 } from "react";
@@ -3559,6 +3567,7 @@ function BrowserChromeDefaultOverflowMenu({
         size: "icon",
         variant: "ghost",
         className: "h-8 w-8",
+        "aria-label": translate("auto.components.browser.toolbar.moreTools", "More tools"),
         title: translate(
           "auto.components.browser.pane.BrowserToolbarMenu.7b838540c7",
           "Browser menu"
@@ -5198,7 +5207,7 @@ function humanizePermission(permission) {
     case "keyboardLock":
       return "permission to capture keyboard input";
     case "openExternal":
-      return "permission to open a link outside Orca";
+      return "permission to open a link outside this app";
     case "fileSystem":
       return "access to your files or folders";
     case "hid":
@@ -5221,7 +5230,7 @@ function humanizePermission(permission) {
 }
 function formatPermissionNotice(event) {
   const target = event.origin === "unknown" ? "this page" : event.origin;
-  return `${target} asked for ${humanizePermission(event.permission)}, and Orca denied it.`;
+  return `${target} asked for ${humanizePermission(event.permission)}, and the browser denied it.`;
 }
 function formatPopupNotice(event) {
   const target = event.origin === "unknown" ? "A site" : event.origin;
@@ -5231,7 +5240,7 @@ function formatPopupNotice(event) {
   if (event.action === "opened-external") {
     return `${target} opened a new window in your default browser.`;
   }
-  return `${target} tried to open a popup Orca does not support here.`;
+  return `${target} tried to open a popup this app does not support here.`;
 }
 function formatLoadFailureDescription(loadError, meta) {
   if (!loadError) {

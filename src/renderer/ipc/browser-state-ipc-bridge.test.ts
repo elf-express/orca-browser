@@ -123,7 +123,11 @@ describe('useBrowserStateIpcBridge', () => {
     const p1 = useBrowserStore.getState().ensureScopePage('ws-1')
     useBrowserStore.getState().updateBrowserPageState(p1.id, { loading: true, canGoBack: true })
     renderHook(() => useBrowserStateIpcBridge())
-    const loadError = { code: -105, description: 'ERR_NAME_NOT_RESOLVED', validatedUrl: 'https://x.test/' }
+    const loadError = {
+      code: -105,
+      description: 'ERR_NAME_NOT_RESOLVED',
+      validatedUrl: 'https://x.test/'
+    }
 
     loadFailed?.({ browserPageId: p1.id, loadError })
 
@@ -143,9 +147,7 @@ describe('useBrowserStateIpcBridge', () => {
       loadError: { code: -1, description: 'x', validatedUrl: 'https://x.test/' }
     })
 
-    expect(useBrowserStore.getState().pagesByScope['ws-1'][0].loadError).toBe(
-      p1.loadError
-    )
+    expect(useBrowserStore.getState().pagesByScope['ws-1'][0].loadError).toBe(p1.loadError)
     expect(useBrowserStore.getState().pagesByScope['ws-1']).toHaveLength(1)
   })
 

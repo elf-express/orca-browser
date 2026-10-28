@@ -6,7 +6,11 @@ import {
   normalizeBrowserHistoryUrl
 } from '../../shared/workspace-session-browser-history'
 import type { BrowserHistoryEntry, BrowserPage } from '../../shared/browser-workspace-types'
-import { admitBrowserPageMount } from '../components/browser-pane/host-guest/browser-page-mount-admission'
+import {
+  admitBrowserPageMount,
+  releaseBrowserPageMount
+} from '../components/browser-pane/host-guest/browser-page-mount-admission'
+import { translate } from '../i18n'
 import { destroyPersistentWebview } from '../components/browser-pane/host-guest/webview-registry'
 
 export const BROWSER_HISTORY_STORAGE_KEY = 'orca-browser:history:v1'
@@ -48,7 +52,10 @@ function makePage(scopeId: string, url: string): BrowserPage {
     id: globalThis.crypto.randomUUID(),
     scopeId,
     url,
-    title: url === ORCA_BROWSER_BLANK_URL ? 'New Tab' : url,
+    title:
+      url === ORCA_BROWSER_BLANK_URL
+        ? translate('auto.components.browser.pane.BrowserPane.366bf5d62c', 'New Tab')
+        : url,
     loading: false,
     faviconUrl: null,
     canGoBack: false,
@@ -121,6 +128,7 @@ export const useBrowserStore = create<BrowserStoreState>()(
             return
           }
           void destroyPersistentWebview(pageId)
+          releaseBrowserPageMount(pageId)
           set((state) => {
             const pages = state.pagesByScope[scopeId] ?? []
             const index = pages.findIndex((page) => page.id === pageId)
@@ -145,7 +153,10 @@ export const useBrowserStore = create<BrowserStoreState>()(
             return
           }
           set((state) => ({
-            activePageIdByScope: { ...state.activePageIdByScope, [scopeId]: pageId }
+            activePageIdByScope: {
+              ...state.activePageIdByScope,
+              [scopeId]: pageId
+            }
           }))
         },
 
@@ -181,7 +192,9 @@ export const useBrowserStore = create<BrowserStoreState>()(
             const others = state.browserUrlHistory.filter(
               (candidate) => candidate.normalizedUrl !== normalizedUrl
             )
-            return { browserUrlHistory: [entry, ...others].slice(0, MAX_BROWSER_HISTORY_ENTRIES) }
+            return {
+              browserUrlHistory: [entry, ...others].slice(0, MAX_BROWSER_HISTORY_ENTRIES)
+            }
           })
         },
 
@@ -220,7 +233,9 @@ export const useBrowserStore = create<BrowserStoreState>()(
             if (current?.active === mount.active) {
               return state
             }
-            return { paneMountByScope: { ...state.paneMountByScope, [scopeId]: mount } }
+            return {
+              paneMountByScope: { ...state.paneMountByScope, [scopeId]: mount }
+            }
           })
         }
       }
