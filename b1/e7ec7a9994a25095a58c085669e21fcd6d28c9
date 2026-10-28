@@ -1,0 +1,59 @@
+src/shared/browser-find-source.ts
+  s_aa47a447e01641::t_10d3b1715d0c49 1-32
+src/shared/browser-grab-types.ts
+  s_aa47a447e01641::t_a3b0845763f962 1-245
+src/shared/browser-guest-events.ts
+  s_aa47a447e01641::t_34f4363f4ea762 1-32
+src/shared/browser-guest-web-preferences.ts
+  s_aa47a447e01641::t_4f2a4f02373d5e 1-5
+src/shared/browser-ipc-channels.ts
+  s_aa47a447e01641::t_c382dd9f461a1d 1-26
+src/shared/browser-keybindings.test.ts
+  s_aa47a447e01641::t_496e02b81ba256 1-42
+src/shared/browser-keybindings.ts
+  s_aa47a447e01641::t_972950d4c432cd 1-166
+src/shared/browser-page-command-target.ts
+  s_aa47a447e01641::t_a060c03952095f 1-8
+src/shared/browser-page-zoom.ts
+  s_aa47a447e01641::t_4f1106359eed77 1-47
+src/shared/browser-url.test.ts
+  s_aa47a447e01641::t_16d8e12a6b83c7 1-324
+src/shared/browser-url.ts
+  s_aa47a447e01641::t_0911f10f139b27 1-365
+src/shared/browser-user-agent-mode.ts
+  s_aa47a447e01641::t_74a1f8fa0197d4 1-38
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_8a74aa35297409 1-18
+src/shared/constants.ts
+  s_aa47a447e01641::t_d0aff3be76b490 4-6
+src/shared/index.ts
+  s_aa47a447e01641::t_d86e785aa5139d 5-16
+src/shared/workspace-session-browser-history.ts
+  s_aa47a447e01641::t_2a729d7fe5ac7a 1-18
+tsconfig.json
+  s_aa47a447e01641::t_29658c710aa5e4 8
+dist/shared/index.cjs
+  s_aa47a447e01641::t_eb718fe031afc4 24-30,32-62,70-584,588-594,596-626
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_ab9d6efad66a27 27-28,53-403
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_9b33aaa39734a3 27-28,53-403
+dist/shared/index.js
+  s_aa47a447e01641::t_1bd1d4639a86fb 5-519,522-528,530-560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1e7ec7a9994a25095a58c085669e21fcd6d28c9",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
