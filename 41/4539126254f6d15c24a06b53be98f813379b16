@@ -1,0 +1,62 @@
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.annotation.test.tsx
+  s_aa47a447e01641::t_a13b669c29266e 1-143
+src/renderer/components/browser-pane/annotate/browser-annotate-chord.ts
+  s_aa47a447e01641::t_4bf1ea8a7894cc 1-24
+  s_aa47a447e01641::t_32b31629b4b899 25-26
+dist/renderer/index.js
+  s_aa47a447e01641::t_6cc12e6c368c3d 1452,6723-6902,7018-7019,7133,7146-7147,7160,7172-7174,7224,7227,7232-7233,7337-7380,7389,7395-7397,7416-7418,7443-7445,7486-7492,7499-7500,7538,7543,7545,7548,7573-7574,7588,7591,7601-7602,7610,7616-7618,7641,7670,7729,7784-7785,7792,7817-7827,7832-7834,7836-7844,7883-7906,7936,7941,7943,7946,7961-7962,7971-7984,8523-8524,8537,8611,8623,9098,9117-9119,9382-9392,10002,10323,10338,10649-10655,10803-10809,10813,10815-10816,10957,10985-10993,10996-10997,10999-11001,11005,11007,11054-11055,11060,11064,11068,11080,11137-11138,11145
+src/renderer/components/browser-pane/annotate/GrabConfirmationSheet.tsx
+  s_aa47a447e01641::t_c4a52eabc20c56 124-125,132-133,153,279,295
+src/renderer/components/browser-pane/annotate/browser-annotate-chord.test.ts
+  s_aa47a447e01641::t_f699854b04ba54 1-39
+src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.test.tsx
+  s_aa47a447e01641::t_442e299ac5f77e 1-102
+src/renderer/components/browser-pane/annotate/browser-guest-annotate-overlays.tsx
+  s_aa47a447e01641::t_50373128938a01 1,65-71,230-235,237-242,245
+src/renderer/components/browser-pane/annotate/browser-page-annotation-tray.tsx
+  s_aa47a447e01641::t_f8bf49a433f55b 267,280
+src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.test.tsx
+  s_aa47a447e01641::t_a9233198b0a8dc 305-344
+src/renderer/components/browser-pane/annotate/use-browser-page-grab-annotations.ts
+  s_aa47a447e01641::t_afd91866fad470 78-83,267-270,290-293
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_eb1454119d19c4 38,185-186,192,196,214-215,277-278,285
+src/renderer/components/browser-pane/host-guest/attach-browser-page-webview.ts
+  s_aa47a447e01641::t_263c5205b5406b 10,49,54,56,61,109
+src/renderer/components/browser-pane/host-guest/bind-browser-page-webview-listeners.ts
+  s_aa47a447e01641::t_bced8a0a18b03a 57,62,64,67,94-95,111,114,125-126,134,140-142,169,201
+src/renderer/components/browser-pane/host-guest/browser-page-annotation-document.test.ts
+  s_aa47a447e01641::t_2478de19646631 1-179
+src/renderer/components/browser-pane/host-guest/browser-page-mount-admission.test.ts
+  s_aa47a447e01641::t_f2e6ef761af9e1 34,37
+src/renderer/components/browser-pane/host-guest/browser-page-registration-ownership.test.ts
+  s_aa47a447e01641::t_a1577ffbbed477 40,71,95-96,103,165,181-182,196,215,228,242,258,270,280,292,305
+src/renderer/components/browser-pane/host-guest/browser-page-webview-guest-session.ts
+  s_aa47a447e01641::t_c6bb6f046db099 49,78-79,212,228,230,243,255-257
+src/renderer/components/browser-pane/host-guest/browser-page-webview-loading-handlers.ts
+  s_aa47a447e01641::t_48733c700412b1 7,38,41,64,67,72-74
+src/renderer/components/browser-pane/host-guest/browser-page-webview-navigation-handlers.history.test.ts
+  s_aa47a447e01641::t_7a237bcd635443 22,31-33
+src/renderer/components/browser-pane/host-guest/browser-page-webview-navigation-handlers.ts
+  s_aa47a447e01641::t_09faa911e04593 7-8,34,43-44,54,64,70-72,97-99,134-136,186-193,200-201
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
+  s_aa47a447e01641::t_a7a9d60f8e75b7 13-14,16,22-26,57-58,65,98-99,106,117,131-141,147-149,151-159,208-233,264,269,271,274,292-293,303-318
+src/renderer/renderer-class-tokens.test.ts
+  s_aa47a447e01641::t_499027f67c550f 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "414539126254f6d15c24a06b53be98f813379b16",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
