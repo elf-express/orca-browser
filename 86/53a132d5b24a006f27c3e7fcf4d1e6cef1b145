@@ -1,0 +1,81 @@
+dist/main/index.cjs
+  s_aa47a447e01641::t_f09168681241bb 1783-1810,1812,1828-1916,2150,2157-2181,2184,2451,2464-2466,3924-3995,3997,4000-4001,4004-4005,4066,4076,4081-4082,4089-4090,4093,4115,4119,4122,4130,4133,4164-4165,4185-4186,4198,4219,4254-4255,4268,4281,4430,4597,4669,4960-4961,4963,4968,4970,5006-5007,5091,5217,5271-5272,5275,5277,5279,5282,5284,5287,5294,5318,5352-5353,5375-5376,5380,5401,5480-5481,5485,5547,5549,5558,5567,5577,5600,6203,6207,6256,6258,6261-6262,6264,6267,6269,6275,6295,6326,6338,6348,6474,6534-6541,6547,6556,6562,6571,6580,6606,6615-6616,6622-6624,6630,6682,6686,6694,6697
+dist/main/index.d.cts
+  s_aa47a447e01641::t_d27d5296aef1d0 53-93,99-143,145-154,189-192,210-240
+dist/preload/index.cjs
+  s_aa47a447e01641::t_cc85ad2ffc38d7 26,50,60,78,80-102,106-107,111-112,116-117,119-121,125,129-130,134-135,139-140,144-145,149-150,154-155,208,218,226
+dist/renderer/index.d.ts
+  s_aa47a447e01641::t_4dc7992aa28acc 70-110,116-160,162-171,206-209,227-257
+dist/shared/index.cjs
+  s_aa47a447e01641::t_04e543dc940538 32,34,49,53,64,102-103,130-132,623-713,725,727,742,746,757
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_9f7f42459ba720 83-146,164,225-234,269-272,290-320,358,360,569-630
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_925cd0b71d792b 83-146,164,225-234,269-272,290-320,358,360,569-630
+dist/shared/index.js
+  s_aa47a447e01641::t_940fe8032cd49d 29-30,57-59,550-640,651,653,668,672,683
+src/main/browser-profiles-installer.ts
+  s_aa47a447e01641::t_a8ba7bdae558aa 10,31
+src/main/browser/browser-manager-auth-user-agent.test.ts
+  s_aa47a447e01641::t_f9422cfab1cdec 62-68,442-494
+src/main/browser/browser-manager-tab-identity.test.ts
+  s_aa47a447e01641::t_1682852efed725 53,59-68,71,123-145,163-180,193-407,413-415,425,479-499
+src/main/browser/browser-manager-viewport-override.test.ts
+  s_aa47a447e01641::t_7a8917e71121d7 1-944
+src/main/browser/browser-manager-viewport.ts
+  s_aa47a447e01641::t_555456fec826a5 2,4-8,26-148
+src/main/browser/browser-plugin-settings-store.test.ts
+  s_aa47a447e01641::t_2d8efb27454f94 1-58
+src/main/browser/browser-plugin-settings-store.ts
+  s_aa47a447e01641::t_d0dbdf68503265 1-41
+src/main/browser/guest-cdp-command.ts
+  s_aa47a447e01641::t_57c07a5d1339d1 1-42
+src/main/ipc/browser-guest-view-ipc.ts
+  s_aa47a447e01641::t_1c7158b600191d 3,8,17-57,60
+src/main/ipc/browser-plugin-settings-ipc.ts
+  s_aa47a447e01641::t_02b937df7e5efe 1-32
+src/main/ipc/browser-session-profile-ipc.ts
+  s_aa47a447e01641::t_0c46f6105343be 17
+src/preload/api/browser-bridge-guest-registration-and-downloads.ts
+  s_aa47a447e01641::t_ee4187c2fbfdb8 3,11-14
+src/preload/api/browser-session-api.test.ts
+  s_aa47a447e01641::t_92cf7f8c6ea5a1 1-72
+src/preload/api/browser-session-api.ts
+  s_aa47a447e01641::t_68c934ef7e4323 1-23
+src/preload/browser-api.test.ts
+  s_aa47a447e01641::t_7a33909d7485da 36-40
+src/preload/browser-api.ts
+  s_aa47a447e01641::t_b26c36a0573f97 4,21
+src/renderer/BrowserPane.keep-alive.test.tsx
+  s_aa47a447e01641::t_91fe1a8a437fb1 8-12,26,41-64
+src/shared/browser-api-types.ts
+  s_aa47a447e01641::t_b378e65c752d99 13-32,63-66,86-110
+src/shared/browser-ipc-channels.ts
+  s_aa47a447e01641::t_c0b55e21932b43 9-10,39-41
+src/shared/browser-plugin-settings.test.ts
+  s_aa47a447e01641::t_a4594a78b8bc6b 1-37
+src/shared/browser-plugin-settings.ts
+  s_aa47a447e01641::t_097f34ae680a21 1-30
+src/shared/browser-viewport-presets.ts
+  s_aa47a447e01641::t_6d59936340001c 1-92
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_a24af0ec547a70 20-30
+src/shared/index.ts
+  s_aa47a447e01641::t_4dd920d45e729f 17-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8653a132d5b24a006f27c3e7fcf4d1e6cef1b145",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
