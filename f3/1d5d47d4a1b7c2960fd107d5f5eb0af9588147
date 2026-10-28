@@ -1,0 +1,29 @@
+src/renderer/components/browser-pane/host-guest/browser-page-webview-navigation-handlers.history.test.ts
+  s_fcfd9882abbd31::t_77e1944ce6393b 1-54
+src/renderer/components/browser-pane/navigate/use-browser-page-webview-url-sync.navigate.test.tsx
+  s_aa47a447e01641::t_09eaaa08ef4024 1-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f31d5d47d4a1b7c2960fd107d5f5eb0af9588147",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_fcfd9882abbd31": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8a5af50-f269-4dd5-a274-2943a8358e46",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
