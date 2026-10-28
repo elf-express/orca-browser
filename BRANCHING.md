@@ -34,7 +34,7 @@ git fetch origin
 git switch -c feat/e-<編號>-<短名> origin/dev
 ```
 
-發佈（`dev` 測試通過後）：
+發佈（`dev` 測試通過後，由 Eddie 執行；本 repo 唯一的發版流程，含 dist 檢查與 tag）：
 
 ```
 git fetch origin
@@ -42,7 +42,12 @@ git log --oneline origin/release..origin/dev   # 先列出會帶進去的提交�
 git switch release
 git merge --ff-only origin/release   # 先把本機 release 更新到最新
 git merge --ff-only origin/dev
+pnpm install --frozen-lockfile
+pnpm build
+git diff --exit-code -- dist   # 必須無差異，有差異就停下來回報
 git push origin release
+git tag -a vX.Y.Z -m "vX.Y.Z"   # tag 打在 release 上
+git push origin vX.Y.Z
 ```
 
 更新主庫：
@@ -91,18 +96,4 @@ git switch main && git merge --ff-only origin/main && git merge --ff-only origin
 
 * `dist/` 永久進版控，不列入 `.gitignore`。改原始碼的 PR 必須附上 `pnpm build` 重建後的 `dist`，CI 以 `pnpm check:dist` 擋下 dist 與原始碼不一致。
 * 版號先經 PR 修改 `package.json`，合進 `dev` 後才發版。
-* 發版指令（由 Eddie 執行）：
-
-```
-git fetch origin
-git switch release
-git merge --ff-only origin/dev
-pnpm install --frozen-lockfile
-pnpm build
-git diff --exit-code -- dist   # 必須無差異
-git push origin release
-git tag -a vX.Y.Z -m "vX.Y.Z"
-git push origin vX.Y.Z
-```
-
-* tag 打在 `release` 上，tag 自然含 `dist`；下游以 `github:elf-express/orca-browser#vX.Y.Z` 安裝。
+* 發版一律照上方「發佈」區塊由 Eddie 執行（含 `pnpm build` 後 dist 無差異檢查，以及在 `release` 上打 annotated tag `vX.Y.Z` 並推送）；tag 自然含 `dist`，下游以 `github:elf-express/orca-browser#vX.Y.Z` 安裝。
