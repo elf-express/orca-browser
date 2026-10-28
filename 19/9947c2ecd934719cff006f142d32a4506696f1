@@ -1,0 +1,35 @@
+dist/main/index.cjs
+  s_aa47a447e01641::t_2cda2c22f41db2 1960,2216
+src/main/browser/browser-manager-final.ts
+  s_fcfd9882abbd31::t_00df84e0432d3b 2,12-13
+src/main/browser/browser-manager-popup-routing.test.ts
+  s_aa47a447e01641::t_64775f99cddddd 311-351
+src/main/window/main-window-webview-security.test.ts
+  s_aa47a447e01641::t_f355f47f7c91e6 213,225
+src/main/window/main-window-webview-security.ts
+  s_fcfd9882abbd31::t_90a0d3f83bdff0 64-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "199947c2ecd934719cff006f142d32a4506696f1",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_fcfd9882abbd31": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8a5af50-f269-4dd5-a274-2943a8358e46",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
