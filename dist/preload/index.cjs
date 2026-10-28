@@ -59,6 +59,7 @@ var browserGuestRegistrationApi = {
   openDevTools: (args) => import_electron.ipcRenderer.invoke("browser:openDevTools", args),
   reportViewportScrollState: (args) => import_electron.ipcRenderer.send("browser:reportViewportScrollState", args),
   setViewportOverride: (args) => import_electron.ipcRenderer.invoke("browser:setViewportOverride", args),
+  setAnnotationViewportBridge: (args) => import_electron.ipcRenderer.invoke("browser:setAnnotationViewportBridge", args),
   onGuestLoadFailed: (callback) => {
     const listener = (_event, data) => callback(data);
     import_electron.ipcRenderer.on("browser:guest-load-failed", listener);

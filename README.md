@@ -4,12 +4,12 @@
 
 > 開發中：版本仍是 `0.0.0`，沒有發佈到 npm。下表是目前分支已完成的功能。
 
-| 功能 | 狀態 |
-| -- | -- |
-| 瀏覽器窗格：分頁、網址列、上一頁／下一頁、縮放、DevTools | ✅（E-458） |
-| Profile 隔離、從 Chromium 系瀏覽器（Chrome、Edge、Brave、Arc 等）／Firefox／Safari 或 JSON 匯入 cookie、Viewport Size、設定面板 | ✅（E-459） |
-| 選取頁面元素、標註、在截圖上畫記，結果送給 agent | 進行中（E-460） |
-| 本機 agent 透過 MCP 操控瀏覽器 | 未開始（E-461） |
+| 功能                                                                                                                            | 狀態            |
+| ------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 瀏覽器窗格：分頁、網址列、上一頁／下一頁、縮放、DevTools                                                                        | ✅（E-458）     |
+| Profile 隔離、從 Chromium 系瀏覽器（Chrome、Edge、Brave、Arc 等）／Firefox／Safari 或 JSON 匯入 cookie、Viewport Size、設定面板 | ✅（E-459）     |
+| 選取頁面元素、標註、在截圖上畫記，結果送給 agent                                                                                | 進行中（E-460） |
+| 本機 agent 透過 MCP 操控瀏覽器                                                                                                  | 未開始（E-461） |
 
 ## 系統需求
 
@@ -38,13 +38,13 @@ pnpm add link:../orca-browser
 pnpm add react react-dom zustand lucide-react sonner
 ```
 
-| peer 依賴 | 版本 |
-| -- | -- |
-| `electron` | `>=43` |
-| `react`、`react-dom` | `>=19.2` |
-| `zustand` | `^5.0.0` |
-| `lucide-react` | `^0.577.0 \|\| ^1.0.0` |
-| `sonner` | `^2.0.7` |
+| peer 依賴            | 版本                   |
+| -------------------- | ---------------------- |
+| `electron`           | `>=43`                 |
+| `react`、`react-dom` | `>=19.2`               |
+| `zustand`            | `^5.0.0`               |
+| `lucide-react`       | `^0.577.0 \|\| ^1.0.0` |
+| `sonner`             | `^2.0.7`               |
 
 ## 接進 host
 
@@ -160,16 +160,18 @@ export function App() {
 zustand 要 dedupe，否則套件和 host 會各載入一份：
 
 ```ts
-resolve: { dedupe: ['react', 'react-dom', 'zustand'] }
+resolve: {
+  dedupe: ['react', 'react-dom', 'zustand']
+}
 ```
 
 ## 資料存放位置
 
-| 資料 | 位置 |
-| -- | -- |
-| Profile 清單、瀏覽器身分模式、外掛設定 | `<userDataDir>/orca-browser/` |
-| 各 Profile 的 cookie 與快取 | Electron 的 `Partitions/persist:orca-browser*` |
-| 瀏覽歷史 | renderer 的 localStorage，key 為 `orca-browser:history:v1` |
+| 資料                                   | 位置                                                       |
+| -------------------------------------- | ---------------------------------------------------------- |
+| Profile 清單、瀏覽器身分模式、外掛設定 | `<userDataDir>/orca-browser/`                              |
+| 各 Profile 的 cookie 與快取            | Electron 的 `Partitions/persist:orca-browser*`             |
+| 瀏覽歷史                               | renderer 的 localStorage，key 為 `orca-browser:history:v1` |
 
 ## 開發
 

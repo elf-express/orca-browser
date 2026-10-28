@@ -1,4 +1,9 @@
 import { webContents } from 'electron'
+import {
+  BROWSER_ANNOTATION_VIEWPORT_BRIDGE_WORLD_ID,
+  buildBrowserAnnotationViewportBridgeScript,
+  type BrowserAnnotationViewportBridgeOptions
+} from '../../shared/browser-annotation-viewport-bridge'
 import type { BrowserViewportOverride } from '../../shared/browser-workspace-types'
 import { BrowserManagerQueries } from './browser-manager-queries'
 import { sendGuestCdpCommand } from './guest-cdp-command'
@@ -56,6 +61,62 @@ export abstract class BrowserManagerViewport extends BrowserManagerQueries {
       if (this.viewportOpsByTabId.get(browserTabId) === next) {
         this.viewportOpsByTabId.delete(browserTabId)
       }
+    }
+  }
+
+  async setAnnotationViewportBridge(
+    browserTabId: string,
+    options: BrowserAnnotationViewportBridgeOptions,
+    resolveGuest: () => Electron.WebContents | null
+  ): Promise<boolean> {
+    const prev = this.annotationViewportBridgeOpsByTabId.get(browserTabId) ?? Promise.resolve()
+    const next = prev
+      .catch(() => {})
+      .then(() => {
+        // A newer document invalidation retires geometry still waiting in the queue.
+        if (this.annotationViewportBridgeOpsByTabId.get(browserTabId) !== next) {
+          return false
+        }
+        return this.doSetAnnotationViewportBridgeImpl(options, resolveGuest)
+      })
+    this.annotationViewportBridgeOpsByTabId.set(browserTabId, next)
+    try {
+      return await next
+    } finally {
+      if (this.annotationViewportBridgeOpsByTabId.get(browserTabId) === next) {
+        this.annotationViewportBridgeOpsByTabId.delete(browserTabId)
+      }
+    }
+  }
+
+  // Why the caller resolves the guest: the IPC layer owns the renderer authorization check.
+  // Why a resolver and not the guest itself: this op may have waited behind another one, and a
+  // cross-process navigation meanwhile swaps the tab's contents without destroying the old one —
+  // injecting into the guest the request named would bridge a page nobody is looking at.
+  // Why no tab id: with teardown gone this reaches only the guest the resolver hands back, and
+  // taking an id it cannot act on would invite the next reader to act on it.
+  protected async doSetAnnotationViewportBridgeImpl(
+    options: BrowserAnnotationViewportBridgeOptions,
+    resolveGuest: () => Electron.WebContents | null
+  ): Promise<boolean> {
+    // Why no teardown here: the resolver already unregisters a page whose guest died, and the only
+    // case it uniquely leaves is an ownership mismatch on a healthy page — where tearing down would
+    // cancel that page's in-flight downloads and grabs over a request that was merely misaddressed.
+    const guest = resolveGuest()
+    if (!guest || guest.isDestroyed()) {
+      return false
+    }
+
+    try {
+      // Why: run the scroll bridge in an isolated world so page scripts can't read the per-tab token or tamper with it.
+      await guest.executeJavaScriptInIsolatedWorld(
+        BROWSER_ANNOTATION_VIEWPORT_BRIDGE_WORLD_ID,
+        [{ code: buildBrowserAnnotationViewportBridgeScript(options) }],
+        false
+      )
+      return true
+    } catch {
+      return false
     }
   }
 

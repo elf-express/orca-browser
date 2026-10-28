@@ -1,4 +1,5 @@
 import { ipcRenderer } from 'electron'
+import type { BrowserSetAnnotationViewportBridgeArgs } from '../../shared/browser-annotation-viewport-bridge'
 import type { BrowserApi } from '../../shared/browser-api-types'
 import type { BrowserViewportOverride } from '../../shared/browser-workspace-types'
 
@@ -14,6 +15,8 @@ export const browserGuestRegistrationApi = {
     browserPageId: string
     override: BrowserViewportOverride | null
   }): Promise<boolean> => ipcRenderer.invoke('browser:setViewportOverride', args),
+  setAnnotationViewportBridge: (args: BrowserSetAnnotationViewportBridgeArgs): Promise<boolean> =>
+    ipcRenderer.invoke('browser:setAnnotationViewportBridge', args),
   onGuestLoadFailed: (callback) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

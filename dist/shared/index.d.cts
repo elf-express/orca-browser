@@ -12,22 +12,6 @@ type BrowserAgentPayload = {
     }>;
 };
 
-/** A mounted browser pane's find bar. Both ids are known to whoever renders the chrome. */
-type BrowserFindSource = {
-    browserPageId: string;
-    browserWorkspaceId: string;
-};
-/**
- * Who a forwarded Cmd/Ctrl+F is aimed at. Main knows the workspace only for guests registered
- * through the renderer; a client-hosted guest is registered by main's own host runtime, whose
- * wire command carries no workspace. Page ids are unique, so an unscoped target still resolves.
- */
-type BrowserFindTarget = {
-    browserPageId: string;
-    browserWorkspaceId?: string;
-};
-declare function asBrowserFindTarget(value: unknown): BrowserFindTarget | null;
-
 /** Page-level metadata captured at selection time. */
 type BrowserGrabPageContext = {
     sanitizedUrl: string;
@@ -214,6 +198,38 @@ declare function isAriaAttribute(name: string): boolean;
  * intent is to catch OAuth callback params and credential-like values.
  */
 declare const GRAB_SECRET_PATTERNS: string[];
+
+type BrowserAnnotationViewportBridgeMarker = {
+    id: string;
+    index: number;
+    rectPage: BrowserGrabRect;
+    rectViewport: BrowserGrabRect;
+    isFixed: boolean;
+};
+type BrowserSetAnnotationViewportBridgeArgs = {
+    browserPageId: string;
+    enabled: boolean;
+    emitViewport: boolean;
+    markers: BrowserAnnotationViewportBridgeMarker[];
+    selectionId?: string;
+    token: string;
+};
+
+/** A mounted browser pane's find bar. Both ids are known to whoever renders the chrome. */
+type BrowserFindSource = {
+    browserPageId: string;
+    browserWorkspaceId: string;
+};
+/**
+ * Who a forwarded Cmd/Ctrl+F is aimed at. Main knows the workspace only for guests registered
+ * through the renderer; a client-hosted guest is registered by main's own host runtime, whose
+ * wire command carries no workspace. Page ids are unique, so an unscoped target still resolves.
+ */
+type BrowserFindTarget = {
+    browserPageId: string;
+    browserWorkspaceId?: string;
+};
+declare function asBrowserFindTarget(value: unknown): BrowserFindTarget | null;
 
 type BrowserPermissionDeniedEvent = {
     browserPageId: string;
@@ -460,6 +476,7 @@ interface BrowserApi {
         browserPageId: string;
         override: BrowserViewportOverride | null;
     }): Promise<boolean>;
+    setAnnotationViewportBridge(args: BrowserSetAnnotationViewportBridgeArgs): Promise<boolean>;
     reportViewportScrollState(args: {
         browserPageId: string;
         state: BrowserViewportScrollState;
@@ -564,7 +581,7 @@ type BrowserPluginHandle = {
     dispose(): Promise<void>;
 };
 
-declare const BROWSER_INVOKE_CHANNELS: readonly ["browser:registerGuest", "browser:isGuestRegistered", "browser:repairGuestRegistration", "browser:unregisterGuest", "browser:activeTabChanged", "browser:openDevTools", "browser:openExternal", "browser:writeClipboardText", "browser:setViewportOverride"];
+declare const BROWSER_INVOKE_CHANNELS: readonly ["browser:registerGuest", "browser:isGuestRegistered", "browser:repairGuestRegistration", "browser:unregisterGuest", "browser:activeTabChanged", "browser:openDevTools", "browser:openExternal", "browser:writeClipboardText", "browser:setViewportOverride", "browser:setAnnotationViewportBridge"];
 declare const BROWSER_EVENT_CHANNELS: readonly ["browser:guest-load-failed", "browser:permission-denied", "browser:popup", "browser:context-menu-requested", "browser:context-menu-dismissed", "browser:open-link-in-orca-tab", "browser:focusAddressBar", "browser:reloadPage", "browser:hardReloadPage", "browser:findInPage", "browser:historyNavigate", "browser:zoomPage", "browser:scrollPage", "browser:systemResumed", "browser:grabModeToggle", "browser:grabActionShortcut"];
 declare const BROWSER_GRAB_INVOKE_CHANNELS: readonly ["browser:setGrabMode", "browser:awaitGrabSelection", "browser:cancelGrab", "browser:captureSelectionScreenshot", "browser:extractHoverPayload"];
 declare const BROWSER_PROFILE_INVOKE_CHANNELS: readonly ["browser:session:listProfiles", "browser:session:createProfile", "browser:session:deleteProfile", "browser:session:importCookies", "browser:session:resolvePartition", "browser:session:clearDefaultCookies", "browser:session:detectBrowsers", "browser:session:importFromBrowser", "browser:identity:get", "browser:identity:set", "browser:settings:get", "browser:settings:set"];

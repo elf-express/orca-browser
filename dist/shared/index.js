@@ -27,7 +27,8 @@ var BROWSER_INVOKE_CHANNELS = [
   "browser:openDevTools",
   "browser:openExternal",
   "browser:writeClipboardText",
-  "browser:setViewportOverride"
+  "browser:setViewportOverride",
+  "browser:setAnnotationViewportBridge"
 ];
 var BROWSER_EVENT_CHANNELS = [
   "browser:guest-load-failed",

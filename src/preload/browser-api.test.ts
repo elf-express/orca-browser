@@ -46,6 +46,7 @@ const API_METHODS = [
   'identity',
   'settings',
   'setViewportOverride',
+  'setAnnotationViewportBridge',
   'setGrabMode',
   'awaitGrabSelection',
   'cancelGrab',

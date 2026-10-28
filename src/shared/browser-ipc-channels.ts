@@ -7,7 +7,8 @@ export const BROWSER_INVOKE_CHANNELS = [
   'browser:openDevTools',
   'browser:openExternal',
   'browser:writeClipboardText',
-  'browser:setViewportOverride'
+  'browser:setViewportOverride',
+  'browser:setAnnotationViewportBridge'
 ] as const
 
 export const BROWSER_EVENT_CHANNELS = [

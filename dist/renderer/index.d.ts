@@ -17,12 +17,6 @@ type BrowserAgentPayload = {
     }>;
 };
 
-/** A mounted browser pane's find bar. Both ids are known to whoever renders the chrome. */
-type BrowserFindSource = {
-    browserPageId: string;
-    browserWorkspaceId: string;
-};
-
 /** Page-level metadata captured at selection time. */
 type BrowserGrabPageContext = {
     sanitizedUrl: string;
@@ -162,6 +156,28 @@ type BrowserExtractHoverResult = {
 } | {
     ok: false;
     reason: string;
+};
+
+type BrowserAnnotationViewportBridgeMarker = {
+    id: string;
+    index: number;
+    rectPage: BrowserGrabRect;
+    rectViewport: BrowserGrabRect;
+    isFixed: boolean;
+};
+type BrowserSetAnnotationViewportBridgeArgs = {
+    browserPageId: string;
+    enabled: boolean;
+    emitViewport: boolean;
+    markers: BrowserAnnotationViewportBridgeMarker[];
+    selectionId?: string;
+    token: string;
+};
+
+/** A mounted browser pane's find bar. Both ids are known to whoever renders the chrome. */
+type BrowserFindSource = {
+    browserPageId: string;
+    browserWorkspaceId: string;
 };
 
 type BrowserPermissionDeniedEvent = {
@@ -354,6 +370,7 @@ interface BrowserApi {
         browserPageId: string;
         override: BrowserViewportOverride | null;
     }): Promise<boolean>;
+    setAnnotationViewportBridge(args: BrowserSetAnnotationViewportBridgeArgs): Promise<boolean>;
     reportViewportScrollState(args: {
         browserPageId: string;
         state: BrowserViewportScrollState;

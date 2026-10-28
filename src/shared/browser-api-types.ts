@@ -1,3 +1,4 @@
+import type { BrowserSetAnnotationViewportBridgeArgs } from './browser-annotation-viewport-bridge'
 import type { BrowserFindSource } from './browser-find-source'
 import type {
   BrowserAwaitGrabSelectionArgs,
@@ -77,6 +78,7 @@ export interface BrowserApi {
     browserPageId: string
     override: BrowserViewportOverride | null
   }): Promise<boolean>
+  setAnnotationViewportBridge(args: BrowserSetAnnotationViewportBridgeArgs): Promise<boolean>
   reportViewportScrollState(args: {
     browserPageId: string
     state: BrowserViewportScrollState

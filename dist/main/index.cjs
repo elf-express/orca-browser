@@ -1186,8 +1186,271 @@ var GRAB_GUEST_FOUNDATION_SCRIPT = `(function() {
 
 `;
 
+// src/shared/browser-annotation-viewport-report.ts
+function isValidBrowserGrabRect(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const rect = value;
+  return typeof rect.x === "number" && Number.isFinite(rect.x) && typeof rect.y === "number" && Number.isFinite(rect.y) && typeof rect.width === "number" && Number.isFinite(rect.width) && rect.width >= 0 && typeof rect.height === "number" && Number.isFinite(rect.height) && rect.height >= 0;
+}
+
 // src/shared/browser-annotation-viewport-bridge.ts
+var BROWSER_ANNOTATION_VIEWPORT_BRIDGE_WORLD_ID = 1207;
+var BROWSER_ANNOTATION_VIEWPORT_MESSAGE_PREFIX = "__orca_annotation_viewport__:";
 var BROWSER_GRAB_SELECTED_ATTRIBUTE = "data-orca-grab-selected";
+function isValidBrowserAnnotationViewportBridgeToken(value) {
+  return typeof value === "string" && /^[a-zA-Z0-9_-]{16,80}$/.test(value);
+}
+function isValidBrowserAnnotationViewportBridgeMarkers(value) {
+  return Array.isArray(value) && value.length <= 50 && value.every((marker) => {
+    if (!marker || typeof marker !== "object") {
+      return false;
+    }
+    const candidate = marker;
+    return typeof candidate.id === "string" && candidate.id.length > 0 && candidate.id.length <= 100 && Number.isInteger(candidate.index) && candidate.index >= 0 && candidate.index < 100 && typeof candidate.isFixed === "boolean" && isValidBrowserGrabRect(candidate.rectPage) && isValidBrowserGrabRect(candidate.rectViewport);
+  });
+}
+function buildBrowserAnnotationViewportBridgeScript({
+  emitViewport,
+  enabled,
+  markers,
+  selectionId,
+  token
+}) {
+  return `(() => {
+  'use strict';
+
+  const enabled = ${JSON.stringify(enabled)};
+  const emitViewportMessages = ${JSON.stringify(emitViewport)};
+  const markers = ${JSON.stringify(markers)};
+  const selectionId = ${JSON.stringify(selectionId ?? null)};
+  const token = ${JSON.stringify(token)};
+  const prefix = ${JSON.stringify(BROWSER_ANNOTATION_VIEWPORT_MESSAGE_PREFIX)};
+  const stateKey = '__orcaBrowserAnnotationViewportBridge';
+  const hostAttribute = 'data-orca-browser-annotation-overlay';
+  const selectedAttribute = ${JSON.stringify(BROWSER_GRAB_SELECTED_ATTRIBUTE)};
+  const markerSize = 24;
+
+  const removeOverlay = (state) => {
+    if (state && state.host && state.host.parentNode) {
+      state.host.parentNode.removeChild(state.host);
+    }
+  };
+
+  const cleanup = (state) => {
+    if (!state) return;
+    if (state.raf) {
+      cancelAnimationFrame(state.raf);
+    }
+    if (state.requestUpdate) {
+      window.removeEventListener('scroll', state.requestUpdate, true);
+      document.removeEventListener('scroll', state.requestUpdate, true);
+      window.removeEventListener('resize', state.requestUpdate, true);
+    }
+    if (state.onBeforeUnload) {
+      window.removeEventListener('beforeunload', state.onBeforeUnload);
+    }
+    if (state.targetObserver) {
+      state.targetObserver.disconnect();
+    }
+    removeOverlay(state);
+  };
+
+  const existing = globalThis[stateKey];
+  if (!enabled) {
+    cleanup(existing);
+    delete globalThis[stateKey];
+    return true;
+  }
+
+  const toNumber = (value, fallback) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+  const readViewport = () => ({
+    scrollX: toNumber(window.scrollX, toNumber(window.pageXOffset, 0)),
+    scrollY: toNumber(window.scrollY, toNumber(window.pageYOffset, 0))
+  });
+
+  // Why: the card must follow the element itself, not a click-time copy; the grab overlay
+  // marks it in the shared DOM because this world cannot see the page's objects.
+  const trackTarget = (state) => {
+    const current = state.target;
+    let next = null;
+    if (emitViewportMessages && selectionId) {
+      for (const candidate of document.querySelectorAll('[' + selectedAttribute + ']')) {
+        if (candidate.getAttribute(selectedAttribute) !== selectionId) continue;
+        if (next) {
+          next = null;
+          break;
+        }
+        next = candidate;
+      }
+    }
+    if (next !== current) {
+      state.target = next;
+      if (state.targetObserver) {
+        state.targetObserver.disconnect();
+        if (next) {
+          state.targetObserver.observe(next, { box: 'border-box' });
+          if (next !== document.documentElement) {
+            state.targetObserver.observe(document.documentElement);
+          }
+        }
+      }
+    }
+    return next;
+  };
+
+  const readTarget = (target) => {
+    if (!target) return null;
+    const rect = target.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  };
+
+  const emitViewport = (state) => {
+    const target = trackTarget(state);
+    if (!emitViewportMessages) return;
+    try {
+      const report = readViewport();
+      report.viewportWidth = toNumber(window.innerWidth, 0);
+      report.target = readTarget(target);
+      console.debug(prefix + token + ':' + JSON.stringify(report));
+    } catch (e) {}
+  };
+
+  const getRoot = () => document.body || document.documentElement;
+
+  const ensureOverlay = (state) => {
+    if (state.host && state.shadowRoot) {
+      return state.shadowRoot;
+    }
+    const root = getRoot();
+    if (!root) return null;
+    const host = document.createElement('div');
+    host.setAttribute(hostAttribute, '');
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;contain:layout style paint;overflow:hidden;';
+    const shadowRoot = host.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent = '.marker{box-sizing:border-box;position:absolute;left:0;top:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:9999px;border:1px solid rgba(255,255,255,0.95);background:#2563eb;color:#fff;font:600 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 10px 24px rgba(0,0,0,.18);will-change:transform;pointer-events:none;user-select:none;}';
+    shadowRoot.appendChild(style);
+    root.appendChild(host);
+    state.host = host;
+    state.shadowRoot = shadowRoot;
+    return shadowRoot;
+  };
+
+  const updateMarkers = (state, nextMarkers) => {
+    state.markers = Array.isArray(nextMarkers) ? nextMarkers : [];
+    if (state.markers.length === 0) {
+      removeOverlay(state);
+      state.host = null;
+      state.shadowRoot = null;
+      state.markerElements = new Map();
+      return;
+    }
+    const shadowRoot = ensureOverlay(state);
+    if (!shadowRoot) return;
+    const liveIds = new Set();
+    state.markers.forEach((marker) => {
+      liveIds.add(marker.id);
+      let element = state.markerElements.get(marker.id);
+      if (!element) {
+        element = document.createElement('span');
+        element.className = 'marker';
+        shadowRoot.appendChild(element);
+        state.markerElements.set(marker.id, element);
+      }
+      element.textContent = String(marker.index + 1);
+    });
+    state.markerElements.forEach((element, id) => {
+      if (!liveIds.has(id)) {
+        element.remove();
+        state.markerElements.delete(id);
+      }
+    });
+  };
+
+  const positionMarkers = (state) => {
+    if (!state.markers || state.markers.length === 0) return;
+    const viewport = readViewport();
+    const viewportWidth = toNumber(window.innerWidth, 0);
+    const viewportHeight = toNumber(window.innerHeight, 0);
+    state.markers.forEach((marker) => {
+      const element = state.markerElements.get(marker.id);
+      if (!element) return;
+      const sourceRect = marker.isFixed ? marker.rectViewport : marker.rectPage;
+      const x = marker.isFixed ? sourceRect.x : sourceRect.x - viewport.scrollX;
+      const y = marker.isFixed ? sourceRect.y : sourceRect.y - viewport.scrollY;
+      const width = toNumber(sourceRect.width, 0);
+      const height = toNumber(sourceRect.height, 0);
+      const visible =
+        x + width >= 0 &&
+        y + height >= 0 &&
+        x <= viewportWidth &&
+        y <= viewportHeight;
+      if (!visible) {
+        element.style.display = 'none';
+        return;
+      }
+      element.style.display = 'flex';
+      element.style.transform =
+        'translate3d(' +
+        (x + width / 2 - markerSize / 2) +
+        'px,' +
+        (y + height - markerSize / 2) +
+        'px,0)';
+    });
+  };
+
+  if (existing && existing.requestUpdate) {
+    existing.emitViewport = emitViewport;
+    updateMarkers(existing, markers);
+    existing.requestUpdate();
+    return true;
+  }
+
+  const state = {
+    raf: 0,
+    emitViewport,
+    host: null,
+    markerElements: new Map(),
+    markers: [],
+    shadowRoot: null,
+    requestUpdate: null,
+    onBeforeUnload: null,
+    target: null,
+    targetObserver: null
+  };
+
+  state.requestUpdate = () => {
+    if (state.raf) return;
+    state.raf = requestAnimationFrame(() => {
+      state.raf = 0;
+      positionMarkers(state);
+      state.emitViewport(state);
+    });
+  };
+  if (typeof ResizeObserver === 'function') {
+    state.targetObserver = new ResizeObserver(state.requestUpdate);
+  }
+
+  // Navigation can hold IPC cleanup until the next document finishes loading.
+  state.onBeforeUnload = () => {
+    cleanup(state);
+    delete globalThis[stateKey];
+  };
+
+  updateMarkers(state, markers);
+  window.addEventListener('scroll', state.requestUpdate, true);
+  document.addEventListener('scroll', state.requestUpdate, true);
+  window.addEventListener('resize', state.requestUpdate, true);
+  window.addEventListener('beforeunload', state.onBeforeUnload);
+  globalThis[stateKey] = state;
+  state.requestUpdate();
+  return true;
+})();`;
+}
 
 // src/main/browser/grab-guest-overlay-script.ts
 var GRAB_GUEST_OVERLAY_SCRIPT = `  var host = document.createElement('div');
@@ -3740,6 +4003,46 @@ var BrowserManagerViewport = class extends BrowserManagerQueries {
       }
     }
   }
+  async setAnnotationViewportBridge(browserTabId, options, resolveGuest) {
+    const prev = this.annotationViewportBridgeOpsByTabId.get(browserTabId) ?? Promise.resolve();
+    const next = prev.catch(() => {
+    }).then(() => {
+      if (this.annotationViewportBridgeOpsByTabId.get(browserTabId) !== next) {
+        return false;
+      }
+      return this.doSetAnnotationViewportBridgeImpl(options, resolveGuest);
+    });
+    this.annotationViewportBridgeOpsByTabId.set(browserTabId, next);
+    try {
+      return await next;
+    } finally {
+      if (this.annotationViewportBridgeOpsByTabId.get(browserTabId) === next) {
+        this.annotationViewportBridgeOpsByTabId.delete(browserTabId);
+      }
+    }
+  }
+  // Why the caller resolves the guest: the IPC layer owns the renderer authorization check.
+  // Why a resolver and not the guest itself: this op may have waited behind another one, and a
+  // cross-process navigation meanwhile swaps the tab's contents without destroying the old one —
+  // injecting into the guest the request named would bridge a page nobody is looking at.
+  // Why no tab id: with teardown gone this reaches only the guest the resolver hands back, and
+  // taking an id it cannot act on would invite the next reader to act on it.
+  async doSetAnnotationViewportBridgeImpl(options, resolveGuest) {
+    const guest = resolveGuest();
+    if (!guest || guest.isDestroyed()) {
+      return false;
+    }
+    try {
+      await guest.executeJavaScriptInIsolatedWorld(
+        BROWSER_ANNOTATION_VIEWPORT_BRIDGE_WORLD_ID,
+        [{ code: buildBrowserAnnotationViewportBridgeScript(options) }],
+        false
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   async doSetViewportOverrideImpl(browserTabId, override, expectedWebContentsId) {
     const webContentsId = this.webContentsIdByTabId.get(browserTabId);
     if (!webContentsId || webContentsId !== expectedWebContentsId) {
@@ -4104,6 +4407,7 @@ function registerBrowserGuestViewHandlers() {
   import_electron10.ipcMain.removeHandler("browser:openDevTools");
   import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
   import_electron10.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
+  import_electron10.ipcMain.removeHandler("browser:setAnnotationViewportBridge");
   import_electron10.ipcMain.handle("browser:openDevTools", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
@@ -4153,10 +4457,37 @@ function registerBrowserGuestViewHandlers() {
       });
     }
   );
+  import_electron10.ipcMain.handle(
+    "browser:setAnnotationViewportBridge",
+    (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return false;
+      }
+      if (typeof args?.browserPageId !== "string" || typeof args.enabled !== "boolean" || typeof args.emitViewport !== "boolean" || !isValidBrowserAnnotationViewportBridgeMarkers(args.markers) || args.selectionId !== void 0 && (typeof args.selectionId !== "string" || args.selectionId.length > 80) || !isValidBrowserAnnotationViewportBridgeToken(args.token)) {
+        return false;
+      }
+      const resolveGuest = () => browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!resolveGuest()) {
+        return false;
+      }
+      return browserManager.setAnnotationViewportBridge(
+        args.browserPageId,
+        {
+          enabled: args.enabled,
+          emitViewport: args.emitViewport,
+          markers: args.markers,
+          selectionId: args.selectionId,
+          token: args.token
+        },
+        resolveGuest
+      );
+    }
+  );
   return () => {
     import_electron10.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
     import_electron10.ipcMain.removeHandler("browser:openDevTools");
     import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
+    import_electron10.ipcMain.removeHandler("browser:setAnnotationViewportBridge");
   };
 }
 

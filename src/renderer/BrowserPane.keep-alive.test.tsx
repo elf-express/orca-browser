@@ -24,6 +24,7 @@ function createBrowserApiStub(): BrowserApi {
     notifyActiveTabChanged: vi.fn(async () => true),
     openDevTools: vi.fn(async () => true),
     setViewportOverride: vi.fn(async () => true),
+    setAnnotationViewportBridge: vi.fn(async () => true),
     reportViewportScrollState: vi.fn(),
     openExternal: vi.fn(async () => true),
     writeClipboardText: vi.fn(async () => {}),
