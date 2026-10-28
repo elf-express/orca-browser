@@ -17,6 +17,17 @@ export type BrowserPage = {
   createdAt: number
 }
 
+// Why: BrowserPage persists the active viewport preset so CDP emulation can be
+// reapplied on reload/navigation without the user re-picking from the toolbar.
+export type BrowserViewportPresetId =
+  | 'mobile-s'
+  | 'mobile-m'
+  | 'mobile-l'
+  | 'tablet'
+  | 'laptop'
+  | 'laptop-l'
+  | 'desktop'
+
 export type BrowserViewportOverride = {
   width: number
   height: number

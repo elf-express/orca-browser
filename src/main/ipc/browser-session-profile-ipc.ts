@@ -14,6 +14,7 @@ import type {
   BrowserSessionProfile,
   BrowserSessionProfileScope
 } from '../../shared/browser-workspace-types'
+import type { DetectedBrowserPickerEntry } from '../../shared/browser-api-types'
 import {
   getBrowserIdentityModeStatus,
   setBrowserIdentityMode
@@ -195,13 +196,6 @@ export function registerBrowserSessionProfileHandlers(): void {
       return result
     }
   )
-}
-
-type DetectedBrowserPickerEntry = {
-  family: string
-  label: string
-  profiles: { name: string; directory: string }[]
-  selectedProfile: string
 }
 
 // Why: the renderer only needs family/label/profiles for the UI picker. Strip cookiesPath,

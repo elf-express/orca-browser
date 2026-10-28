@@ -59,6 +59,13 @@ import {
   resetBrowserManagerMocks,
   resetBrowserManagerState
 } from './browser-manager-test-harness'
+import {
+  createViewportGuestFactory,
+  flushViewportOps,
+  GUEST_CLEAN_UA
+} from './browser-manager-viewport-test-fixtures'
+
+const makeViewportGuest = createViewportGuestFactory(browserMocks)
 
 const {
   guestOffMock,
@@ -431,5 +438,58 @@ describe('browserManager', () => {
       'Emulation.setUserAgentOverride',
       expect.anything()
     )
+  })
+
+  // Why: a direct navigation onto the auth host writes Firefox into the WebContents UA, and a redirect
+  // off it cannot rewrite that layer without cancelling the navigation. Clearing the CDP override
+  // there would expose that stale Firefox UA on an ordinary host, so the override must carry the
+  // process identity until the next direct navigation can restore the WebContents UA and clear it.
+  it('never clears the override onto a stale Firefox WebContents UA and heals it on the next navigation', async () => {
+    browserMocks.processUserAgent = GUEST_CLEAN_UA
+    const { guest, debuggerSendCommand, presentedUserAgent, standingUserAgentOverride } =
+      makeViewportGuest(9001)
+    webContentsFromIdMock.mockReturnValue(guest)
+    browserManager.attachGuestPolicies(guest as never)
+    browserManager.registerGuest({
+      browserPageId: 'tab-auth-then-preset',
+      scopeId: 'scope-1',
+      webContentsId: guest.id as number,
+      rendererWebContentsId
+    })
+    await browserManager.setViewportOverride('tab-auth-then-preset', {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false
+    })
+    await flushViewportOps()
+
+    const didStartNavigation = guestOnMock.mock.calls.find(
+      ([event]) => event === 'did-start-navigation'
+    )?.[1] as (event: unknown, url: string, isInPlace: boolean, isMainFrame: boolean) => void
+    const willRedirect = guestOnMock.mock.calls.find(
+      ([event]) => event === 'will-redirect'
+    )?.[1] as (event: unknown, url: string, isInPlace: boolean, isMainFrame: boolean) => void
+
+    didStartNavigation(null, 'https://accounts.google.com/v3/signin/identifier', false, true)
+    await flushViewportOps()
+    expect((guest.getUserAgent as () => string)()).toBe(googleAuthUserAgent())
+
+    debuggerSendCommand.mockClear()
+    willRedirect({ preventDefault: vi.fn() }, 'https://myaccount.google.com/', false, true)
+    await flushViewportOps()
+    expect(debuggerSendCommand).toHaveBeenLastCalledWith('Emulation.setUserAgentOverride', {
+      userAgent: GUEST_CLEAN_UA
+    })
+    expect(presentedUserAgent()).toBe(GUEST_CLEAN_UA)
+
+    debuggerSendCommand.mockClear()
+    didStartNavigation(null, 'https://github.com/', false, true)
+    await flushViewportOps()
+    expect(debuggerSendCommand).toHaveBeenLastCalledWith('Emulation.setUserAgentOverride', {
+      userAgent: ''
+    })
+    expect(standingUserAgentOverride()).toBeNull()
+    expect(presentedUserAgent()).toBe(GUEST_CLEAN_UA)
   })
 })

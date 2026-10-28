@@ -1,5 +1,6 @@
 import { ipcRenderer } from 'electron'
 import type { BrowserApi } from '../../shared/browser-api-types'
+import type { BrowserViewportOverride } from '../../shared/browser-workspace-types'
 
 export const browserGuestRegistrationApi = {
   registerGuest: (args) => ipcRenderer.invoke('browser:registerGuest', args),
@@ -7,6 +8,10 @@ export const browserGuestRegistrationApi = {
   repairGuestRegistration: (args) => ipcRenderer.invoke('browser:repairGuestRegistration', args),
   unregisterGuest: (args) => ipcRenderer.invoke('browser:unregisterGuest', args),
   openDevTools: (args) => ipcRenderer.invoke('browser:openDevTools', args),
+  setViewportOverride: (args: {
+    browserPageId: string
+    override: BrowserViewportOverride | null
+  }): Promise<boolean> => ipcRenderer.invoke('browser:setViewportOverride', args),
   onGuestLoadFailed: (callback) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

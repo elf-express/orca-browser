@@ -33,7 +33,11 @@ const API_METHODS = [
   'onFindInPage',
   'onHistoryNavigate',
   'onZoomPage',
-  'onSystemResumed'
+  'onSystemResumed',
+  'session',
+  'identity',
+  'settings',
+  'setViewportOverride'
 ]
 
 beforeEach(() => {

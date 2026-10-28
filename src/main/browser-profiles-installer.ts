@@ -7,6 +7,7 @@ import {
 import { registerAllowedBrowserPartitionSource } from './browser/browser-partition-allowlist'
 import { browserSessionRegistry } from './browser/browser-session-registry'
 import { initializeBrowserSessionsForApp } from './browser/browser-session-startup'
+import { registerBrowserPluginSettingsHandlers } from './ipc/browser-plugin-settings-ipc'
 import { registerBrowserSessionProfileHandlers } from './ipc/browser-session-profile-ipc'
 import type { BrowserPluginInstaller } from './plugin-installers'
 import { ipcMain } from 'electron'
@@ -27,6 +28,7 @@ export const installBrowserProfiles: BrowserPluginInstaller = (options) => {
     browserSessionRegistry.isAllowedPartition(partition)
   )
   registerBrowserSessionProfileHandlers()
+  registerBrowserPluginSettingsHandlers(userDataDir)
 
   return () => {
     for (const channel of BROWSER_PROFILE_INVOKE_CHANNELS) {

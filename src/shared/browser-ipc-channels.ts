@@ -6,7 +6,8 @@ export const BROWSER_INVOKE_CHANNELS = [
   'browser:activeTabChanged',
   'browser:openDevTools',
   'browser:openExternal',
-  'browser:writeClipboardText'
+  'browser:writeClipboardText',
+  'browser:setViewportOverride'
 ] as const
 
 export const BROWSER_EVENT_CHANNELS = [
@@ -35,5 +36,7 @@ export const BROWSER_PROFILE_INVOKE_CHANNELS = [
   'browser:session:detectBrowsers',
   'browser:session:importFromBrowser',
   'browser:identity:get',
-  'browser:identity:set'
+  'browser:identity:set',
+  'browser:settings:get',
+  'browser:settings:set'
 ] as const

@@ -26,7 +26,8 @@ var BROWSER_INVOKE_CHANNELS = [
   "browser:activeTabChanged",
   "browser:openDevTools",
   "browser:openExternal",
-  "browser:writeClipboardText"
+  "browser:writeClipboardText",
+  "browser:setViewportOverride"
 ];
 var BROWSER_EVENT_CHANNELS = [
   "browser:guest-load-failed",
@@ -53,7 +54,9 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:session:detectBrowsers",
   "browser:session:importFromBrowser",
   "browser:identity:get",
-  "browser:identity:set"
+  "browser:identity:set",
+  "browser:settings:get",
+  "browser:settings:set"
 ];
 
 // src/shared/browser-keybindings.ts
@@ -544,6 +547,97 @@ function normalizeBrowserHistoryUrl(url) {
     return redactKagiSessionToken(url).toLowerCase();
   }
 }
+
+// src/shared/browser-plugin-settings.ts
+var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
+  searchEngine: DEFAULT_SEARCH_ENGINE,
+  importHintHidden: false
+};
+var SEARCH_ENGINES = ["google", "duckduckgo", "bing", "kagi"];
+function normalizeBrowserPluginSettings(raw) {
+  if (typeof raw !== "object" || raw === null) {
+    return { ...DEFAULT_BROWSER_PLUGIN_SETTINGS };
+  }
+  const { searchEngine, importHintHidden } = raw;
+  return {
+    searchEngine: SEARCH_ENGINES.includes(searchEngine) ? searchEngine : DEFAULT_SEARCH_ENGINE,
+    importHintHidden: typeof importHintHidden === "boolean" ? importHintHidden : false
+  };
+}
+
+// src/shared/browser-viewport-presets.ts
+var BROWSER_VIEWPORT_PRESETS = [
+  {
+    id: "mobile-s",
+    label: "Mobile S \u2014 320 \xD7 568",
+    width: 320,
+    height: 568,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "mobile-m",
+    label: "Mobile M \u2014 375 \xD7 667",
+    width: 375,
+    height: 667,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "mobile-l",
+    label: "Mobile L \u2014 425 \xD7 812",
+    width: 425,
+    height: 812,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "tablet",
+    label: "Tablet \u2014 768 \xD7 1024",
+    width: 768,
+    height: 1024,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "laptop",
+    label: "Laptop \u2014 1024 \xD7 768",
+    width: 1024,
+    height: 768,
+    deviceScaleFactor: 1,
+    mobile: false
+  },
+  {
+    id: "laptop-l",
+    label: "Laptop L \u2014 1440 \xD7 900",
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false
+  },
+  {
+    id: "desktop",
+    label: "Desktop \u2014 1920 \xD7 1080",
+    width: 1920,
+    height: 1080,
+    deviceScaleFactor: 1,
+    mobile: false
+  }
+];
+function getBrowserViewportPreset(id) {
+  if (!id) {
+    return null;
+  }
+  return BROWSER_VIEWPORT_PRESETS.find((p) => p.id === id) ?? null;
+}
+function browserViewportPresetToOverride(preset) {
+  return {
+    width: preset.width,
+    height: preset.height,
+    deviceScaleFactor: preset.deviceScaleFactor,
+    mobile: preset.mobile
+  };
+}
 export {
   BROWSER_API_GLOBAL_KEY,
   BROWSER_EVENT_CHANNELS,
@@ -554,7 +648,9 @@ export {
   BROWSER_PAGE_ZOOM_MIN,
   BROWSER_PAGE_ZOOM_STEP,
   BROWSER_PROFILE_INVOKE_CHANNELS,
+  BROWSER_VIEWPORT_PRESETS,
   DEFAULT_BROWSER_PAGE_ZOOM_LEVEL,
+  DEFAULT_BROWSER_PLUGIN_SETTINGS,
   DEFAULT_MCP_PORT,
   DEFAULT_SEARCH_ENGINE,
   GRAB_BUDGET,
@@ -569,9 +665,11 @@ export {
   SEARCH_ENGINE_LABELS,
   asBrowserFindTarget,
   browserPageZoomLevelToPercent,
+  browserViewportPresetToOverride,
   buildSearchUrl,
   classifySchemeLessLocalDevAddress,
   formatBrowserShortcutLabel,
+  getBrowserViewportPreset,
   isAbsoluteFilesystemPathInput,
   isAriaAttribute,
   isEligibleLocalCertificateHost,
@@ -582,6 +680,7 @@ export {
   normalizeBrowserHistoryUrl,
   normalizeBrowserNavigationUrl,
   normalizeBrowserPageZoomLevel,
+  normalizeBrowserPluginSettings,
   normalizeExternalBrowserUrl,
   normalizeKagiSessionLink,
   redactKagiSessionToken,

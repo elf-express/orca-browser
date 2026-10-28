@@ -1780,7 +1780,36 @@ var BrowserManagerQueries = class extends BrowserManagerRegistration {
   }
 };
 
+// src/main/browser/browser-error.ts
+var BrowserError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+  code;
+};
+
+// src/main/browser/guest-cdp-command.ts
+var VIEW_RESIZING_CDP_METHODS = /* @__PURE__ */ new Set([
+  "Emulation.setDeviceMetricsOverride",
+  "Emulation.setVisibleSize"
+]);
+function sendGuestCdpCommand(guest, method, params, sessionId) {
+  if (VIEW_RESIZING_CDP_METHODS.has(method) && (guest.isDestroyed() || guest.isCrashed())) {
+    return Promise.reject(
+      new BrowserError(
+        "browser_cdp_error",
+        "The page crashed; its viewport can be changed again once it reloads."
+      )
+    );
+  }
+  return Promise.resolve(
+    sessionId === void 0 ? guest.debugger.sendCommand(method, params) : guest.debugger.sendCommand(method, params, sessionId)
+  );
+}
+
 // src/main/browser/browser-manager-viewport.ts
+var TOUCH_EMULATION_DISABLED = { enabled: false };
 var BrowserManagerViewport = class extends BrowserManagerQueries {
   // Why: guests are isolated from the plugin's preload bridge, so main owns the devtools escape hatch after a tab→guest lookup.
   async openDevTools(browserTabId) {
@@ -1795,6 +1824,95 @@ var BrowserManagerViewport = class extends BrowserManagerQueries {
     }
     guest.openDevTools({ mode: "detach" });
     return true;
+  }
+  // Why: emulate viewport via CDP; never detach the debugger here or the agent bridge's per-guest state is cleared.
+  async setViewportOverride(browserTabId, override) {
+    const expectedWebContentsId = this.webContentsIdByTabId.get(browserTabId);
+    if (expectedWebContentsId !== void 0) {
+      const previous = this.viewportPresetByTabId.get(browserTabId);
+      this.viewportPresetByTabId.set(browserTabId, {
+        guestWebContentsId: expectedWebContentsId,
+        requested: override,
+        applied: previous?.guestWebContentsId === expectedWebContentsId ? previous.applied : null
+      });
+    }
+    this.viewportScrollStateByTabId.delete(browserTabId);
+    const prev = this.viewportOpsByTabId.get(browserTabId) ?? Promise.resolve();
+    const next = prev.catch(() => {
+    }).then(() => this.doSetViewportOverrideImpl(browserTabId, override, expectedWebContentsId));
+    this.viewportOpsByTabId.set(browserTabId, next);
+    try {
+      return await next;
+    } finally {
+      if (this.viewportOpsByTabId.get(browserTabId) === next) {
+        this.viewportOpsByTabId.delete(browserTabId);
+      }
+    }
+  }
+  async doSetViewportOverrideImpl(browserTabId, override, expectedWebContentsId) {
+    const webContentsId = this.webContentsIdByTabId.get(browserTabId);
+    if (!webContentsId || webContentsId !== expectedWebContentsId) {
+      return false;
+    }
+    const guest = import_electron7.webContents.fromId(webContentsId);
+    if (!guest || guest.isDestroyed()) {
+      this.unregisterGuest(browserTabId);
+      return false;
+    }
+    try {
+      if (!guest.debugger.isAttached()) {
+        guest.debugger.attach("1.3");
+      }
+    } catch (err) {
+      console.warn("[browser-manager] setViewportOverride: failed to attach debugger", {
+        browserTabId,
+        webContentsId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return false;
+    }
+    const dbg = guest.debugger;
+    const metricsApplied = await this.runViewportEmulationStep(
+      browserTabId,
+      "device metrics",
+      () => override ? sendGuestCdpCommand(guest, "Emulation.setDeviceMetricsOverride", {
+        width: override.width,
+        height: override.height,
+        deviceScaleFactor: override.deviceScaleFactor,
+        mobile: override.mobile
+      }) : dbg.sendCommand("Emulation.clearDeviceMetricsOverride", {})
+    );
+    if (metricsApplied) {
+      this.recordAppliedViewportOverride(browserTabId, webContentsId, override);
+    }
+    const touchApplied = await this.runViewportEmulationStep(
+      browserTabId,
+      "touch emulation",
+      () => dbg.sendCommand(
+        "Emulation.setTouchEmulationEnabled",
+        override?.mobile ? { enabled: true, maxTouchPoints: 5 } : TOUCH_EMULATION_DISABLED
+      )
+    );
+    if (this.webContentsIdByTabId.get(browserTabId) !== webContentsId) {
+      return false;
+    }
+    const identityApplied = await this.runViewportEmulationStep(
+      browserTabId,
+      "identity",
+      () => this.retargetTabIdentity(guest, this.resolveTabNavigationUrl(guest))
+    );
+    return metricsApplied && touchApplied && identityApplied && this.webContentsIdByTabId.get(browserTabId) === webContentsId;
+  }
+  async runViewportEmulationStep(browserTabId, step, send) {
+    try {
+      return await send() !== false;
+    } catch (error) {
+      console.warn(`[browser-manager] setViewportOverride: ${step} failed`, {
+        browserTabId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return false;
+    }
   }
 };
 
@@ -2029,14 +2147,41 @@ function isTrustedBrowserRenderer(sender) {
 // src/main/ipc/browser-guest-view-ipc.ts
 function registerBrowserGuestViewHandlers() {
   import_electron10.ipcMain.removeHandler("browser:openDevTools");
+  import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
   import_electron10.ipcMain.handle("browser:openDevTools", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
     return browserManager.openDevTools(args.browserPageId);
   });
+  import_electron10.ipcMain.handle(
+    "browser:setViewportOverride",
+    (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return false;
+      }
+      if (args.override !== null) {
+        const { width, height, deviceScaleFactor, mobile } = args.override;
+        const isFinitePositive = (n) => typeof n === "number" && Number.isFinite(n) && n > 0;
+        if (!isFinitePositive(width) || width < 1 || width > 1e4) {
+          return false;
+        }
+        if (!isFinitePositive(height) || height < 1 || height > 1e4) {
+          return false;
+        }
+        if (!isFinitePositive(deviceScaleFactor) || deviceScaleFactor < 0.1 || deviceScaleFactor > 5) {
+          return false;
+        }
+        if (typeof mobile !== "boolean") {
+          return false;
+        }
+      }
+      return browserManager.setViewportOverride(args.browserPageId, args.override);
+    }
+  );
   return () => {
     import_electron10.ipcMain.removeHandler("browser:openDevTools");
+    import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
   };
 }
 
@@ -2303,7 +2448,7 @@ var installBrowserCore = (options) => {
 };
 
 // src/main/browser-profiles-installer.ts
-var import_node_path16 = require("path");
+var import_node_path17 = require("path");
 
 // src/shared/browser-ipc-channels.ts
 var BROWSER_PROFILE_INVOKE_CHANNELS = [
@@ -2316,7 +2461,9 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:session:detectBrowsers",
   "browser:session:importFromBrowser",
   "browser:identity:get",
-  "browser:identity:set"
+  "browser:identity:set",
+  "browser:settings:get",
+  "browser:settings:set"
 ];
 
 // src/main/browser/browser-identity-mode-store.ts
@@ -3774,16 +3921,88 @@ function initializeBrowserSessionsForApp(opts) {
   initialized = true;
 }
 
-// src/main/ipc/browser-session-profile-ipc.ts
-var import_electron24 = require("electron");
+// src/main/ipc/browser-plugin-settings-ipc.ts
+var import_electron19 = require("electron");
 
-// src/main/browser/browser-cookie-detection.ts
-var import_node_fs9 = require("fs");
-var import_node_path9 = require("path");
+// src/shared/browser-plugin-settings.ts
+var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
+  searchEngine: DEFAULT_SEARCH_ENGINE,
+  importHintHidden: false
+};
+var SEARCH_ENGINES = ["google", "duckduckgo", "bing", "kagi"];
+function normalizeBrowserPluginSettings(raw) {
+  if (typeof raw !== "object" || raw === null) {
+    return { ...DEFAULT_BROWSER_PLUGIN_SETTINGS };
+  }
+  const { searchEngine, importHintHidden } = raw;
+  return {
+    searchEngine: SEARCH_ENGINES.includes(searchEngine) ? searchEngine : DEFAULT_SEARCH_ENGINE,
+    importHintHidden: typeof importHintHidden === "boolean" ? importHintHidden : false
+  };
+}
 
-// src/main/browser/browser-cookie-detection-types.ts
+// src/main/browser/browser-plugin-settings-store.ts
 var import_node_fs8 = require("fs");
 var import_node_path8 = require("path");
+function settingsFilePath(userDataDir) {
+  return (0, import_node_path8.join)(userDataDir, "orca-browser", "settings.json");
+}
+function loadBrowserPluginSettings(userDataDir) {
+  try {
+    return normalizeBrowserPluginSettings(
+      JSON.parse((0, import_node_fs8.readFileSync)(settingsFilePath(userDataDir), "utf8"))
+    );
+  } catch {
+    return normalizeBrowserPluginSettings(null);
+  }
+}
+function saveBrowserPluginSettings(userDataDir, patch) {
+  const next = normalizeBrowserPluginSettings({
+    ...loadBrowserPluginSettings(userDataDir),
+    ...patch
+  });
+  const filePath = settingsFilePath(userDataDir);
+  (0, import_node_fs8.mkdirSync)((0, import_node_path8.join)(userDataDir, "orca-browser"), { recursive: true });
+  writeFileDurableSync(
+    durableWriteTempPath(filePath),
+    filePath,
+    `${JSON.stringify(next, null, 2)}
+`
+  );
+  return next;
+}
+
+// src/main/ipc/browser-plugin-settings-ipc.ts
+function registerBrowserPluginSettingsHandlers(userDataDir) {
+  import_electron19.ipcMain.removeHandler("browser:settings:get");
+  import_electron19.ipcMain.removeHandler("browser:settings:set");
+  import_electron19.ipcMain.handle("browser:settings:get", (event) => {
+    if (!isTrustedBrowserRenderer(event.sender)) {
+      return normalizeBrowserPluginSettings(null);
+    }
+    return loadBrowserPluginSettings(userDataDir);
+  });
+  import_electron19.ipcMain.handle(
+    "browser:settings:set",
+    (event, patch) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return null;
+      }
+      return saveBrowserPluginSettings(userDataDir, patch);
+    }
+  );
+}
+
+// src/main/ipc/browser-session-profile-ipc.ts
+var import_electron25 = require("electron");
+
+// src/main/browser/browser-cookie-detection.ts
+var import_node_fs10 = require("fs");
+var import_node_path10 = require("path");
+
+// src/main/browser/browser-cookie-detection-types.ts
+var import_node_fs9 = require("fs");
+var import_node_path9 = require("path");
 var CHROMIUM_BROWSERS = [
   {
     family: "chrome",
@@ -3844,7 +4063,7 @@ function browserRootPath(def) {
       return null;
     }
     const home = process.env.HOME ?? "";
-    return (0, import_node_path8.join)(home, "Library", "Application Support", def.macRoot);
+    return (0, import_node_path9.join)(home, "Library", "Application Support", def.macRoot);
   }
   if (process.platform === "win32") {
     if (!def.winRoot) {
@@ -3854,24 +4073,24 @@ function browserRootPath(def) {
     if (!localAppData) {
       return null;
     }
-    return (0, import_node_path8.join)(localAppData, def.winRoot);
+    return (0, import_node_path9.join)(localAppData, def.winRoot);
   }
   if (!def.linuxRoot) {
     return null;
   }
-  const configHome = process.env.XDG_CONFIG_HOME ?? (0, import_node_path8.join)(process.env.HOME ?? "", ".config");
-  return (0, import_node_path8.join)(configHome, def.linuxRoot);
+  const configHome = process.env.XDG_CONFIG_HOME ?? (0, import_node_path9.join)(process.env.HOME ?? "", ".config");
+  return (0, import_node_path9.join)(configHome, def.linuxRoot);
 }
 function isSafeBrowserProfileDirectory(directory) {
   return directory.length > 0 && directory !== "." && !directory.includes("\0") && !directory.includes("/") && !directory.includes("\\") && !directory.includes("..");
 }
 function discoverProfiles(browserRoot) {
   try {
-    const localStatePath = (0, import_node_path8.join)(browserRoot, "Local State");
-    if (!(0, import_node_fs8.existsSync)(localStatePath)) {
+    const localStatePath = (0, import_node_path9.join)(browserRoot, "Local State");
+    if (!(0, import_node_fs9.existsSync)(localStatePath)) {
       return [{ name: "Default", directory: "Default" }];
     }
-    const raw = (0, import_node_fs8.readFileSync)(localStatePath, "utf-8");
+    const raw = (0, import_node_fs9.readFileSync)(localStatePath, "utf-8");
     const localState = JSON.parse(raw);
     const infoCache = localState?.profile?.info_cache;
     if (!infoCache || typeof infoCache !== "object") {
@@ -3893,14 +4112,14 @@ function discoverProfiles(browserRoot) {
 function firefoxProfilesRoot() {
   if (process.platform === "darwin") {
     const home2 = process.env.HOME ?? "";
-    return (0, import_node_path8.join)(home2, "Library", "Application Support", "Firefox", "Profiles");
+    return (0, import_node_path9.join)(home2, "Library", "Application Support", "Firefox", "Profiles");
   }
   if (process.platform === "win32") {
     const appData = process.env.APPDATA ?? "";
-    return appData ? (0, import_node_path8.join)(appData, "Mozilla", "Firefox", "Profiles") : null;
+    return appData ? (0, import_node_path9.join)(appData, "Mozilla", "Firefox", "Profiles") : null;
   }
   const home = process.env.HOME ?? "";
-  return (0, import_node_path8.join)(home, ".mozilla", "firefox");
+  return (0, import_node_path9.join)(home, ".mozilla", "firefox");
 }
 function discoverFirefoxProfiles() {
   const profilesRoot = firefoxProfilesRoot();
@@ -3908,10 +4127,10 @@ function discoverFirefoxProfiles() {
     return [];
   }
   try {
-    if (!(0, import_node_fs8.existsSync)(profilesRoot)) {
+    if (!(0, import_node_fs9.existsSync)(profilesRoot)) {
       return [];
     }
-    const entries = (0, import_node_fs8.readdirSync)(profilesRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    const entries = (0, import_node_fs9.readdirSync)(profilesRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
     const sorted = entries.sort((a, b) => {
       if (a.includes("default-release")) {
         return -1;
@@ -3942,8 +4161,8 @@ function detectFirefox() {
   }
   const profiles = discoverFirefoxProfiles();
   for (const profile of profiles) {
-    const cookiesPath = (0, import_node_path8.join)(profilesRoot, profile.directory, "cookies.sqlite");
-    if ((0, import_node_fs8.existsSync)(cookiesPath)) {
+    const cookiesPath = (0, import_node_path9.join)(profilesRoot, profile.directory, "cookies.sqlite");
+    if ((0, import_node_fs9.existsSync)(cookiesPath)) {
       return {
         family: "firefox",
         label: "Firefox",
@@ -3963,8 +4182,8 @@ function detectSafari() {
   }
   const home = process.env.HOME ?? "";
   const candidates = [
-    (0, import_node_path9.join)(home, "Library", "Cookies", "Cookies.binarycookies"),
-    (0, import_node_path9.join)(
+    (0, import_node_path10.join)(home, "Library", "Cookies", "Cookies.binarycookies"),
+    (0, import_node_path10.join)(
       home,
       "Library",
       "Containers",
@@ -3976,7 +4195,7 @@ function detectSafari() {
     )
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs9.existsSync)(candidate)) {
+    if ((0, import_node_fs10.existsSync)(candidate)) {
       return {
         family: "safari",
         label: "Safari",
@@ -3997,7 +4216,7 @@ function detectInstalledBrowsers() {
     }
     const profiles = discoverProfiles(root);
     for (const profile of profiles) {
-      const profileDir = (0, import_node_path9.join)(root, profile.directory);
+      const profileDir = (0, import_node_path10.join)(root, profile.directory);
       const cookiesPath = resolveChromiumCookiesPath(profileDir);
       if (cookiesPath) {
         detected.push({
@@ -4032,8 +4251,8 @@ function selectBrowserProfile(browser, profileDirectory) {
     if (!profilesRoot) {
       return null;
     }
-    const cookiesPath2 = (0, import_node_path9.join)(profilesRoot, profileDirectory, "cookies.sqlite");
-    if (!(0, import_node_fs9.existsSync)(cookiesPath2)) {
+    const cookiesPath2 = (0, import_node_path10.join)(profilesRoot, profileDirectory, "cookies.sqlite");
+    if (!(0, import_node_fs10.existsSync)(cookiesPath2)) {
       return null;
     }
     return { ...browser, cookiesPath: cookiesPath2, selectedProfile: profileDirectory };
@@ -4046,7 +4265,7 @@ function selectBrowserProfile(browser, profileDirectory) {
   if (!root) {
     return null;
   }
-  const profileDir = (0, import_node_path9.join)(root, profileDirectory);
+  const profileDir = (0, import_node_path10.join)(root, profileDirectory);
   const cookiesPath = resolveChromiumCookiesPath(profileDir);
   if (!cookiesPath) {
     return null;
@@ -4059,7 +4278,7 @@ function selectBrowserProfile(browser, profileDirectory) {
 }
 
 // src/main/browser/browser-cookie-import-pipeline.ts
-var import_electron21 = require("electron");
+var import_electron22 = require("electron");
 
 // src/shared/map-with-concurrency.ts
 function mapWithConcurrency(items, limit, fn) {
@@ -4208,7 +4427,7 @@ async function removeTransplantableCookies(targetSession, preserveFamilies, impo
 }
 
 // src/main/browser/browser-cookie-clear-store.ts
-var import_electron19 = require("electron");
+var import_electron20 = require("electron");
 
 // src/main/browser/electron-debugger-lease.ts
 var debuggerLeases = /* @__PURE__ */ new WeakMap();
@@ -4375,7 +4594,7 @@ function readJsonCookiePartition(raw, partitionKeyOpaque = void 0) {
 
 // src/main/browser/browser-cookie-clear-store.ts
 function findPartitionWebContents(targetSession) {
-  return import_electron19.webContents.getAllWebContents().find((contents) => !contents.isDestroyed() && contents.session === targetSession);
+  return import_electron20.webContents.getAllWebContents().find((contents) => !contents.isDestroyed() && contents.session === targetSession);
 }
 function cdpSameSite(sameSite) {
   if (sameSite === "strict") {
@@ -4447,7 +4666,7 @@ function identityFromCdpCookie(url, cdpCookie) {
   };
 }
 function openHiddenCookieWindow(targetSession) {
-  return new import_electron19.BrowserWindow({
+  return new import_electron20.BrowserWindow({
     show: false,
     webPreferences: {
       session: targetSession,
@@ -4738,17 +4957,17 @@ async function writeImportedCookies(store, cookies, options) {
 var import_promises = require("fs/promises");
 
 // src/main/browser/browser-cookie-import-diagnostics.ts
-var import_electron20 = require("electron");
-var import_node_fs10 = require("fs");
+var import_electron21 = require("electron");
+var import_node_fs11 = require("fs");
 var import_node_os = require("os");
-var import_node_path10 = require("path");
+var import_node_path11 = require("path");
 var _diagLog = null;
 function getDiagLogPath() {
   if (!_diagLog) {
     try {
-      _diagLog = (0, import_node_path10.join)(import_electron20.app.getPath("userData"), "orca-browser", "cookie-import-diag.log");
+      _diagLog = (0, import_node_path11.join)(import_electron21.app.getPath("userData"), "orca-browser", "cookie-import-diag.log");
     } catch {
-      _diagLog = (0, import_node_path10.join)((0, import_node_os.tmpdir)(), "orca-cookie-import-diag.log");
+      _diagLog = (0, import_node_path11.join)((0, import_node_os.tmpdir)(), "orca-cookie-import-diag.log");
     }
   }
   return _diagLog;
@@ -4784,8 +5003,8 @@ function diag(msg) {
   const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
 `;
   try {
-    (0, import_node_fs10.mkdirSync)((0, import_node_path10.dirname)(getDiagLogPath()), { recursive: true });
-    (0, import_node_fs10.appendFileSync)(getDiagLogPath(), line);
+    (0, import_node_fs11.mkdirSync)((0, import_node_path11.dirname)(getDiagLogPath()), { recursive: true });
+    (0, import_node_fs11.appendFileSync)(getDiagLogPath(), line);
   } catch {
   }
   console.log("[cookie-import]", msg);
@@ -4869,7 +5088,7 @@ function validateCookieEntry(raw) {
 
 // src/main/browser/browser-cookie-import-pipeline.ts
 function cookieImportTarget(targetPartition) {
-  const targetSession = import_electron21.session.fromPartition(targetPartition);
+  const targetSession = import_electron22.session.fromPartition(targetPartition);
   return {
     partition: targetPartition,
     mutationLockOwner: targetSession,
@@ -4995,7 +5214,7 @@ async function pickCookieFile(parentWindow) {
     ],
     properties: ["openFile"]
   };
-  const result = parentWindow ? await import_electron21.dialog.showOpenDialog(parentWindow, opts) : await import_electron21.dialog.showOpenDialog(opts);
+  const result = parentWindow ? await import_electron22.dialog.showOpenDialog(parentWindow, opts) : await import_electron22.dialog.showOpenDialog(opts);
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
@@ -5049,30 +5268,30 @@ async function importCookiesFromFile(filePath, targetPartition) {
 }
 
 // src/main/browser/browser-cookie-chromium-import.ts
-var import_electron23 = require("electron");
-var import_node_fs14 = require("fs");
+var import_electron24 = require("electron");
+var import_node_fs15 = require("fs");
 
 // src/main/browser/browser-cookie-chromium-prepare.ts
-var import_electron22 = require("electron");
+var import_electron23 = require("electron");
 var import_node_crypto4 = require("crypto");
-var import_node_fs13 = require("fs");
+var import_node_fs14 = require("fs");
 var import_node_sqlite2 = require("sqlite");
-var import_node_path14 = require("path");
+var import_node_path15 = require("path");
 
 // src/main/browser/chromium-cookie-snapshot.ts
-var import_node_fs11 = require("fs");
+var import_node_fs12 = require("fs");
 var import_node_os2 = require("os");
-var import_node_path11 = require("path");
+var import_node_path12 = require("path");
 var SNAPSHOT_ATTEMPTS = 5;
 function removeSnapshotDirectory(path) {
-  (0, import_node_fs11.rmSync)(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  (0, import_node_fs12.rmSync)(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 }
 function isMissingFileError(error) {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 function readFileState(path) {
   try {
-    const stats = (0, import_node_fs11.statSync)(path, { bigint: true });
+    const stats = (0, import_node_fs12.statSync)(path, { bigint: true });
     return {
       device: stats.dev,
       inode: stats.ino,
@@ -5096,7 +5315,7 @@ function sameFileState(left, right) {
 function removeAttemptFiles(databasePath) {
   for (const suffix of ["", "-wal", "-shm"]) {
     try {
-      (0, import_node_fs11.unlinkSync)(databasePath + suffix);
+      (0, import_node_fs12.unlinkSync)(databasePath + suffix);
     } catch {
     }
   }
@@ -5130,8 +5349,8 @@ function copyStableAttempt(sourcePath, databasePath) {
   return copiedDatabase?.size === databaseBefore.size && (walBefore ? copiedWal?.size === walBefore.size : copiedWal === null);
 }
 function createChromiumCookieSnapshot(sourcePath, options = {}) {
-  const snapshotDir = (0, import_node_fs11.mkdtempSync)((0, import_node_path11.join)(options.tempRoot ?? (0, import_node_os2.tmpdir)(), "orca-cookie-import-"));
-  const databasePath = (0, import_node_path11.join)(snapshotDir, "Cookies");
+  const snapshotDir = (0, import_node_fs12.mkdtempSync)((0, import_node_path12.join)(options.tempRoot ?? (0, import_node_os2.tmpdir)(), "orca-cookie-import-"));
+  const databasePath = (0, import_node_path12.join)(snapshotDir, "Cookies");
   let keepSnapshot = false;
   try {
     for (let attempt = 0; attempt < SNAPSHOT_ATTEMPTS; attempt += 1) {
@@ -5153,12 +5372,12 @@ function createChromiumCookieSnapshot(sourcePath, options = {}) {
 
 // src/main/browser/browser-cookie-key.ts
 var import_node_crypto3 = require("crypto");
-var import_node_fs12 = require("fs");
-var import_node_path13 = require("path");
+var import_node_fs13 = require("fs");
+var import_node_path14 = require("path");
 
 // src/main/process-sync.ts
 var import_node_child_process = require("child_process");
-var import_node_path12 = require("path");
+var import_node_path13 = require("path");
 function runProcessSync(spec) {
   const result = (0, import_node_child_process.spawnSync)(spec.program, [...spec.args], {
     encoding: "utf8",
@@ -5179,7 +5398,7 @@ function systemRoot(env = process.env) {
   return env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? "C:\\Windows";
 }
 function windowsPowerShellPath(env = process.env) {
-  return import_node_path12.win32.join(systemRoot(env), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  return import_node_path13.win32.join(systemRoot(env), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
 // src/main/browser/browser-cookie-key.ts
@@ -5258,12 +5477,12 @@ function getWindowsEncryptionKey(browser) {
   if (!root) {
     return null;
   }
-  const localStatePath = (0, import_node_path13.join)(root, "Local State");
-  if (!(0, import_node_fs12.existsSync)(localStatePath)) {
+  const localStatePath = (0, import_node_path14.join)(root, "Local State");
+  if (!(0, import_node_fs13.existsSync)(localStatePath)) {
     return null;
   }
   try {
-    const raw = (0, import_node_fs12.readFileSync)(localStatePath, "utf-8");
+    const raw = (0, import_node_fs13.readFileSync)(localStatePath, "utf-8");
     const localState = JSON.parse(raw);
     const encryptedKeyB64 = localState?.os_crypt?.encrypted_key;
     if (typeof encryptedKeyB64 !== "string") {
@@ -5325,9 +5544,9 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
       result: { ok: false, reason: "Target cookie database not found. Open a browser tab first." }
     };
   }
-  const stagingDir = (0, import_node_path14.join)(import_electron22.app.getPath("userData"), "orca-browser", "cookie-import-staging");
+  const stagingDir = (0, import_node_path15.join)(import_electron23.app.getPath("userData"), "orca-browser", "cookie-import-staging");
   const partitionSegment = partitionName.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const stagingCookiesPath = (0, import_node_path14.join)(
+  const stagingCookiesPath = (0, import_node_path15.join)(
     stagingDir,
     `Cookies-${partitionSegment}-${Date.now()}-${(0, import_node_crypto4.randomUUID)()}`
   );
@@ -5336,7 +5555,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
     diag(`  restart fallback unsupported for partition "${targetPartition}" \u2014 not staging cookies`);
   } else {
     try {
-      (0, import_node_fs13.mkdirSync)(stagingDir, { recursive: true });
+      (0, import_node_fs14.mkdirSync)(stagingDir, { recursive: true });
       copyFileWithWindowsRetry(liveCookiesPath, stagingCookiesPath);
       stagingAvailable = true;
     } catch (err) {
@@ -5345,7 +5564,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
         `  staging copy unavailable: code=${fsErr.code ?? "unknown"} errno=${fsErr.errno ?? "unknown"} syscall=${fsErr.syscall ?? "unknown"} path=${liveCookiesPath} destination=${stagingCookiesPath}`
       );
       try {
-        (0, import_node_fs13.unlinkSync)(stagingCookiesPath);
+        (0, import_node_fs14.unlinkSync)(stagingCookiesPath);
       } catch {
       }
     }
@@ -5355,7 +5574,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
     sourceSnapshot = createChromiumCookieSnapshot(browser.cookiesPath);
   } catch (err) {
     try {
-      (0, import_node_fs13.unlinkSync)(stagingCookiesPath);
+      (0, import_node_fs14.unlinkSync)(stagingCookiesPath);
     } catch {
     }
     diag(`  Chromium snapshot failed: ${String(err)}`);
@@ -5378,7 +5597,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
   const discardStagingFile = () => {
     for (const suffix of ["", "-wal", "-shm"]) {
       try {
-        (0, import_node_fs13.unlinkSync)(stagingCookiesPath + suffix);
+        (0, import_node_fs14.unlinkSync)(stagingCookiesPath + suffix);
       } catch {
       }
     }
@@ -5981,11 +6200,11 @@ async function finalizeChromiumCookieImport(context) {
 // src/main/browser/browser-cookie-chromium-import.ts
 async function importChromiumCookies(browser, targetPartition, options = {}) {
   diag(`importCookiesFromBrowser: browser=${browser.family} partition="${targetPartition}"`);
-  if (!(0, import_node_fs14.existsSync)(browser.cookiesPath)) {
+  if (!(0, import_node_fs15.existsSync)(browser.cookiesPath)) {
     diag(`  cookies DB not found: ${browser.cookiesPath}`);
     return { ok: false, reason: `${browser.label} cookies database not found.` };
   }
-  const targetSession = import_electron23.session.fromPartition(targetPartition);
+  const targetSession = import_electron24.session.fromPartition(targetPartition);
   return withCookieMutationLock(targetSession, async () => {
     let context = null;
     try {
@@ -6034,26 +6253,26 @@ async function importChromiumCookies(browser, targetPartition, options = {}) {
 
 // src/main/browser/browser-cookie-firefox-import.ts
 var import_node_sqlite3 = require("sqlite");
-var import_node_fs15 = require("fs");
+var import_node_fs16 = require("fs");
 var import_node_os3 = require("os");
-var import_node_path15 = require("path");
+var import_node_path16 = require("path");
 async function importCookiesFromFirefox(browser, targetPartition, options) {
   diag(`importCookiesFromFirefox: partition="${targetPartition}"`);
-  const tmpDir = (0, import_node_fs15.mkdtempSync)((0, import_node_path15.join)((0, import_node_os3.tmpdir)(), "orca-cookie-import-"));
-  const tmpCookiesPath = (0, import_node_path15.join)(tmpDir, "cookies.sqlite");
+  const tmpDir = (0, import_node_fs16.mkdtempSync)((0, import_node_path16.join)((0, import_node_os3.tmpdir)(), "orca-cookie-import-"));
+  const tmpCookiesPath = (0, import_node_path16.join)(tmpDir, "cookies.sqlite");
   try {
-    (0, import_node_fs15.copyFileSync)(browser.cookiesPath, tmpCookiesPath);
+    (0, import_node_fs16.copyFileSync)(browser.cookiesPath, tmpCookiesPath);
     for (const suffix of ["-wal", "-shm"]) {
       const sidecar = browser.cookiesPath + suffix;
-      if ((0, import_node_fs15.existsSync)(sidecar)) {
+      if ((0, import_node_fs16.existsSync)(sidecar)) {
         try {
-          (0, import_node_fs15.copyFileSync)(sidecar, tmpCookiesPath + suffix);
+          (0, import_node_fs16.copyFileSync)(sidecar, tmpCookiesPath + suffix);
         } catch {
         }
       }
     }
   } catch {
-    (0, import_node_fs15.rmSync)(tmpDir, { recursive: true, force: true });
+    (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
     return {
       ok: false,
       reason: "Could not copy Firefox cookies database. Try closing Firefox first."
@@ -6073,7 +6292,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
     db.close();
     diag(`  Firefox source has ${rows.length} cookies`);
     if (rows.length === 0) {
-      (0, import_node_fs15.rmSync)(tmpDir, { recursive: true, force: true });
+      (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
       return { ok: false, reason: "No cookies found in Firefox." };
     }
     const now = Math.floor(Date.now() / 1e3);
@@ -6104,7 +6323,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
         partition: readFirefoxRowPartition(row, firefoxColumns)
       });
     }
-    (0, import_node_fs15.rmSync)(tmpDir, { recursive: true, force: true });
+    (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
     if (validated.length === 0) {
       return { ok: false, reason: "No valid cookies found in Firefox." };
     }
@@ -6116,7 +6335,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
       options
     );
   } catch (err) {
-    (0, import_node_fs15.rmSync)(tmpDir, { recursive: true, force: true });
+    (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
     diag(`  Firefox import failed: ${String(err)}`);
     return {
       ok: false,
@@ -6126,7 +6345,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
 }
 
 // src/main/browser/browser-cookie-safari-import.ts
-var import_node_fs16 = require("fs");
+var import_node_fs17 = require("fs");
 
 // src/main/browser/browser-cookie-safari-parser.ts
 var MAC_EPOCH_DELTA = 978307200;
@@ -6252,7 +6471,7 @@ async function importCookiesFromSafari(browser, targetPartition) {
   diag(`importCookiesFromSafari: partition="${targetPartition}"`);
   let data;
   try {
-    data = (0, import_node_fs16.readFileSync)(browser.cookiesPath);
+    data = (0, import_node_fs17.readFileSync)(browser.cookiesPath);
   } catch (err) {
     diag(`  Safari read failed: ${String(err)}`);
     const isPermError = err instanceof Error && "code" in err && err.code === "EPERM";
@@ -6312,20 +6531,20 @@ async function importCookiesFromBrowser(browser, targetPartition, options = {}) 
 
 // src/main/ipc/browser-session-profile-ipc.ts
 function registerBrowserSessionProfileHandlers() {
-  import_electron24.ipcMain.removeHandler("browser:session:listProfiles");
-  import_electron24.ipcMain.removeHandler("browser:session:createProfile");
-  import_electron24.ipcMain.removeHandler("browser:session:deleteProfile");
-  import_electron24.ipcMain.removeHandler("browser:identity:get");
-  import_electron24.ipcMain.removeHandler("browser:identity:set");
-  import_electron24.ipcMain.removeHandler("browser:session:importCookies");
-  import_electron24.ipcMain.removeHandler("browser:session:resolvePartition");
-  import_electron24.ipcMain.handle("browser:session:listProfiles", (event) => {
+  import_electron25.ipcMain.removeHandler("browser:session:listProfiles");
+  import_electron25.ipcMain.removeHandler("browser:session:createProfile");
+  import_electron25.ipcMain.removeHandler("browser:session:deleteProfile");
+  import_electron25.ipcMain.removeHandler("browser:identity:get");
+  import_electron25.ipcMain.removeHandler("browser:identity:set");
+  import_electron25.ipcMain.removeHandler("browser:session:importCookies");
+  import_electron25.ipcMain.removeHandler("browser:session:resolvePartition");
+  import_electron25.ipcMain.handle("browser:session:listProfiles", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return [];
     }
     return browserSessionRegistry.listProfiles();
   });
-  import_electron24.ipcMain.handle(
+  import_electron25.ipcMain.handle(
     "browser:session:createProfile",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6334,13 +6553,13 @@ function registerBrowserSessionProfileHandlers() {
       return await browserSessionRegistry.createProfile(args.scope, args.label);
     }
   );
-  import_electron24.ipcMain.handle("browser:identity:get", (event) => {
+  import_electron25.ipcMain.handle("browser:identity:get", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return null;
     }
     return getBrowserIdentityModeStatus();
   });
-  import_electron24.ipcMain.handle("browser:identity:set", async (event, mode) => {
+  import_electron25.ipcMain.handle("browser:identity:set", async (event, mode) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return null;
     }
@@ -6349,7 +6568,7 @@ function registerBrowserSessionProfileHandlers() {
     }
     return setBrowserIdentityMode(mode);
   });
-  import_electron24.ipcMain.handle(
+  import_electron25.ipcMain.handle(
     "browser:session:deleteProfile",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6358,7 +6577,7 @@ function registerBrowserSessionProfileHandlers() {
       return browserSessionRegistry.deleteProfile(args.profileId);
     }
   );
-  import_electron24.ipcMain.handle(
+  import_electron25.ipcMain.handle(
     "browser:session:importCookies",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6384,7 +6603,7 @@ function registerBrowserSessionProfileHandlers() {
       return result;
     }
   );
-  import_electron24.ipcMain.handle(
+  import_electron25.ipcMain.handle(
     "browser:session:resolvePartition",
     (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6393,22 +6612,22 @@ function registerBrowserSessionProfileHandlers() {
       return browserSessionRegistry.resolvePartition(args.profileId);
     }
   );
-  import_electron24.ipcMain.removeHandler("browser:session:clearDefaultCookies");
-  import_electron24.ipcMain.handle("browser:session:clearDefaultCookies", async (event) => {
+  import_electron25.ipcMain.removeHandler("browser:session:clearDefaultCookies");
+  import_electron25.ipcMain.handle("browser:session:clearDefaultCookies", async (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
     return browserSessionRegistry.clearDefaultSessionCookies();
   });
-  import_electron24.ipcMain.removeHandler("browser:session:detectBrowsers");
-  import_electron24.ipcMain.removeHandler("browser:session:importFromBrowser");
-  import_electron24.ipcMain.handle("browser:session:detectBrowsers", (event) => {
+  import_electron25.ipcMain.removeHandler("browser:session:detectBrowsers");
+  import_electron25.ipcMain.removeHandler("browser:session:importFromBrowser");
+  import_electron25.ipcMain.handle("browser:session:detectBrowsers", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return [];
     }
     return detectedBrowserPickerEntries();
   });
-  import_electron24.ipcMain.handle(
+  import_electron25.ipcMain.handle(
     "browser:session:importFromBrowser",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6460,11 +6679,11 @@ function detectedBrowserPickerEntries() {
 }
 
 // src/main/browser-profiles-installer.ts
-var import_electron25 = require("electron");
+var import_electron26 = require("electron");
 var installBrowserProfiles = (options) => {
   const { userDataDir } = options.host;
   if (!isBrowserIdentityModeStoreInitialized()) {
-    initializeBrowserIdentityModeStore((0, import_node_path16.join)(userDataDir, "orca-browser"));
+    initializeBrowserIdentityModeStore((0, import_node_path17.join)(userDataDir, "orca-browser"));
   }
   browserSessionRegistry.configure({ userDataDir });
   initializeBrowserSessionsForApp({ userDataDir });
@@ -6472,9 +6691,10 @@ var installBrowserProfiles = (options) => {
     (partition) => browserSessionRegistry.isAllowedPartition(partition)
   );
   registerBrowserSessionProfileHandlers();
+  registerBrowserPluginSettingsHandlers(userDataDir);
   return () => {
     for (const channel of BROWSER_PROFILE_INVOKE_CHANNELS) {
-      import_electron25.ipcMain.removeHandler(channel);
+      import_electron26.ipcMain.removeHandler(channel);
     }
     unregisterPartitionSource();
   };

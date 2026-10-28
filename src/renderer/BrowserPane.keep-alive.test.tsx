@@ -5,6 +5,11 @@ import { BrowserPluginProvider } from './BrowserPluginProvider'
 import type { BrowserRendererHost } from './host-context'
 import { useBrowserStore } from './store/browser-store'
 import type { BrowserApi } from '../shared/browser-api-types'
+import {
+  DEFAULT_BROWSER_PLUGIN_SETTINGS,
+  type BrowserPluginSettings
+} from '../shared/browser-plugin-settings'
+import type { BrowserCookieImportResult } from '../shared/browser-workspace-types'
 
 const host: BrowserRendererHost = { t: (_key, fallback) => fallback }
 
@@ -18,6 +23,7 @@ function createBrowserApiStub(): BrowserApi {
     unregisterGuest: vi.fn(async () => true),
     notifyActiveTabChanged: vi.fn(async () => true),
     openDevTools: vi.fn(async () => true),
+    setViewportOverride: vi.fn(async () => true),
     openExternal: vi.fn(async () => true),
     writeClipboardText: vi.fn(async () => {}),
     onGuestLoadFailed: unsubscribe,
@@ -32,7 +38,30 @@ function createBrowserApiStub(): BrowserApi {
     onFindInPage: unsubscribe,
     onHistoryNavigate: unsubscribe,
     onZoomPage: unsubscribe,
-    onSystemResumed: unsubscribe
+    onSystemResumed: unsubscribe,
+    session: {
+      listProfiles: vi.fn(async () => []),
+      createProfile: vi.fn(async () => null),
+      deleteProfile: vi.fn(async () => false),
+      importCookies: vi.fn(async (): Promise<BrowserCookieImportResult> => ({
+        ok: false,
+        reason: 'canceled'
+      })),
+      importFromBrowser: vi.fn(async (): Promise<BrowserCookieImportResult> => ({
+        ok: false,
+        reason: 'canceled'
+      })),
+      detectBrowsers: vi.fn(async () => []),
+      resolvePartition: vi.fn(async () => null),
+      clearDefaultCookies: vi.fn(async () => false)
+    },
+    identity: { get: vi.fn(async () => null), set: vi.fn(async () => null) },
+    settings: {
+      get: vi.fn(async (): Promise<BrowserPluginSettings> => ({
+        ...DEFAULT_BROWSER_PLUGIN_SETTINGS
+      })),
+      set: vi.fn(async () => null)
+    }
   }
 }
 
