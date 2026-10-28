@@ -7143,6 +7143,10 @@ function browserAnnotationMatchesPageUrl(capturedUrl, currentUrl) {
   try {
     const captured = new URL(capturedUrl);
     const current = new URL(currentUrl);
+    captured.username = "";
+    captured.password = "";
+    current.username = "";
+    current.password = "";
     current.search = "";
     current.hash = "";
     return captured.href === current.href;
@@ -9454,6 +9458,11 @@ function useBrowserPageGrabAnnotations({
     },
     []
   );
+  useEffect19(() => {
+    if (grab.state === "error" && grab.error) {
+      toast7.error(grab.error);
+    }
+  }, [grab.state, grab.error]);
   const updateGrabReview = useCallback13((next) => {
     grabReviewOpenRef.current = next !== null;
     setGrabReviewPayload(next);
@@ -9725,8 +9734,11 @@ function useGrabMode(browserPageId) {
     setContextMenu(false);
   }, []);
   useEffect20(() => {
+    if (state === "idle") {
+      return;
+    }
     const handleKeyDown = (e) => {
-      if (e.key === "Escape" && state !== "idle") {
+      if (e.key === "Escape") {
         const element = e.target && typeof e.target === "object" && "closest" in e.target ? e.target : null;
         if (isEditableKeyboardTarget(e.target) || element?.closest(
           '[data-slot="select-trigger"], [data-slot="select-content"], [data-slot="annotation-edit"]'
@@ -10260,7 +10272,7 @@ function useMarkupMode({
         if (captureTokenRef.current !== token) {
           return;
         }
-        await onDeliver(result);
+        await onDeliver(result, context);
         if (captureTokenRef.current !== token) {
           return;
         }
@@ -10299,32 +10311,36 @@ function useBrowserPageMarkupCapture(webviewRef, page) {
     sendRef.current = sendToAgent;
     pageRef.current = page;
   });
-  const onDeliver = useCallback16(async (result) => {
-    const send = sendRef.current;
-    if (!send) {
-      await deliverMarkupToClipboard(result);
-      return;
-    }
-    try {
-      await send(
-        buildMarkupAgentPayload({
-          pageUrl: pageRef.current.url,
-          pageTitle: pageRef.current.title,
-          result
-        })
-      );
-    } catch (error) {
-      if (!isSendToAgentCanceled(error)) {
-        toast10.error(
-          translate("auto.components.browser.pane.sendToAgent.failed", "Could not send to agent")
-        );
+  const onDeliver = useCallback16(
+    async (result, context) => {
+      const send = sendRef.current;
+      const page2 = context?.page ?? pageRef.current;
+      if (!send) {
+        await deliverMarkupToClipboard(result);
+        return;
       }
-      throw new MarkupDeliveryHandledError();
-    }
-    toast10.success(
-      translate("auto.components.browser.pane.sendToAgent.markupSent", "Markup sent to agent")
-    );
-  }, []);
+      try {
+        await send(
+          buildMarkupAgentPayload({
+            pageUrl: page2.url,
+            pageTitle: page2.title,
+            result
+          })
+        );
+      } catch (error) {
+        if (!isSendToAgentCanceled(error)) {
+          toast10.error(
+            translate("auto.components.browser.pane.sendToAgent.failed", "Could not send to agent")
+          );
+        }
+        throw new MarkupDeliveryHandledError();
+      }
+      toast10.success(
+        translate("auto.components.browser.pane.sendToAgent.markupSent", "Markup sent to agent")
+      );
+    },
+    []
+  );
   return useMarkupMode({
     getCaptureContext: useCallback16(() => {
       const webview = webviewRef.current;
@@ -10339,7 +10355,8 @@ function useBrowserPageMarkupCapture(webviewRef, page) {
         source: { kind: "webview", webview },
         cssWidth: rect.width,
         cssHeight: rect.height,
-        outputScale: window.devicePixelRatio || 1
+        outputScale: window.devicePixelRatio || 1,
+        page: pageRef.current
       };
     }, [webviewRef]),
     onDeliver

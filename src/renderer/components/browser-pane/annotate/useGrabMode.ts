@@ -247,8 +247,12 @@ export function useGrabMode(browserPageId: string): GrabModeHook {
 
   // Keyboard shortcut: Esc cancels grab mode
   useEffect(() => {
+    // Idle holds no window listener.
+    if (state === 'idle') {
+      return
+    }
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && state !== 'idle') {
+      if (e.key === 'Escape') {
         const element =
           e.target && typeof e.target === 'object' && 'closest' in e.target
             ? (e.target as { closest: (selector: string) => unknown })

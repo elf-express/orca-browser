@@ -445,3 +445,44 @@ describe('grab review lifecycle', () => {
     expect(send.mock.calls[0][0].images).toHaveLength(1)
   })
 })
+
+describe('grab error feedback', () => {
+  function mountError(error: string | null) {
+    Object.defineProperty(window, 'browserAPI', { configurable: true, value: {} })
+    const grab = {
+      payload: null,
+      contextMenu: false,
+      toggle: vi.fn(),
+      cancel: vi.fn(),
+      rearm: vi.fn(),
+      exit: vi.fn()
+    }
+    return renderHook(
+      (props: { error: string | null }) =>
+        useBrowserPageGrabAnnotations({
+          browserTabId: 'page-1',
+          isActive: false,
+          grab: { ...grab, state: props.error ? 'error' : 'idle', error: props.error },
+          containerRef: { current: null },
+          webviewRef: { current: null },
+          setBrowserOverlayViewport: vi.fn(),
+          setBrowserAnnotationTrayOpen: vi.fn(),
+          browserAnnotationsLength: 0
+        }),
+      { wrapper: hostWrapper, initialProps: { error } }
+    )
+  }
+
+  it('shows the reason when element selection cannot start', () => {
+    const view = mountError(null)
+    expect(toastError).not.toHaveBeenCalled()
+
+    view.rerender({ error: 'Could not start element selection on this page.' })
+
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError).toHaveBeenCalledWith('Could not start element selection on this page.')
+
+    view.rerender({ error: 'Could not start element selection on this page.' })
+    expect(toastError).toHaveBeenCalledTimes(1)
+  })
+})

@@ -28,33 +28,38 @@ export function useBrowserPageMarkupCapture(
     pageRef.current = page
   })
 
-  const onDeliver = useCallback(async (result: MarkupComposeResult): Promise<void> => {
-    const send = sendRef.current
-    if (!send) {
-      await deliverMarkupToClipboard(result)
-      return
-    }
-    try {
-      await send(
-        buildMarkupAgentPayload({
-          pageUrl: pageRef.current.url,
-          pageTitle: pageRef.current.title,
-          result
-        })
-      )
-    } catch (error) {
-      // Report here, then signal "handled" so useMarkupMode keeps the drawing instead of resetting.
-      if (!isSendToAgentCanceled(error)) {
-        toast.error(
-          translate('auto.components.browser.pane.sendToAgent.failed', 'Could not send to agent')
-        )
+  const onDeliver = useCallback(
+    async (result: MarkupComposeResult, context?: MarkupCaptureContext): Promise<void> => {
+      const send = sendRef.current
+      // The page shown in the screenshot, not whatever the pane navigated to since.
+      const page = context?.page ?? pageRef.current
+      if (!send) {
+        await deliverMarkupToClipboard(result)
+        return
       }
-      throw new MarkupDeliveryHandledError()
-    }
-    toast.success(
-      translate('auto.components.browser.pane.sendToAgent.markupSent', 'Markup sent to agent')
-    )
-  }, [])
+      try {
+        await send(
+          buildMarkupAgentPayload({
+            pageUrl: page.url,
+            pageTitle: page.title,
+            result
+          })
+        )
+      } catch (error) {
+        // Report here, then signal "handled" so useMarkupMode keeps the drawing instead of resetting.
+        if (!isSendToAgentCanceled(error)) {
+          toast.error(
+            translate('auto.components.browser.pane.sendToAgent.failed', 'Could not send to agent')
+          )
+        }
+        throw new MarkupDeliveryHandledError()
+      }
+      toast.success(
+        translate('auto.components.browser.pane.sendToAgent.markupSent', 'Markup sent to agent')
+      )
+    },
+    []
+  )
 
   return useMarkupMode({
     getCaptureContext: useCallback((): MarkupCaptureContext | null => {
@@ -70,7 +75,8 @@ export function useBrowserPageMarkupCapture(
         source: { kind: 'webview', webview },
         cssWidth: rect.width,
         cssHeight: rect.height,
-        outputScale: window.devicePixelRatio || 1
+        outputScale: window.devicePixelRatio || 1,
+        page: pageRef.current
       }
     }, [webviewRef]),
     onDeliver

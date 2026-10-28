@@ -34,6 +34,8 @@ export type MarkupCaptureContext = {
   cssWidth: number
   cssHeight: number
   outputScale: number
+  /** The page the screenshot shows, so delivery keeps it even if the page navigates meanwhile. */
+  page?: { url: string; title: string }
 }
 
 export type MarkupCompleteInput = {
@@ -43,7 +45,7 @@ export type MarkupCompleteInput = {
 
 type UseMarkupModeParams = {
   getCaptureContext: () => MarkupCaptureContext | null
-  onDeliver: (result: MarkupComposeResult) => Promise<void> | void
+  onDeliver: (result: MarkupComposeResult, context: MarkupCaptureContext) => Promise<void> | void
 }
 
 export type MarkupModeController = {
@@ -151,7 +153,7 @@ export function useMarkupMode({
         if (captureTokenRef.current !== token) {
           return
         }
-        await onDeliver(result)
+        await onDeliver(result, context)
         if (captureTokenRef.current !== token) {
           return
         }

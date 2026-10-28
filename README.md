@@ -134,6 +134,7 @@ export function App() {
 - `BrowserPane` 的父層要是有尺寸的 flex 容器。不顯示時傳 `active={false}`，不要用 `display: none` 把祖先藏起來，否則頁面會被重新載入。
 - `scopeId` 用來分組分頁，例如每個 workspace 各一組。
 - 套件用 sonner 顯示通知，host 要自己掛 `<Toaster />`。
+- `onSendToAgent` 可以用 `AbortError`（`error.name === 'AbortError'`）reject，代表使用者取消，套件會靜默保留內容，不顯示錯誤；其他 reject 會顯示「Could not send to agent」。
 - 設定頁可以單獨嵌入 `BrowserSettingsPanel`（搜尋引擎、瀏覽器身分、Profile 與 cookie）。要用的話，也要在有 `window.browserAPI` 的視窗裡。
 
 ### 4. 樣式（Tailwind）
@@ -145,6 +146,8 @@ export function App() {
 ```
 
 路徑請依 host 的 CSS 檔位置調整。
+
+套件的動畫用到 `animate-in`、`fade-in`、`zoom-in-95` 和 `slide-in-*`，host 還要安裝並引入 `tw-animate-css`（例如 `@import "tw-animate-css";`），否則這些動畫不會生效。
 
 ### 5. 文案（i18n）
 

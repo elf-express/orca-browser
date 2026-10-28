@@ -340,6 +340,13 @@ export function useBrowserPageGrabAnnotations({
     []
   )
 
+  // A failed arm (page not ready, injection blocked) otherwise leaves the toolbar button looking dead.
+  useEffect(() => {
+    if (grab.state === 'error' && grab.error) {
+      toast.error(grab.error)
+    }
+  }, [grab.state, grab.error])
+
   const updateGrabReview = useCallback((next: BrowserGrabPayload | null): void => {
     grabReviewOpenRef.current = next !== null
     setGrabReviewPayload(next)

@@ -362,4 +362,30 @@ describe('useGrabMode', () => {
     expect(setGrabMode).toHaveBeenLastCalledWith({ browserPageId: 'page-1', enabled: false })
     expect(render().state).toBe('idle')
   })
+
+  it('attaches no window keydown listener while idle', async () => {
+    const harness = createReactHookHarness()
+    const addEventListener = vi.fn()
+    vi.doMock('react', () => harness.react)
+    vi.doMock('../../../hooks/useMountedRef', () => ({
+      useMountedRef: () => ({ current: true })
+    }))
+    vi.stubGlobal('window', {
+      addEventListener,
+      removeEventListener: vi.fn(),
+      browserAPI: {
+        setGrabMode: vi.fn(async () => ({ ok: true })),
+        awaitGrabSelection: vi.fn(() => new Promise(() => {})),
+        cancelGrab: vi.fn()
+      }
+    })
+    const { useGrabMode } = await import('./useGrabMode')
+    harness.beginRender()
+    // oxlint-disable-next-line react-hooks/rules-of-hooks -- test harness mocks React's hook dispatcher directly.
+    expect(useGrabMode('page-1').state).toBe('idle')
+
+    const cleanups = harness.effects.map((entry) => entry.effect())
+    expect(addEventListener).not.toHaveBeenCalledWith('keydown', expect.anything(), true)
+    cleanups.forEach((cleanup) => (typeof cleanup === 'function' ? cleanup() : undefined))
+  })
 })

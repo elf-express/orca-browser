@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   writeClipboardImage: vi.fn(),
-  onDeliver: undefined as undefined | ((result: MarkupComposeResult) => Promise<void>)
+  onDeliver: undefined as
+    | undefined
+    | ((result: MarkupComposeResult, context?: unknown) => Promise<void>),
+  getCaptureContext: undefined as undefined | (() => unknown)
 }))
 
 vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }))
@@ -20,8 +23,12 @@ vi.mock('../../../lib/browser-clipboard', () => ({
 }))
 vi.mock('./useMarkupMode', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useMarkupMode')>()),
-  useMarkupMode: (options: { onDeliver: (result: MarkupComposeResult) => Promise<void> }) => {
+  useMarkupMode: (options: {
+    onDeliver: (result: MarkupComposeResult, context?: unknown) => Promise<void>
+    getCaptureContext: () => unknown
+  }) => {
     mocks.onDeliver = options.onDeliver
+    mocks.getCaptureContext = options.getCaptureContext
     return { isActive: false }
   }
 }))
@@ -111,5 +118,28 @@ describe('useBrowserPageMarkupCapture delivery', () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
       'Markup copied — paste it into your agent (Ctrl+V)'
     )
+  })
+
+  it('keeps the page URL and title captured when the screenshot was taken', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    onSendToAgent = send
+    const webview = document.createElement('div')
+    webview.getBoundingClientRect = () => ({ width: 100, height: 50 }) as DOMRect
+    const view = renderHook(
+      (props: { page: { url: string; title: string } }) =>
+        useBrowserPageMarkupCapture(
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only getBoundingClientRect is read.
+          { current: webview as unknown as Electron.WebviewTag },
+          props.page
+        ),
+      { wrapper, initialProps: { page: PAGE } }
+    )
+    const context = mocks.getCaptureContext!()
+
+    view.rerender({ page: { url: 'https://b.com/other?secret=1', title: 'B' } })
+    await mocks.onDeliver!(RESULT, context)
+
+    expect(send.mock.calls[0][0].pageUrl).toBe('https://a.com/x')
+    expect(send.mock.calls[0][0].pageTitle).toBe('A')
   })
 })
