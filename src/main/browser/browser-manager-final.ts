@@ -1,5 +1,5 @@
 import { ORCA_BROWSER_BLANK_URL } from '../../shared/constants'
-import { normalizeBrowserNavigationUrl } from '../../shared/browser-url'
+import { isFileUrl, normalizeBrowserNavigationUrl } from '../../shared/browser-url'
 import { BrowserManagerEventForwarding } from './browser-manager-event-forwarding'
 
 export abstract class BrowserManagerFinal extends BrowserManagerEventForwarding {
@@ -9,7 +9,8 @@ export abstract class BrowserManagerFinal extends BrowserManagerEventForwarding 
       return false
     }
     const normalizedUrl = normalizeBrowserNavigationUrl(rawUrl)
-    if (!normalizedUrl || normalizedUrl === ORCA_BROWSER_BLANK_URL) {
+    // Why: the in-app browser never loads local files, so a guest must not be able to queue one as a tab.
+    if (!normalizedUrl || normalizedUrl === ORCA_BROWSER_BLANK_URL || isFileUrl(normalizedUrl)) {
       return false
     }
     // Why: only the renderer owns Orca's worktree/tab model; main forwards a validated URL, never letting guest content mutate it.

@@ -210,6 +210,7 @@ describe('main window webview security', () => {
       nodeIntegrationInSubFrames: true,
       contextIsolation: false,
       sandbox: false,
+      webviewTag: true,
       allowRunningInsecureContent: true,
       disableHtmlFullscreenWindowResize: false
     }
@@ -221,6 +222,7 @@ describe('main window webview security', () => {
     expect(preferences.nodeIntegrationInSubFrames).toBe(false)
     expect(preferences.contextIsolation).toBe(true)
     expect(preferences.sandbox).toBe(true)
+    expect(preferences.webviewTag).toBe(false)
     expect(preferences.allowRunningInsecureContent).toBe(false)
     expect(preferences.disableHtmlFullscreenWindowResize).toBe(true)
   })

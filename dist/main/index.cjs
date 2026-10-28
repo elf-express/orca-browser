@@ -1957,7 +1957,7 @@ var BrowserManagerFinal = class extends BrowserManagerEventForwarding {
       return false;
     }
     const normalizedUrl = normalizeBrowserNavigationUrl(rawUrl);
-    if (!normalizedUrl || normalizedUrl === ORCA_BROWSER_BLANK_URL) {
+    if (!normalizedUrl || normalizedUrl === ORCA_BROWSER_BLANK_URL || isFileUrl(normalizedUrl)) {
       return false;
     }
     renderer.send("browser:open-link-in-orca-tab", {
@@ -2213,6 +2213,7 @@ function installWebviewSecurity(getMainWindow) {
       webPreferences.allowRunningInsecureContent = false;
       webPreferences.contextIsolation = true;
       webPreferences.sandbox = true;
+      webPreferences.webviewTag = false;
       Object.assign(webPreferences, ORCA_BROWSER_GUEST_WEB_PREFERENCES);
       webPreferences.partition = partition;
     };

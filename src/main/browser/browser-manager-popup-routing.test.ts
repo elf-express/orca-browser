@@ -308,6 +308,47 @@ describe('browserManager', () => {
     expect(hostOpenExternalMock).not.toHaveBeenCalled()
   })
 
+  it('refuses to forward file URLs as a new tab', () => {
+    const rendererSendMock = vi.fn()
+    const guest = {
+      id: 144,
+      isDestroyed: vi.fn(() => false),
+      getType: vi.fn(() => 'webview'),
+      setBackgroundThrottling: guestSetBackgroundThrottlingMock,
+      setWindowOpenHandler: guestSetWindowOpenHandlerMock,
+      on: guestOnMock,
+      off: guestOffMock,
+      openDevTools: guestOpenDevToolsMock
+    }
+    webContentsFromIdMock.mockImplementation((id: number) => {
+      if (id === guest.id) {
+        return guest
+      }
+      if (id === rendererWebContentsId) {
+        return { isDestroyed: vi.fn(() => false), send: rendererSendMock }
+      }
+      return null
+    })
+    browserManager.attachGuestPolicies(guest as never)
+    browserManager.registerGuest({
+      browserPageId: 'browser-1',
+      scopeId: 'scope-1',
+      webContentsId: guest.id,
+      rendererWebContentsId
+    })
+    const open = (
+      browserManager as unknown as {
+        openLinkInOrcaTab: (id: string, url: string, activate?: boolean) => boolean
+      }
+    ).openLinkInOrcaTab.bind(browserManager)
+
+    expect(open('browser-1', 'file:///etc/passwd')).toBe(false)
+    expect(open('browser-1', 'FILE:///C:/secret.txt')).toBe(false)
+    expect(rendererSendMock).not.toHaveBeenCalled()
+    expect(open('browser-1', 'https://docs.example.com/guide')).toBe(true)
+    expect(rendererSendMock).toHaveBeenCalledTimes(1)
+  })
+
   it('opens unnamed window.open with only opener features as a tab, as Chrome does', () => {
     const rendererSendMock = vi.fn()
     const guest = {

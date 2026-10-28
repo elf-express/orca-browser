@@ -61,6 +61,8 @@ export function installWebviewSecurity(
       webPreferences.allowRunningInsecureContent = false
       webPreferences.contextIsolation = true
       webPreferences.sandbox = true
+      // Why: a guest must not be able to create nested <webview> tags of its own.
+      webPreferences.webviewTag = false
       // Why: force the browser guest policy even if host markup omits or misspells a preference.
       Object.assign(webPreferences, ORCA_BROWSER_GUEST_WEB_PREFERENCES)
       // Why: keep the validated partition so isolated session profiles use their own storage while other hardening stays intact.
