@@ -1,0 +1,23 @@
+src/renderer/ipc/browser-state-ipc-bridge.test.ts
+  s_aa47a447e01641::t_542a6ac5e19c97 3-7,16,32,36-41,122-159
+src/renderer/ipc/browser-state-ipc-bridge.ts
+  s_aa47a447e01641::t_9c5491139c0f61 23-38
+dist/renderer/index.js
+  s_aa47a447e01641::t_6b3df650b94e94 6398-6411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29138577def63f844b19697a79ea7fbb3c1ca7fe",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
