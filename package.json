@@ -1,0 +1,60 @@
+{
+  "name": "@elf-express/orca-browser",
+  "version": "0.0.0",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js",
+      "require": "./dist/shared/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint --deny-warnings && oxfmt --check .",
+    "format": "oxfmt --write .",
+    "test": "vitest run",
+    "test:dist": "vitest run --config vitest.dist.config.ts",
+    "check:dist": "node scripts/check-dist.mjs",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:dist && pnpm check:dist"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^25.0.10",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "electron": "^45.0.0",
+    "happy-dom": "^20.14.5",
+    "jsdom": "^29.0.1",
+    "lucide-react": "^1.0.1",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12",
+    "zustand": "^5.0.0"
+  },
+  "peerDependencies": {
+    "electron": ">=43",
+    "lucide-react": "^0.577.0 || ^1.0.0",
+    "react": ">=19.2",
+    "react-dom": ">=19.2",
+    "zustand": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.2"
+}
