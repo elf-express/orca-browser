@@ -1,0 +1,137 @@
+src/main/browser/browser-partition-allowlist.test.ts
+  s_aa47a447e01641::t_98575157285445 1-26
+src/main/browser/browser-manager-authorized-guest.test.ts
+  s_aa47a447e01641::t_5e3c5178eabe65 1-85
+src/main/window/main-window-webview-security.test.ts
+  s_aa47a447e01641::t_177737f18aa163 1-294
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_b2ea6c1ec04eb5 115-126,415
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_b993519f2b59e7 115-126,415
+src/main/browser/browser-google-auth-ua.test.ts
+  s_aa47a447e01641::t_1fc0577d64f609 1-65
+src/main/browser/browser-google-auth-ua.ts
+  s_aa47a447e01641::t_e11b837f71954a 1-72
+src/main/browser/browser-guest-context-menu.ts
+  s_aa47a447e01641::t_45359ee5f9e83b 1-92
+src/main/browser/browser-guest-input-gesture.ts
+  s_aa47a447e01641::t_215ded1e1290f8 1-64
+src/main/browser/browser-guest-navigation-state.ts
+  s_aa47a447e01641::t_7e3aeb3f403991 1-9
+src/main/browser/browser-guest-renderer-target.ts
+  s_aa47a447e01641::t_5b4c96b1685ad8 1-18
+src/main/browser/browser-guest-shortcut-dispatch.ts
+  s_aa47a447e01641::t_17b00e79807c26 1-63
+src/main/browser/browser-guest-shortcut-forwarding.test.ts
+  s_aa47a447e01641::t_8cdf2235ececbd 1-611
+src/main/browser/browser-guest-shortcut-forwarding.ts
+  s_aa47a447e01641::t_bbb1858145e8b9 1-64
+src/main/browser/browser-guest-wheel-zoom-scroll.test.ts
+  s_aa47a447e01641::t_76916d23227984 1-52
+src/main/browser/browser-guest-wheel-zoom.ts
+  s_aa47a447e01641::t_fbeece5120e7cb 1-97
+src/main/browser/browser-manager-auth-user-agent.test.ts
+  s_aa47a447e01641::t_957241fc4749c2 1-435
+src/main/browser/browser-manager-bindings.ts
+  s_aa47a447e01641::t_67f812ec544153 1-62
+src/main/browser/browser-manager-destroyed-guest-test-fixture.ts
+  s_aa47a447e01641::t_70e577f7f69efe 1-63
+src/main/browser/browser-manager-destroyed-guest.test.ts
+  s_aa47a447e01641::t_250eb212ab57ae 1-147
+src/main/browser/browser-manager-event-forwarding.ts
+  s_aa47a447e01641::t_cb46869cb3e342 1-123
+src/main/browser/browser-manager-final.ts
+  s_aa47a447e01641::t_70de0b0e7f0b50 1-23
+src/main/browser/browser-manager-grab.ts
+  s_aa47a447e01641::t_925053895dbe9b 1-36
+src/main/browser/browser-manager-guest-cleanup.ts
+  s_aa47a447e01641::t_ec4809f9a89d56 1-40
+src/main/browser/browser-manager-guest-lifecycle.test.ts
+  s_aa47a447e01641::t_2e61d80936629f 1-570
+src/main/browser/browser-manager-guest-navigation-policy.ts
+  s_aa47a447e01641::t_3d021f7976217a 1-143
+src/main/browser/browser-manager-guest-policy.ts
+  s_aa47a447e01641::t_8094d3610faa42 1-29
+src/main/browser/browser-manager-guest-popup-policy.ts
+  s_aa47a447e01641::t_c27f20f4254407 1-95
+src/main/browser/browser-manager-guest-shortcuts.test.ts
+  s_aa47a447e01641::t_807dfa983d78ca 1-250
+src/main/browser/browser-manager-guest-visibility.test.ts
+  s_aa47a447e01641::t_6b52e175925977 1-134
+src/main/browser/browser-manager-load-failure-replay.test.ts
+  s_aa47a447e01641::t_9887042a076069 1-306
+src/main/browser/browser-manager-navigation.ts
+  s_aa47a447e01641::t_52e48128520436 1-284
+src/main/browser/browser-manager-popup-child.test.ts
+  s_aa47a447e01641::t_4c964af7f77ee8 1-244
+src/main/browser/browser-manager-popup-routing.test.ts
+  s_aa47a447e01641::t_4a093bc66a9a51 1-779
+src/main/browser/browser-manager-queries.ts
+  s_aa47a447e01641::t_8ada418f72db56 1-77
+src/main/browser/browser-manager-registration.ts
+  s_aa47a447e01641::t_381c28dec70dfb 1-142
+src/main/browser/browser-manager-state.ts
+  s_aa47a447e01641::t_7bf975364cd0ed 1-165
+src/main/browser/browser-manager-tab-identity.test.ts
+  s_aa47a447e01641::t_60ee0f3a7e1cf5 1-208
+src/main/browser/browser-manager-test-harness.ts
+  s_aa47a447e01641::t_5f6be6a0d1f2a6 1-55
+src/main/browser/browser-manager-types.ts
+  s_aa47a447e01641::t_b2985e805eb6a9 1-101
+src/main/browser/browser-manager-viewport-scroll-state.ts
+  s_aa47a447e01641::t_b2c5ce09703a68 1-99
+src/main/browser/browser-manager-viewport-test-fixtures.ts
+  s_aa47a447e01641::t_ff25ebd80211c3 1-129
+src/main/browser/browser-manager-viewport.ts
+  s_aa47a447e01641::t_835e9138a903c5 1-20
+src/main/browser/browser-manager-visibility.ts
+  s_aa47a447e01641::t_f4d179e810b362 1-41
+src/main/browser/browser-manager.ts
+  s_aa47a447e01641::t_f0e3011dfa2d29 1-11
+src/main/browser/browser-page-initiated-tab-budget.test.ts
+  s_aa47a447e01641::t_22deba1988b5b3 1-34
+src/main/browser/browser-page-initiated-tab-budget.ts
+  s_aa47a447e01641::t_9269e175a8afb9 1-26
+src/main/browser/browser-partition-allowlist.ts
+  s_aa47a447e01641::t_1c420cf8d6ae33 1-26
+src/main/browser/browser-popup-new-tab-intent.test.ts
+  s_aa47a447e01641::t_b1dc0e3306e21e 1-19
+src/main/browser/browser-popup-new-tab-intent.ts
+  s_aa47a447e01641::t_73cdfe00d44b03 1-18
+src/main/browser/browser-process-user-agent.test.ts
+  s_aa47a447e01641::t_04cb84ea7b122d 1-65
+src/main/browser/browser-process-user-agent.ts
+  s_aa47a447e01641::t_fc34955a17c7ba 1-63
+src/main/browser/browser-session-ua.ts
+  s_aa47a447e01641::t_4f8955b5dff138 1-121
+src/main/browser/browser-tab-identity.test.ts
+  s_aa47a447e01641::t_8390f944f435b2 1-78
+src/main/browser/browser-tab-identity.ts
+  s_aa47a447e01641::t_4174e8ded23eb0 1-90
+src/main/browser/popup-origin-bar-window.test.ts
+  s_aa47a447e01641::t_bb1b504868d3e2 1-381
+src/main/browser/popup-origin-bar-window.ts
+  s_aa47a447e01641::t_8fbac722228c03 1-281
+src/main/window/main-window-webview-security.ts
+  s_aa47a447e01641::t_188511da9f39db 1-104
+src/main/window/renderer-publication-throttle.ts
+  s_aa47a447e01641::t_b3d8141dddbc05 1-48
+src/shared/browser-workspace-types.ts
+  s_aa47a447e01641::t_7acff2156d1c00 19-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e716adeac46fb3dc3acfa0c5b68a967cb6be79d2",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
