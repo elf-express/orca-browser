@@ -1,0 +1,37 @@
+src/renderer/components/browser-pane/annotate/browser-annotate-chord.test.ts
+  s_9462d204306c0d::t_3f7c155e72f1fa 3,40-78
+src/renderer/components/browser-pane/annotate/browser-annotate-chord.ts
+  s_aa47a447e01641::t_bb440d8856e731 27-43
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_7f06cbde7e62c7 39,188,201,212-220,222,340-342
+src/renderer/components/browser-pane/host-guest/use-browser-page-keyboard-shortcuts.grab.test.tsx
+  s_aa47a447e01641::t_237d8896f4af34 1-143
+src/renderer/components/browser-pane/host-guest/use-browser-page-keyboard-shortcuts.ts
+  s_aa47a447e01641::t_33f33c31177a83 1,3,16-18,30-32,46-83
+dist/renderer/index.js
+  s_aa47a447e01641::t_aad988c3e45db8 1323,1454,2356-2357,2398,2551-2553,2567-2598,2659,3191,3193,3413,3640,4285,4390,4712,5001,5008,5011,5636,5846,6710,6819,6828,6838,6856,6886,6940,6942,7000,8134,8137,8140,8143,8190,8247,8254,8279,8294,8319,8403,8410,8418,8435,9009,9088,9096,9105,9289,9328,9488,9558,9600,9727,10359-10370,10375,10394,10410,10432,10445,10775,10839,10847,10873,10985,11111,11690,11737,11747,12107,12128,12135,12146,12358,12370,12789,12797,12815,12826,12868,12913,12919,12957,12960,12967-12968,12971-12973,12977,13092-13094,13106,13113,13323,13325,13338,13352,13383,13389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98c5225d0cb01b3b5e3599858dede299ce7b8005",
+  "prompts": {},
+  "sessions": {
+    "s_9462d204306c0d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a80b414e-fbb2-48e7-b914-d8028f89eabe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
