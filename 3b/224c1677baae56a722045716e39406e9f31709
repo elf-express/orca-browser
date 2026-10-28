@@ -1,0 +1,80 @@
+scripts/list-i18n-keys.mjs
+  s_aa47a447e01641::t_b2cb8f02d6461c 6
+  s_aa47a447e01641::t_c81922b906699f 35
+  s_aa47a447e01641::t_fb8507980bf8ad 3-5
+  s_aa47a447e01641::t_fbf0559116f9e7 7-9,32-34
+  s_aa47a447e01641::t_8917a620a28098 36-38
+  s_fce57cf0cde272::t_9286e7810d9b6f 1-2,10-31,39-72
+dist/i18n-keys.json
+  s_aa47a447e01641::t_25daef9a14148c 1-45
+dist/renderer/index.js
+  s_aa47a447e01641::t_721c07bdc1bce9 92-121,556-558,565-572,1034,1060,1188-1189,2087-2096,2099,2103,2107,2113-2114,5119-5977,5979,5994-6003,6006-6007,6009-6012,6015,6017,6019-6023,6029,6045,6099-6100,6137-6143,6151-6153,6157-6180,6190-6252,6258-6259,6265-6266,6273,6277,6291-6292,6301,6308,6331,6336,6356,6365-6366,6373,6377,6379,6392,6419,6423,6429,6431
+package.json
+  s_aa47a447e01641::t_794743ff10b876 37,41
+scripts/list-i18n-keys.test.ts
+  s_aa47a447e01641::t_20f282b9bc68eb 1-57
+src/renderer/components/browser-pane/assemble-chrome/BrowserFind.test.tsx
+  s_aa47a447e01641::t_c2d921a8c62360 1-135
+src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
+  s_aa47a447e01641::t_76dfa48a0e17ff 1-234
+src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.test.tsx
+  s_aa47a447e01641::t_6ac8c3a56bc73a 1-143
+src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
+  s_aa47a447e01641::t_1bd342b385d8b7 1-318
+src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
+  s_aa47a447e01641::t_a1e68378f8a1a5 2-3,5-7,18,25-29,63,88-90,174-175,212-218,226-228,234-261,278-286,300-332
+src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
+  s_aa47a447e01641::t_674a24297add08 1-75
+src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.test.tsx
+  s_aa47a447e01641::t_17ad052e85e964 1-34
+src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.tsx
+  s_aa47a447e01641::t_47309998c7a7e3 1-23
+src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.test.tsx
+  s_aa47a447e01641::t_633532996ab8a0 1-96
+src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
+  s_aa47a447e01641::t_b311f17d6df083 1-60
+src/renderer/components/browser-pane/host-guest/use-browser-page-webview-shortcuts.ts
+  s_aa47a447e01641::t_58a00873b7fa5f 163-184,187,191,195,201-202
+src/renderer/components/browser-pane/host-guest/use-browser-page-zoom-feedback.ts
+  s_aa47a447e01641::t_b798824e8e6264 1-56
+src/renderer/components/browser-pane/navigate/browser-load-failure-for-url.ts
+  s_aa47a447e01641::t_c52becbb4d9e26 1-28
+src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.test.tsx
+  s_aa47a447e01641::t_57e130330e65b7 1-123
+src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.tsx
+  s_aa47a447e01641::t_516add50ed6aba 1-109
+src/renderer/components/browser-pane/navigate/browser-notices.test.ts
+  s_aa47a447e01641::t_6df0eb7600f5b7 1-161
+src/renderer/components/browser-pane/navigate/browser-notices.ts
+  s_aa47a447e01641::t_388f357eb135fa 1-102
+src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
+  s_aa47a447e01641::t_4ef280fd7ad92d 1-40
+src/renderer/lib/find-query-bounds.ts
+  s_aa47a447e01641::t_e7d885e9ff3168 1-11
+tests/package-exports.test.ts
+  s_aa47a447e01641::t_7532737ecc4bbf 24-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b224c1677baae56a722045716e39406e9f31709",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    },
+    "s_fce57cf0cde272": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a71412463c2a7038b",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
