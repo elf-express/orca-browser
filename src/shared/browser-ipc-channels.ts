@@ -24,3 +24,16 @@ export const BROWSER_EVENT_CHANNELS = [
   'browser:zoomPage',
   'browser:systemResumed'
 ] as const
+
+export const BROWSER_PROFILE_INVOKE_CHANNELS = [
+  'browser:session:listProfiles',
+  'browser:session:createProfile',
+  'browser:session:deleteProfile',
+  'browser:session:importCookies',
+  'browser:session:resolvePartition',
+  'browser:session:clearDefaultCookies',
+  'browser:session:detectBrowsers',
+  'browser:session:importFromBrowser',
+  'browser:identity:get',
+  'browser:identity:set'
+] as const

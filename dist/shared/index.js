@@ -4,6 +4,18 @@ var BROWSER_API_GLOBAL_KEY = "browserAPI";
 var PACKAGE_LOG_PREFIX = "orca-browser:";
 var ORCA_BROWSER_PARTITION = "persist:orca-browser";
 var ORCA_BROWSER_BLANK_URL = "data:text/html,";
+var BROWSER_FAMILY_LABELS = {
+  chrome: "Google Chrome",
+  chromium: "Chromium",
+  comet: "Comet",
+  helium: "Helium",
+  arc: "Arc",
+  edge: "Microsoft Edge",
+  brave: "Brave",
+  firefox: "Firefox",
+  safari: "Safari",
+  manual: "File"
+};
 
 // src/shared/browser-ipc-channels.ts
 var BROWSER_INVOKE_CHANNELS = [
@@ -30,6 +42,18 @@ var BROWSER_EVENT_CHANNELS = [
   "browser:historyNavigate",
   "browser:zoomPage",
   "browser:systemResumed"
+];
+var BROWSER_PROFILE_INVOKE_CHANNELS = [
+  "browser:session:listProfiles",
+  "browser:session:createProfile",
+  "browser:session:deleteProfile",
+  "browser:session:importCookies",
+  "browser:session:resolvePartition",
+  "browser:session:clearDefaultCookies",
+  "browser:session:detectBrowsers",
+  "browser:session:importFromBrowser",
+  "browser:identity:get",
+  "browser:identity:set"
 ];
 
 // src/shared/browser-keybindings.ts
@@ -523,11 +547,13 @@ function normalizeBrowserHistoryUrl(url) {
 export {
   BROWSER_API_GLOBAL_KEY,
   BROWSER_EVENT_CHANNELS,
+  BROWSER_FAMILY_LABELS,
   BROWSER_INVOKE_CHANNELS,
   BROWSER_PAGE_ZOOM_LEVELS,
   BROWSER_PAGE_ZOOM_MAX,
   BROWSER_PAGE_ZOOM_MIN,
   BROWSER_PAGE_ZOOM_STEP,
+  BROWSER_PROFILE_INVOKE_CHANNELS,
   DEFAULT_BROWSER_PAGE_ZOOM_LEVEL,
   DEFAULT_MCP_PORT,
   DEFAULT_SEARCH_ENGINE,

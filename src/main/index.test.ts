@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./browser-core-installer', () => ({ installBrowserCore: () => () => {} }))
+vi.mock('./browser-profiles-installer', () => ({ installBrowserProfiles: () => () => {} }))
 import type { BrowserHost, BrowserPluginHandle } from '../shared'
 import { installBrowserPlugin } from './index'
 import { pluginInstallers } from './plugin-installers'
