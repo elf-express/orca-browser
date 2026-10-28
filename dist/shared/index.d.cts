@@ -12,8 +12,155 @@ type BrowserAgentPayload = {
     }>;
 };
 
+/** A mounted browser pane's find bar. Both ids are known to whoever renders the chrome. */
+type BrowserFindSource = {
+    browserPageId: string;
+    browserWorkspaceId: string;
+};
+/**
+ * Who a forwarded Cmd/Ctrl+F is aimed at. Main knows the workspace only for guests registered
+ * through the renderer; a client-hosted guest is registered by main's own host runtime, whose
+ * wire command carries no workspace. Page ids are unique, so an unscoped target still resolves.
+ */
+type BrowserFindTarget = {
+    browserPageId: string;
+    browserWorkspaceId?: string;
+};
+declare function asBrowserFindTarget(value: unknown): BrowserFindTarget | null;
+
+type BrowserPermissionDeniedEvent = {
+    browserPageId: string;
+    /** Electron permission string (e.g. "media", "notifications"). */
+    permission: string;
+    /** Sanitized to origin/host so auth query params never leak into UI state. */
+    origin: string;
+};
+type BrowserPopupEvent = {
+    browserPageId: string;
+    /** Sanitized to origin/host so auth query params never leak into UI state. */
+    origin: string;
+    /** Whether Orca opened the target in Orca, opened it externally, or blocked it as unsafe. */
+    action: 'opened-in-orca' | 'opened-external' | 'blocked';
+};
+type BrowserContextMenuRequestedEvent = {
+    browserPageId: string;
+    x: number;
+    y: number;
+    screenX: number;
+    screenY: number;
+    pageUrl: string;
+    linkUrl: string | null;
+    selectionText: string;
+    canGoBack: boolean;
+    canGoForward: boolean;
+};
+type BrowserContextMenuDismissedEvent = {
+    browserPageId: string;
+};
+
+/** The page a guest-forwarded chrome chord (reload, history, address bar) is aimed at. */
+type BrowserPageCommandTarget = {
+    browserPageId: string;
+};
+type BrowserHistoryNavigateCommand = BrowserPageCommandTarget & {
+    direction: 'back' | 'forward';
+};
+
+type BrowserPageZoomDirection = 'in' | 'out' | 'reset';
+type BrowserPageZoomCommand = {
+    browserPageId: string;
+    direction: BrowserPageZoomDirection;
+};
+declare const BROWSER_PAGE_ZOOM_STEP = 0.5;
+declare const BROWSER_PAGE_ZOOM_MIN = -3;
+declare const BROWSER_PAGE_ZOOM_MAX = 5;
+declare const DEFAULT_BROWSER_PAGE_ZOOM_LEVEL = 0;
+declare const BROWSER_PAGE_ZOOM_LEVELS: readonly number[];
+declare function normalizeBrowserPageZoomLevel(value: unknown): number;
+declare function browserPageZoomLevelToPercent(level: number): number;
+declare function nextBrowserPageZoomLevel(current: number, direction: BrowserPageZoomDirection, resetLevel?: number): number;
+
+type BrowserLoadError = {
+    code: number;
+    description: string;
+    validatedUrl: string;
+};
+type BrowserPage = {
+    id: string;
+    scopeId: string;
+    url: string;
+    title: string;
+    loading: boolean;
+    faviconUrl: string | null;
+    canGoBack: boolean;
+    canGoForward: boolean;
+    loadError: BrowserLoadError | null;
+    createdAt: number;
+};
+type BrowserViewportOverride = {
+    width: number;
+    height: number;
+    deviceScaleFactor: number;
+    mobile: boolean;
+};
+type BrowserViewportScrollState = {
+    scrollLeft: number;
+    scrollTop: number;
+    maxScrollLeft: number;
+    maxScrollTop: number;
+};
+
+type BrowserGuestArgs = {
+    browserPageId: string;
+    scopeId: string;
+    sessionProfileId?: string | null;
+    webContentsId: number;
+};
+type BrowserGuestLoadFailedEvent = {
+    browserPageId: string;
+    loadError: BrowserLoadError;
+};
+type BrowserOpenLinkInTabEvent = {
+    browserPageId: string;
+    url: string;
+    activate?: boolean;
+};
+/** Every `on*` subscription returns the function that cancels it. */
+type BrowserUnsubscribe = () => void;
 interface BrowserApi {
     readonly apiVersion: 1;
+    registerGuest(args: BrowserGuestArgs): Promise<boolean>;
+    isGuestRegistered(args: {
+        browserPageId: string;
+        webContentsId: number;
+    }): Promise<boolean>;
+    repairGuestRegistration(args: BrowserGuestArgs): Promise<boolean>;
+    unregisterGuest(args: {
+        browserPageId: string;
+    }): Promise<boolean>;
+    notifyActiveTabChanged(args: {
+        browserPageId: string;
+    }): Promise<boolean>;
+    openDevTools(args: {
+        browserPageId: string;
+    }): Promise<boolean>;
+    openExternal(args: {
+        url: string;
+    }): Promise<boolean>;
+    writeClipboardText(text: string): Promise<void>;
+    onGuestLoadFailed(callback: (event: BrowserGuestLoadFailedEvent) => void): BrowserUnsubscribe;
+    onPermissionDenied(callback: (event: BrowserPermissionDeniedEvent) => void): BrowserUnsubscribe;
+    onPopup(callback: (event: BrowserPopupEvent) => void): BrowserUnsubscribe;
+    onContextMenuRequested(callback: (event: BrowserContextMenuRequestedEvent) => void): BrowserUnsubscribe;
+    onContextMenuDismissed(callback: (event: BrowserContextMenuDismissedEvent) => void): BrowserUnsubscribe;
+    onOpenLinkInOrcaTab(callback: (event: BrowserOpenLinkInTabEvent) => void): BrowserUnsubscribe;
+    onFocusAddressBar(callback: (target: BrowserPageCommandTarget) => void): BrowserUnsubscribe;
+    onReloadPage(callback: (target: BrowserPageCommandTarget) => void): BrowserUnsubscribe;
+    onHardReloadPage(callback: (target: BrowserPageCommandTarget) => void): BrowserUnsubscribe;
+    onFindInPage(source: BrowserFindSource, callback: () => void): BrowserUnsubscribe;
+    onHistoryNavigate(callback: (command: BrowserHistoryNavigateCommand) => void): BrowserUnsubscribe;
+    onZoomPage(callback: (command: BrowserPageZoomCommand) => void): BrowserUnsubscribe;
+    onSystemResumed(callback: () => void): BrowserUnsubscribe;
 }
 declare global {
     interface Window {
@@ -64,104 +211,6 @@ type BrowserShortcutInput = {
 };
 declare function matchBrowserShortcut(input: BrowserShortcutInput, platform: NodeJS.Platform): BrowserShortcutAction | null;
 declare function formatBrowserShortcutLabel(action: BrowserShortcutAction, platform: NodeJS.Platform): string;
-
-type BrowserPermissionDeniedEvent = {
-    browserPageId: string;
-    /** Electron permission string (e.g. "media", "notifications"). */
-    permission: string;
-    /** Sanitized to origin/host so auth query params never leak into UI state. */
-    origin: string;
-};
-type BrowserPopupEvent = {
-    browserPageId: string;
-    /** Sanitized to origin/host so auth query params never leak into UI state. */
-    origin: string;
-    /** Whether Orca opened the target in Orca, opened it externally, or blocked it as unsafe. */
-    action: 'opened-in-orca' | 'opened-external' | 'blocked';
-};
-type BrowserContextMenuRequestedEvent = {
-    browserPageId: string;
-    x: number;
-    y: number;
-    screenX: number;
-    screenY: number;
-    pageUrl: string;
-    linkUrl: string | null;
-    selectionText: string;
-    canGoBack: boolean;
-    canGoForward: boolean;
-};
-type BrowserContextMenuDismissedEvent = {
-    browserPageId: string;
-};
-
-type BrowserLoadError = {
-    code: number;
-    description: string;
-    validatedUrl: string;
-};
-type BrowserPage = {
-    id: string;
-    scopeId: string;
-    url: string;
-    title: string;
-    loading: boolean;
-    faviconUrl: string | null;
-    canGoBack: boolean;
-    canGoForward: boolean;
-    loadError: BrowserLoadError | null;
-    createdAt: number;
-};
-type BrowserViewportOverride = {
-    width: number;
-    height: number;
-    deviceScaleFactor: number;
-    mobile: boolean;
-};
-type BrowserViewportScrollState = {
-    scrollLeft: number;
-    scrollTop: number;
-    maxScrollLeft: number;
-    maxScrollTop: number;
-};
-
-type BrowserPageZoomDirection = 'in' | 'out' | 'reset';
-type BrowserPageZoomCommand = {
-    browserPageId: string;
-    direction: BrowserPageZoomDirection;
-};
-declare const BROWSER_PAGE_ZOOM_STEP = 0.5;
-declare const BROWSER_PAGE_ZOOM_MIN = -3;
-declare const BROWSER_PAGE_ZOOM_MAX = 5;
-declare const DEFAULT_BROWSER_PAGE_ZOOM_LEVEL = 0;
-declare const BROWSER_PAGE_ZOOM_LEVELS: readonly number[];
-declare function normalizeBrowserPageZoomLevel(value: unknown): number;
-declare function browserPageZoomLevelToPercent(level: number): number;
-declare function nextBrowserPageZoomLevel(current: number, direction: BrowserPageZoomDirection, resetLevel?: number): number;
-
-/** A mounted browser pane's find bar. Both ids are known to whoever renders the chrome. */
-type BrowserFindSource = {
-    browserPageId: string;
-    browserWorkspaceId: string;
-};
-/**
- * Who a forwarded Cmd/Ctrl+F is aimed at. Main knows the workspace only for guests registered
- * through the renderer; a client-hosted guest is registered by main's own host runtime, whose
- * wire command carries no workspace. Page ids are unique, so an unscoped target still resolves.
- */
-type BrowserFindTarget = {
-    browserPageId: string;
-    browserWorkspaceId?: string;
-};
-declare function asBrowserFindTarget(value: unknown): BrowserFindTarget | null;
-
-/** The page a guest-forwarded chrome chord (reload, history, address bar) is aimed at. */
-type BrowserPageCommandTarget = {
-    browserPageId: string;
-};
-type BrowserHistoryNavigateCommand = BrowserPageCommandTarget & {
-    direction: 'back' | 'forward';
-};
 
 declare const ORCA_BROWSER_GUEST_WEB_PREFERENCES: {
     readonly disableHtmlFullscreenWindowResize: true;
@@ -412,4 +461,4 @@ declare const GRAB_SECRET_PATTERNS: string[];
 declare const MAX_BROWSER_HISTORY_ENTRIES = 200;
 declare function normalizeBrowserHistoryUrl(url: string): string;
 
-export { BROWSER_API_GLOBAL_KEY, BROWSER_EVENT_CHANNELS, BROWSER_INVOKE_CHANNELS, BROWSER_PAGE_ZOOM_LEVELS, BROWSER_PAGE_ZOOM_MAX, BROWSER_PAGE_ZOOM_MIN, BROWSER_PAGE_ZOOM_STEP, type BrowserAgentPayload, type BrowserAnnotationIntent, type BrowserAnnotationPayload, type BrowserAnnotationPriority, type BrowserApi, type BrowserAwaitGrabSelectionArgs, type BrowserCancelGrabArgs, type BrowserCaptureSelectionScreenshotArgs, type BrowserCaptureSelectionScreenshotResult, type BrowserContextMenuDismissedEvent, type BrowserContextMenuRequestedEvent, type BrowserExtractHoverArgs, type BrowserExtractHoverResult, type BrowserFindSource, type BrowserFindTarget, type BrowserGrabAccessibility, type BrowserGrabCancelReason, type BrowserGrabComputedStyles, type BrowserGrabPageContext, type BrowserGrabPayload, type BrowserGrabRect, type BrowserGrabRejectReason, type BrowserGrabResult, type BrowserGrabScreenshot, type BrowserGrabTarget, type BrowserHistoryNavigateCommand, type BrowserHost, type BrowserHostLogger, type BrowserIdentityModeSetResult, type BrowserIdentityModeSnapshot, type BrowserIdentityModeStatus, type BrowserLoadError, type BrowserPage, type BrowserPageAnnotation, type BrowserPageCommandTarget, type BrowserPageZoomCommand, type BrowserPageZoomDirection, type BrowserPermissionDeniedEvent, type BrowserPluginHandle, type BrowserPluginOptions, type BrowserPopupEvent, type BrowserSetGrabModeArgs, type BrowserSetGrabModeResult, type BrowserShortcutAction, type BrowserShortcutInput, type BrowserUserAgentMode, type BrowserViewportOverride, type BrowserViewportScrollState, DEFAULT_BROWSER_PAGE_ZOOM_LEVEL, DEFAULT_MCP_PORT, DEFAULT_SEARCH_ENGINE, GRAB_BUDGET, GRAB_SAFE_ATTRIBUTE_NAMES, GRAB_SECRET_PATTERNS, type GrabIntent, MAX_BROWSER_HISTORY_ENTRIES, ORCA_BROWSER_BLANK_URL, ORCA_BROWSER_GUEST_WEB_PREFERENCES, ORCA_BROWSER_GUEST_WEB_PREFERENCES_ATTRIBUTE, ORCA_BROWSER_PARTITION, PACKAGE_LOG_PREFIX, SEARCH_ENGINE_LABELS, type SearchEngine, type SearchUrlOptions, asBrowserFindTarget, browserPageZoomLevelToPercent, buildSearchUrl, classifySchemeLessLocalDevAddress, formatBrowserShortcutLabel, isAbsoluteFilesystemPathInput, isAriaAttribute, isEligibleLocalCertificateHost, looksLikeSearchQuery, matchBrowserShortcut, nextBrowserPageZoomLevel, normalizeBrowserHistoryUrl, normalizeBrowserNavigationUrl, normalizeBrowserPageZoomLevel, normalizeExternalBrowserUrl, normalizeKagiSessionLink, redactKagiSessionToken, resolveRemoteFailureExternalUrl, toHttpsRecoveryUrl, toSecureCertificateEndpoint };
+export { BROWSER_API_GLOBAL_KEY, BROWSER_EVENT_CHANNELS, BROWSER_INVOKE_CHANNELS, BROWSER_PAGE_ZOOM_LEVELS, BROWSER_PAGE_ZOOM_MAX, BROWSER_PAGE_ZOOM_MIN, BROWSER_PAGE_ZOOM_STEP, type BrowserAgentPayload, type BrowserAnnotationIntent, type BrowserAnnotationPayload, type BrowserAnnotationPriority, type BrowserApi, type BrowserAwaitGrabSelectionArgs, type BrowserCancelGrabArgs, type BrowserCaptureSelectionScreenshotArgs, type BrowserCaptureSelectionScreenshotResult, type BrowserContextMenuDismissedEvent, type BrowserContextMenuRequestedEvent, type BrowserExtractHoverArgs, type BrowserExtractHoverResult, type BrowserFindSource, type BrowserFindTarget, type BrowserGrabAccessibility, type BrowserGrabCancelReason, type BrowserGrabComputedStyles, type BrowserGrabPageContext, type BrowserGrabPayload, type BrowserGrabRect, type BrowserGrabRejectReason, type BrowserGrabResult, type BrowserGrabScreenshot, type BrowserGrabTarget, type BrowserGuestArgs, type BrowserGuestLoadFailedEvent, type BrowserHistoryNavigateCommand, type BrowserHost, type BrowserHostLogger, type BrowserIdentityModeSetResult, type BrowserIdentityModeSnapshot, type BrowserIdentityModeStatus, type BrowserLoadError, type BrowserOpenLinkInTabEvent, type BrowserPage, type BrowserPageAnnotation, type BrowserPageCommandTarget, type BrowserPageZoomCommand, type BrowserPageZoomDirection, type BrowserPermissionDeniedEvent, type BrowserPluginHandle, type BrowserPluginOptions, type BrowserPopupEvent, type BrowserSetGrabModeArgs, type BrowserSetGrabModeResult, type BrowserShortcutAction, type BrowserShortcutInput, type BrowserUnsubscribe, type BrowserUserAgentMode, type BrowserViewportOverride, type BrowserViewportScrollState, DEFAULT_BROWSER_PAGE_ZOOM_LEVEL, DEFAULT_MCP_PORT, DEFAULT_SEARCH_ENGINE, GRAB_BUDGET, GRAB_SAFE_ATTRIBUTE_NAMES, GRAB_SECRET_PATTERNS, type GrabIntent, MAX_BROWSER_HISTORY_ENTRIES, ORCA_BROWSER_BLANK_URL, ORCA_BROWSER_GUEST_WEB_PREFERENCES, ORCA_BROWSER_GUEST_WEB_PREFERENCES_ATTRIBUTE, ORCA_BROWSER_PARTITION, PACKAGE_LOG_PREFIX, SEARCH_ENGINE_LABELS, type SearchEngine, type SearchUrlOptions, asBrowserFindTarget, browserPageZoomLevelToPercent, buildSearchUrl, classifySchemeLessLocalDevAddress, formatBrowserShortcutLabel, isAbsoluteFilesystemPathInput, isAriaAttribute, isEligibleLocalCertificateHost, looksLikeSearchQuery, matchBrowserShortcut, nextBrowserPageZoomLevel, normalizeBrowserHistoryUrl, normalizeBrowserNavigationUrl, normalizeBrowserPageZoomLevel, normalizeExternalBrowserUrl, normalizeKagiSessionLink, redactKagiSessionToken, resolveRemoteFailureExternalUrl, toHttpsRecoveryUrl, toSecureCertificateEndpoint };

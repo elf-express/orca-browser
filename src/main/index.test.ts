@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('./browser-core-installer', () => ({ installBrowserCore: () => () => {} }))
 import type { BrowserHost, BrowserPluginHandle } from '../shared'
 import { installBrowserPlugin } from './index'
 import { pluginInstallers } from './plugin-installers'
@@ -21,6 +23,11 @@ function install(host: BrowserHost = createHost()): BrowserPluginHandle {
   handles.push(handle)
   return handle
 }
+
+beforeEach(() => {
+  // These tests exercise the installer runner itself, so start from an empty installer list.
+  pluginInstallers.length = 0
+})
 
 afterEach(async () => {
   pluginInstallers.length = 0
