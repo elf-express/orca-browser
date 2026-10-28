@@ -1,0 +1,6 @@
+orca-browser
+Copyright (c) 2026 ELF EXPRESS
+
+This product includes software derived from Orca (https://github.com/stablyai/orca), licensed under the MIT License, Copyright (c) 2026 Lovecast Inc.
+
+This product depends on agent-browser (https://github.com/vercel-labs/agent-browser), licensed under the Apache License, Version 2.0. Copyright 2025 Vercel Inc. A copy of the license is available at http://www.apache.org/licenses/LICENSE-2.0
