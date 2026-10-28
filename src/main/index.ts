@@ -29,7 +29,6 @@ export function installBrowserPlugin(opts: BrowserPluginOptions): BrowserPluginH
         logger.error('orca-browser: dispose failed', { error: String(err) })
       }
     }
-    setResolvedBrowserPluginOptions(null)
   }
 
   try {
@@ -48,5 +47,10 @@ export function installBrowserPlugin(opts: BrowserPluginOptions): BrowserPluginH
   }
 
   let disposePromise: Promise<void> | null = null
-  return { dispose: () => (disposePromise ??= runDisposers()) }
+  return {
+    dispose: () =>
+      (disposePromise ??= runDisposers().then(() => {
+        setResolvedBrowserPluginOptions(null)
+      }))
+  }
 }

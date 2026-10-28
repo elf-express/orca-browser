@@ -114,6 +114,21 @@ describe('installBrowserPlugin', () => {
     expect(() => install(host)).not.toThrow()
   })
 
+  it('does not clear a later install when rollback disposers settle', async () => {
+    pluginInstallers.push(
+      () => async () => {},
+      () => {
+        throw new Error('boom')
+      }
+    )
+    expect(() => installBrowserPlugin({ host: createHost() })).toThrow('boom')
+    pluginInstallers.length = 0
+    const host2 = createHost()
+    install(host2)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(getBrowserHost()).toBe(host2)
+  })
+
   it('exposes the host through getBrowserHost while installed', async () => {
     const host = createHost()
     const handle = install(host)

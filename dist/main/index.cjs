@@ -67,7 +67,6 @@ function installBrowserPlugin(opts) {
         logger.error("orca-browser: dispose failed", { error: String(err) });
       }
     }
-    setResolvedBrowserPluginOptions(null);
   };
   try {
     for (const installer of pluginInstallers) {
@@ -83,7 +82,11 @@ function installBrowserPlugin(opts) {
     throw err;
   }
   let disposePromise = null;
-  return { dispose: () => disposePromise ??= runDisposers() };
+  return {
+    dispose: () => disposePromise ??= runDisposers().then(() => {
+      setResolvedBrowserPluginOptions(null);
+    })
+  };
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
