@@ -1,0 +1,31 @@
+.gitignore
+  s_aa47a447e01641::t_84a3d26987c29e 1-3
+AGENTS.md
+  s_aa47a447e01641::t_2ec7f7abc87395 1-27
+BRANCHING.md
+  s_aa47a447e01641::t_5b0f5cdc1e1997 1-108
+CLAUDE.md
+  s_aa47a447e01641::t_466f7c5c6a7e45 1
+LICENSE
+  s_aa47a447e01641::t_d910fbde7dd420 1-22
+NOTICE
+  s_aa47a447e01641::t_b984dc655f466e 1-6
+docs/superpowers/state/E-456.yaml
+  s_aa47a447e01641::t_b32686a65c2e84 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6f8f5e9790b797c773260db51974d299d12eae84",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
