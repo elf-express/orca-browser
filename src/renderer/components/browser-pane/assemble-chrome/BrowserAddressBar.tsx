@@ -4,7 +4,7 @@ import { Input } from '../../../ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/popover'
 import { cn } from '../../../lib/utils'
 import { useBrowserStore } from '../../../store/browser-store'
-import { DEFAULT_SEARCH_ENGINE } from '../../../../shared/browser-url'
+import { useBrowserSessionStore } from '../../../store/browser-session-store'
 import { buildBrowserAddressBarSuggestions } from './browser-address-bar-suggestions'
 import { shouldOverlayBrowserAddressBar } from './browser-address-bar-expansion'
 import { saveBrowserAddressBarEditSession } from './browser-address-bar-edit-session'
@@ -47,6 +47,7 @@ export default function BrowserAddressBar({
   // oxlint-disable-next-line react/refs -- Intentional: the preview ref only mirrors the typed query that suggestions keep matching.
   const autocompleteQuery = prePreviewValueRef.current ?? value
   const browserUrlHistory = useBrowserStore((s) => s.browserUrlHistory)
+  const searchEngine = useBrowserSessionStore((s) => s.settings.searchEngine)
   const closingRef = useRef(false)
   const addressBarClickSelect = useBrowserAddressBarClickSelect()
   const openedAtRef = useRef(0)
@@ -150,10 +151,10 @@ export default function BrowserAddressBar({
       buildBrowserAddressBarSuggestions({
         browserUrlHistory,
         kagiSessionLink: null,
-        searchEngine: DEFAULT_SEARCH_ENGINE,
+        searchEngine,
         value: autocompleteQuery
       }),
-    [browserUrlHistory, autocompleteQuery]
+    [browserUrlHistory, autocompleteQuery, searchEngine]
   )
 
   const clearSuggestionPreview = useCallback((): void => {

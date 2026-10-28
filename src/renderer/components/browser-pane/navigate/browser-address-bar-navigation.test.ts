@@ -4,6 +4,7 @@ vi.mock('../../../i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
 }))
 
+import { useBrowserSessionStore } from '../../../store/browser-session-store'
 import { resolveBrowserAddressBarSubmission } from './browser-address-bar-navigation'
 
 describe('resolveBrowserAddressBarSubmission', () => {
@@ -74,5 +75,18 @@ describe('resolveBrowserAddressBarSubmission', () => {
     expect(
       resolveBrowserAddressBarSubmission('https://example.com', { allowFileUrls: false })
     ).toMatchObject({ status: 'navigate' })
+  })
+
+  it('uses the configured search engine', () => {
+    const previous = useBrowserSessionStore.getState().settings
+    useBrowserSessionStore.setState({ settings: { ...previous, searchEngine: 'duckduckgo' } })
+    try {
+      expect(resolveBrowserAddressBarSubmission('hello world')).toEqual({
+        status: 'navigate',
+        url: 'https://duckduckgo.com/?q=hello%20world'
+      })
+    } finally {
+      useBrowserSessionStore.setState({ settings: previous })
+    }
   })
 })

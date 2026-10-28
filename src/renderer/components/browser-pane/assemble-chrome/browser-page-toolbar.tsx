@@ -6,10 +6,15 @@ import { getOpenableExternalUrl } from '../describe-page/browser-page-url-displa
 import BrowserAddressBar from './BrowserAddressBar'
 import { BrowserChromeToolbar } from './browser-chrome-toolbar'
 import { BrowserReloadControl } from './browser-reload-control'
+import { BrowserImportHintButton } from './BrowserImportHintButton'
+import { BrowserToolbarMenu } from './BrowserToolbarMenu'
+import { destroyPersistentWebview } from '../host-guest/webview-registry'
+import type { BrowserPage } from '../../../../shared/browser-workspace-types'
 
 /** Binds the shared browser chrome to a browsing page: an editable address bar and the page tools. */
 export function BrowserPageToolbar({
-  browserPageId,
+  page,
+  isActive,
   canGoBack,
   canGoForward,
   loading,
@@ -29,7 +34,8 @@ export function BrowserPageToolbar({
   addressBarInputRef,
   dismissAddressBarSuggestionsRef
 }: {
-  browserPageId: string
+  page: BrowserPage
+  isActive: boolean
   canGoBack: boolean
   canGoForward: boolean
   loading: boolean
@@ -50,6 +56,7 @@ export function BrowserPageToolbar({
   addressBarInputRef: RefObject<HTMLInputElement | null>
   dismissAddressBarSuggestionsRef: RefObject<(() => void) | null>
 }): React.JSX.Element {
+  const browserPageId = page.id
   const externalUrl = getOpenableExternalUrl(currentUrl)
 
   return (
@@ -88,6 +95,20 @@ export function BrowserPageToolbar({
             onHardReload={() => runReloadTrigger('hard-reload')}
           />
         }
+        importControl={(compact) => (
+          <BrowserImportHintButton profileId={page.sessionProfileId} compact={compact} />
+        )}
+        overflowMenu={(overflow) => (
+          <BrowserToolbarMenu
+            currentProfileId={page.sessionProfileId}
+            scopeId={page.scopeId}
+            browserPageId={page.id}
+            viewportPresetId={page.viewportPresetId}
+            onDestroyWebview={() => void destroyPersistentWebview(page.id)}
+            isActive={isActive}
+            overflow={overflow}
+          />
+        )}
         viewSource={{
           onSelect: () => void window.browserAPI!.openDevTools({ browserPageId }),
           label: translate(

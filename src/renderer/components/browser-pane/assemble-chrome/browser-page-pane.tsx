@@ -286,6 +286,7 @@ export function BrowserPagePane({
       <BrowserPageChromeHeader
         chromeHeaderRef={chromeHeaderRef}
         browserTab={browserTab}
+        isActive={isActive}
         webviewRef={webviewRef}
         addressBarInputRef={addressBarInputRef}
         dismissAddressBarSuggestionsRef={dismissAddressBarSuggestionsRef}

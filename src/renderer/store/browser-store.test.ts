@@ -153,4 +153,31 @@ describe('useBrowserStore', () => {
     expect(useBrowserStore.getState().consumeAddressBarFocusRequest('p1')).toBe(true)
     expect(useBrowserStore.getState().consumeAddressBarFocusRequest('p1')).toBe(false)
   })
+
+  it('new pages start on the default profile', () => {
+    const page = useBrowserStore.getState().ensureScopePage('ws-1')
+    expect(page.sessionProfileId).toBeNull()
+    expect(page.sessionPartition).toBeNull()
+    expect(page.viewportPresetId).toBeNull()
+  })
+
+  it('switchBrowserTabProfile sets profile and partition', () => {
+    const page = useBrowserStore.getState().ensureScopePage('ws-1')
+    useBrowserStore
+      .getState()
+      .switchBrowserTabProfile(page.id, 'p-work', 'persist:orca-browser-session-p-work')
+    const updated = useBrowserStore.getState().pagesByScope['ws-1'][0]
+    expect(updated.sessionProfileId).toBe('p-work')
+    expect(updated.sessionPartition).toBe('persist:orca-browser-session-p-work')
+    useBrowserStore.getState().switchBrowserTabProfile(page.id, null, null)
+    expect(useBrowserStore.getState().pagesByScope['ws-1'][0].sessionPartition).toBeNull()
+  })
+
+  it('setBrowserPageViewportPreset stores and clears the preset', () => {
+    const page = useBrowserStore.getState().ensureScopePage('ws-1')
+    useBrowserStore.getState().setBrowserPageViewportPreset(page.id, 'tablet')
+    expect(useBrowserStore.getState().pagesByScope['ws-1'][0].viewportPresetId).toBe('tablet')
+    useBrowserStore.getState().setBrowserPageViewportPreset(page.id, null)
+    expect(useBrowserStore.getState().pagesByScope['ws-1'][0].viewportPresetId).toBeNull()
+  })
 })

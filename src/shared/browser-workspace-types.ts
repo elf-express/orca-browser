@@ -15,6 +15,9 @@ export type BrowserPage = {
   canGoForward: boolean
   loadError: BrowserLoadError | null
   createdAt: number
+  sessionProfileId: string | null
+  sessionPartition: string | null
+  viewportPresetId: BrowserViewportPresetId | null
 }
 
 // Why: BrowserPage persists the active viewport preset so CDP emulation can be

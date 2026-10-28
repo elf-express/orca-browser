@@ -33,7 +33,7 @@ export default defineConfig([
   {
     entry: { 'renderer/index': 'src/renderer/index.ts' },
     format: ['esm'],
-    external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'zustand'],
+    external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'zustand', 'sonner'],
     dts: true,
     outDir: 'dist',
     target: 'es2022',

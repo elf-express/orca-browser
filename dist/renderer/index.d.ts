@@ -277,4 +277,9 @@ declare function BrowserPluginProvider(props: {
     children: ReactNode;
 }): JSX.Element;
 
-export { type BrowserAgentPayload, BrowserPane, BrowserPluginProvider, type BrowserRendererHost, useBrowserRendererHost };
+/** Browser preferences: default search engine, browser identity and session profiles. */
+declare function BrowserSettingsPanel(props: {
+    scopeId?: string;
+}): React.JSX.Element;
+
+export { type BrowserAgentPayload, BrowserPane, BrowserPluginProvider, type BrowserRendererHost, BrowserSettingsPanel, useBrowserRendererHost };

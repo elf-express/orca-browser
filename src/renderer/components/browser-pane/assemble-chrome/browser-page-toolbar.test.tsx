@@ -23,7 +23,22 @@ afterEach(() => {
 function renderToolbar(currentUrl = 'https://a.test/'): void {
   render(
     <BrowserPageToolbar
-      browserPageId="p1"
+      page={{
+        id: 'p1',
+        scopeId: 's1',
+        url: currentUrl,
+        title: 'T',
+        loading: false,
+        faviconUrl: null,
+        canGoBack: true,
+        canGoForward: true,
+        loadError: null,
+        createdAt: 0,
+        sessionProfileId: null,
+        sessionPartition: null,
+        viewportPresetId: null
+      }}
+      isActive
       canGoBack
       canGoForward
       loading={false}

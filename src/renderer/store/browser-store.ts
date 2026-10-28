@@ -5,7 +5,11 @@ import {
   MAX_BROWSER_HISTORY_ENTRIES,
   normalizeBrowserHistoryUrl
 } from '../../shared/workspace-session-browser-history'
-import type { BrowserHistoryEntry, BrowserPage } from '../../shared/browser-workspace-types'
+import type {
+  BrowserHistoryEntry,
+  BrowserPage,
+  BrowserViewportPresetId
+} from '../../shared/browser-workspace-types'
 import {
   admitBrowserPageMount,
   releaseBrowserPageMount
@@ -41,6 +45,12 @@ export interface BrowserStoreState {
   requestAddressBarFocus: (pageId: string) => void
   consumeAddressBarFocusRequest: (pageId: string) => boolean
   setPaneMount: (scopeId: string, mount: { active: boolean } | null) => void
+  switchBrowserTabProfile: (
+    pageId: string,
+    profileId: string | null,
+    partition: string | null
+  ) => void
+  setBrowserPageViewportPreset: (pageId: string, presetId: BrowserViewportPresetId | null) => void
 }
 
 function isBlankHistoryUrl(url: string): boolean {
@@ -61,7 +71,10 @@ function makePage(scopeId: string, url: string): BrowserPage {
     canGoBack: false,
     canGoForward: false,
     loadError: null,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    sessionProfileId: null,
+    sessionPartition: null,
+    viewportPresetId: null
   }
 }
 
@@ -218,6 +231,18 @@ export const useBrowserStore = create<BrowserStoreState>()(
             return { pendingAddressBarFocusByPageId: rest }
           })
           return true
+        },
+
+        switchBrowserTabProfile: (pageId, profileId, partition) => {
+          updatePage(pageId, (page) => ({
+            ...page,
+            sessionProfileId: profileId,
+            sessionPartition: partition
+          }))
+        },
+
+        setBrowserPageViewportPreset: (pageId, presetId) => {
+          updatePage(pageId, (page) => ({ ...page, viewportPresetId: presetId }))
         },
 
         setPaneMount: (scopeId, mount) => {

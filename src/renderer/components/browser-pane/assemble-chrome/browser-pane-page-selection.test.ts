@@ -13,7 +13,10 @@ function makeBrowserPage(id: string): BrowserPage {
     canGoBack: false,
     canGoForward: false,
     loadError: null,
-    createdAt: 1
+    createdAt: 1,
+    sessionProfileId: null,
+    sessionPartition: null,
+    viewportPresetId: null
   }
 }
 

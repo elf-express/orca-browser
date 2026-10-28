@@ -7,6 +7,7 @@ import type { useBrowserPageReloadActions } from '../navigate/use-browser-page-r
 export function BrowserPageChromeHeader({
   chromeHeaderRef,
   browserTab,
+  isActive,
   webviewRef,
   addressBarInputRef,
   dismissAddressBarSuggestionsRef,
@@ -21,6 +22,7 @@ export function BrowserPageChromeHeader({
 }: {
   chromeHeaderRef: RefObject<HTMLDivElement | null>
   browserTab: BrowserPageState
+  isActive: boolean
   webviewRef: MutableRefObject<Electron.WebviewTag | null>
   addressBarInputRef: MutableRefObject<HTMLInputElement | null>
   dismissAddressBarSuggestionsRef: MutableRefObject<(() => void) | null>
@@ -36,7 +38,8 @@ export function BrowserPageChromeHeader({
   return (
     <div ref={chromeHeaderRef} className="pointer-events-auto shrink-0">
       <BrowserPageToolbar
-        browserPageId={browserTab.id}
+        page={browserTab}
+        isActive={isActive}
         canGoBack={browserTab.canGoBack}
         canGoForward={browserTab.canGoForward}
         loading={browserTab.loading}

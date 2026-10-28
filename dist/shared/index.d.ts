@@ -160,6 +160,9 @@ type BrowserPage = {
     canGoForward: boolean;
     loadError: BrowserLoadError | null;
     createdAt: number;
+    sessionProfileId: string | null;
+    sessionPartition: string | null;
+    viewportPresetId: BrowserViewportPresetId | null;
 };
 type BrowserViewportPresetId = 'mobile-s' | 'mobile-m' | 'mobile-l' | 'tablet' | 'laptop' | 'laptop-l' | 'desktop';
 type BrowserViewportOverride = {

@@ -29,6 +29,18 @@ import { persist } from "zustand/middleware";
 // src/shared/constants.ts
 var ORCA_BROWSER_PARTITION = "persist:orca-browser";
 var ORCA_BROWSER_BLANK_URL = "data:text/html,";
+var BROWSER_FAMILY_LABELS = {
+  chrome: "Google Chrome",
+  chromium: "Chromium",
+  comet: "Comet",
+  helium: "Helium",
+  arc: "Arc",
+  edge: "Microsoft Edge",
+  brave: "Brave",
+  firefox: "Firefox",
+  safari: "Safari",
+  manual: "File"
+};
 
 // src/shared/browser-url.ts
 var LOCAL_ADDRESS_PATTERN = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[[0-9a-f:]+\])(?::\d+)?(?:[/?#].*)?$/i;
@@ -858,7 +870,10 @@ function makePage(scopeId, url) {
     canGoBack: false,
     canGoForward: false,
     loadError: null,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    sessionProfileId: null,
+    sessionPartition: null,
+    viewportPresetId: null
   };
 }
 var useBrowserStore = create()(
@@ -997,6 +1012,16 @@ var useBrowserStore = create()(
           });
           return true;
         },
+        switchBrowserTabProfile: (pageId, profileId, partition) => {
+          updatePage(pageId, (page) => ({
+            ...page,
+            sessionProfileId: profileId,
+            sessionPartition: partition
+          }));
+        },
+        setBrowserPageViewportPreset: (pageId, presetId) => {
+          updatePage(pageId, (page) => ({ ...page, viewportPresetId: presetId }));
+        },
         setPaneMount: (scopeId, mount) => {
           set((state) => {
             const current = state.paneMountByScope[scopeId];
@@ -1062,14 +1087,14 @@ function BrowserPane(props) {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { useEffect as useEffect16 } from "react";
+import { useEffect as useEffect19 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { memo, useCallback as useCallback13, useMemo as useMemo6 } from "react";
+import { memo, useCallback as useCallback14, useMemo as useMemo7 } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { useMemo as useMemo5 } from "react";
+import { useMemo as useMemo6 } from "react";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-pane-page-selection.ts
 var EMPTY_BROWSER_PAGES = [];
@@ -1193,12 +1218,162 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback12, useEffect as useEffect14, useLayoutEffect as useLayoutEffect6, useRef as useRef12, useState as useState9 } from "react";
+import { useCallback as useCallback13, useEffect as useEffect17, useLayoutEffect as useLayoutEffect6, useRef as useRef13, useState as useState15 } from "react";
 import { createPortal as createPortal2 } from "react-dom";
+
+// src/renderer/store/browser-session-store.ts
+import { create as create2 } from "zustand";
+
+// src/shared/browser-plugin-settings.ts
+var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
+  searchEngine: DEFAULT_SEARCH_ENGINE,
+  importHintHidden: false
+};
+
+// src/renderer/store/browser-session-store.ts
+function errorReason(error) {
+  return String(error?.message ?? error);
+}
+var useBrowserSessionStore = create2()((set, get) => {
+  const runImport = async (profileId, run, options) => {
+    set({ browserSessionImportState: { profileId, status: "importing" } });
+    try {
+      const result = await run();
+      if (result.ok) {
+        set({
+          browserSessionImportState: { profileId, status: "success", summary: result.summary }
+        });
+        await get().fetchBrowserSessionProfiles().catch(() => {
+        });
+      } else if (options.canceledIsSilent && result.reason === "canceled") {
+        set({ browserSessionImportState: null });
+      } else {
+        set({
+          browserSessionImportState: { profileId, status: "error", error: result.reason }
+        });
+      }
+      return result;
+    } catch (error) {
+      const reason = errorReason(error);
+      set({ browserSessionImportState: { profileId, status: "error", error: reason } });
+      return { ok: false, reason };
+    }
+  };
+  return {
+    browserSessionProfiles: [],
+    detectedBrowsers: [],
+    detectedBrowsersLoaded: false,
+    browserSessionImportState: null,
+    settings: { ...DEFAULT_BROWSER_PLUGIN_SETTINGS },
+    settingsLoaded: false,
+    identity: null,
+    fetchBrowserSessionProfiles: async () => {
+      try {
+        const profiles = await window.browserAPI.session.listProfiles();
+        set({ browserSessionProfiles: profiles });
+      } catch {
+      }
+    },
+    createBrowserSessionProfile: async (scope, label) => {
+      try {
+        const profile = await window.browserAPI.session.createProfile({ scope, label });
+        if (profile) {
+          set((state) => ({ browserSessionProfiles: [...state.browserSessionProfiles, profile] }));
+        }
+        return profile;
+      } catch {
+        return null;
+      }
+    },
+    deleteBrowserSessionProfile: async (profileId) => {
+      try {
+        const deleted = await window.browserAPI.session.deleteProfile({ profileId });
+        if (deleted) {
+          set((state) => ({
+            browserSessionProfiles: state.browserSessionProfiles.filter(
+              (profile) => profile.id !== profileId
+            )
+          }));
+        }
+        return deleted;
+      } catch {
+        return false;
+      }
+    },
+    fetchDetectedBrowsers: async () => {
+      if (get().detectedBrowsersLoaded) {
+        return;
+      }
+      try {
+        const browsers = await window.browserAPI.session.detectBrowsers();
+        set({ detectedBrowsers: browsers, detectedBrowsersLoaded: true });
+      } catch {
+        set({ detectedBrowsers: [], detectedBrowsersLoaded: true });
+      }
+    },
+    importCookiesFromBrowser: (profileId, browserFamily, browserProfile) => runImport(
+      profileId,
+      () => window.browserAPI.session.importFromBrowser({
+        profileId,
+        browserFamily,
+        browserProfile
+      }),
+      { canceledIsSilent: false }
+    ),
+    importCookiesToProfile: (profileId) => runImport(profileId, () => window.browserAPI.session.importCookies({ profileId }), {
+      canceledIsSilent: true
+    }),
+    clearDefaultSessionCookies: async () => {
+      try {
+        const cleared = await window.browserAPI.session.clearDefaultCookies();
+        if (cleared) {
+          await get().fetchBrowserSessionProfiles();
+        }
+        return cleared;
+      } catch {
+        return false;
+      }
+    },
+    loadSettings: async () => {
+      try {
+        const settings = await window.browserAPI.settings.get();
+        set({ settings, settingsLoaded: true });
+      } catch {
+      }
+    },
+    updateSettings: async (patch) => {
+      const previous = get().settings;
+      set({ settings: { ...previous, ...patch } });
+      try {
+        const next = await window.browserAPI.settings.set(patch);
+        set({ settings: next ?? previous });
+      } catch {
+        set({ settings: previous });
+      }
+    },
+    loadIdentity: async () => {
+      try {
+        const identity = await window.browserAPI.identity.get();
+        set({ identity });
+      } catch {
+      }
+    },
+    setIdentityMode: async (mode) => {
+      const result = await window.browserAPI.identity.set(mode);
+      if (result?.ok) {
+        set({ identity: { identity: result.identity, migrationNotice: null } });
+      }
+      return result;
+    }
+  };
+});
 
 // src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.ts
 function resolveBrowserAddressBarSubmission(rawValue, options) {
-  const url = normalizeBrowserNavigationUrl(rawValue, DEFAULT_SEARCH_ENGINE);
+  const url = normalizeBrowserNavigationUrl(
+    rawValue,
+    useBrowserSessionStore.getState().settings.searchEngine
+  );
   const fileUrlUnsupported = options?.allowFileUrls !== true && Boolean(url) && url.startsWith("file:");
   if (url && !fileUrlUnsupported) {
     return { status: "navigate", url };
@@ -2947,6 +3122,7 @@ function BrowserAddressBar({
   const prePreviewValueRef = useRef4(null);
   const autocompleteQuery = prePreviewValueRef.current ?? value;
   const browserUrlHistory = useBrowserStore((s) => s.browserUrlHistory);
+  const searchEngine = useBrowserSessionStore((s) => s.settings.searchEngine);
   const closingRef = useRef4(false);
   const addressBarClickSelect = useBrowserAddressBarClickSelect();
   const openedAtRef = useRef4(0);
@@ -3029,10 +3205,10 @@ function BrowserAddressBar({
     () => buildBrowserAddressBarSuggestions({
       browserUrlHistory,
       kagiSessionLink: null,
-      searchEngine: DEFAULT_SEARCH_ENGINE,
+      searchEngine,
       value: autocompleteQuery
     }),
-    [browserUrlHistory, autocompleteQuery]
+    [browserUrlHistory, autocompleteQuery, searchEngine]
   );
   const clearSuggestionPreview = useCallback5(() => {
     prePreviewValueRef.current = null;
@@ -3428,6 +3604,11 @@ import { jsx as jsx12, jsxs as jsxs7 } from "react/jsx-runtime";
 function DropdownMenu({ ...props }) {
   return /* @__PURE__ */ jsx12(DropdownMenuPrimitive.Root, { "data-slot": "dropdown-menu", ...props });
 }
+function DropdownMenuPortal({
+  ...props
+}) {
+  return /* @__PURE__ */ jsx12(DropdownMenuPrimitive.Portal, { "data-slot": "dropdown-menu-portal", ...props });
+}
 function DropdownMenuTrigger({
   ...props
 }) {
@@ -3474,6 +3655,50 @@ function DropdownMenuItem({
     }
   );
 }
+function DropdownMenuRadioGroup({
+  ...props
+}) {
+  return /* @__PURE__ */ jsx12(DropdownMenuPrimitive.RadioGroup, { "data-slot": "dropdown-menu-radio-group", ...props });
+}
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs7(
+    DropdownMenuPrimitive.RadioItem,
+    {
+      "data-slot": "dropdown-menu-radio-item",
+      className: cn(
+        "relative flex cursor-default items-center gap-2 rounded-md py-[4px] pr-2 pl-7 text-[12px] leading-[17px] font-[450] outline-hidden select-none focus:bg-black/8 dark:focus:bg-white/14 focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        className
+      ),
+      ...props,
+      children: [
+        /* @__PURE__ */ jsx12("span", { className: "pointer-events-none absolute left-2 flex size-3.5 items-center justify-center", children: /* @__PURE__ */ jsx12(DropdownMenuPrimitive.ItemIndicator, { children: /* @__PURE__ */ jsx12(CircleIcon, { className: "size-2 fill-current" }) }) }),
+        children
+      ]
+    }
+  );
+}
+function DropdownMenuLabel({
+  className,
+  inset,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx12(
+    DropdownMenuPrimitive.Label,
+    {
+      "data-slot": "dropdown-menu-label",
+      "data-inset": inset,
+      className: cn(
+        "px-2 py-[4px] text-[11px] font-semibold text-muted-foreground data-[inset]:pl-7",
+        className
+      ),
+      ...props
+    }
+  );
+}
 function DropdownMenuSeparator({
   className,
   ...props
@@ -3499,6 +3724,52 @@ function DropdownMenuShortcut({ className, ...props }) {
       ...props
     }
   );
+}
+function DropdownMenuSub({ ...props }) {
+  return /* @__PURE__ */ jsx12(DropdownMenuPrimitive.Sub, { "data-slot": "dropdown-menu-sub", ...props });
+}
+function DropdownMenuSubTrigger({
+  className,
+  inset,
+  children,
+  hideChevron,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs7(
+    DropdownMenuPrimitive.SubTrigger,
+    {
+      "data-slot": "dropdown-menu-sub-trigger",
+      "data-inset": inset,
+      className: cn(
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-[4px] text-[12px] leading-[17px] font-[450] outline-hidden select-none focus:bg-black/8 dark:focus:bg-white/14 focus:text-accent-foreground data-[inset]:pl-7 data-[state=open]:bg-black/8 dark:data-[state=open]:bg-white/14 data-[state=open]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 [&_svg:not([class*='text-'])]:text-muted-foreground",
+        className
+      ),
+      ...props,
+      children: [
+        children,
+        hideChevron ? null : /* @__PURE__ */ jsx12(ChevronRightIcon, { className: "ml-auto size-4" })
+      ]
+    }
+  );
+}
+function DropdownMenuSubContent({
+  className,
+  style,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx12(DropdownMenuPrimitive.Portal, { children: /* @__PURE__ */ jsx12(
+    DropdownMenuPrimitive.SubContent,
+    {
+      "data-slot": "dropdown-menu-sub-content",
+      className: cn(
+        "z-[70] min-w-[11rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-[11px] border border-black/14 bg-[rgba(255,255,255,0.82)] p-[4px] text-black dark:text-white shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:shadow-[0_16px_34px_rgba(0,0,0,0.40),inset_0_1px_0_rgba(255,255,255,0.04)] data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in motion-reduce:data-[state=open]:animate-none motion-reduce:data-[state=closed]:animate-none data-[state=open]:fade-in-0 data-[state=open]:duration-150 data-[state=open]:zoom-in-[0.98]",
+        className
+      ),
+      style: { ...style, WebkitAppRegion: "no-drag" },
+      ...props,
+      onEscapeKeyDown: (event) => handleImeOverlayEscape(event, props.onEscapeKeyDown)
+    }
+  ) });
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-chrome-folded-tools.tsx
@@ -3666,7 +3937,7 @@ function useBrowserChromeToolFold(rowRef, stages) {
 import { jsx as jsx14, jsxs as jsxs9 } from "react/jsx-runtime";
 function BrowserChromeActionButton({
   action,
-  icon: Icon
+  icon: Icon2
 }) {
   return /* @__PURE__ */ jsx14(
     Button,
@@ -3678,7 +3949,7 @@ function BrowserChromeActionButton({
       title: action.label,
       "aria-label": action.label,
       disabled: action.disabled,
-      children: /* @__PURE__ */ jsx14(Icon, { className: "size-4" })
+      children: /* @__PURE__ */ jsx14(Icon2, { className: "size-4" })
     }
   );
 }
@@ -3819,10 +4090,1810 @@ function BrowserReloadControl({
   ] });
 }
 
-// src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
-import { jsx as jsx16 } from "react/jsx-runtime";
-function BrowserPageToolbar({
+// src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
+import { useCallback as useCallback6, useEffect as useEffect9, useMemo as useMemo4, useState as useState8 } from "react";
+import { Import as Import2 } from "lucide-react";
+import { toast as toast4 } from "sonner";
+
+// src/renderer/lib/browser-cookie-import-toast.ts
+import { toast } from "sonner";
+
+// src/shared/handled-wire-discriminant.ts
+function isHandledWireDiscriminant(value, handled) {
+  return typeof value === "string" && Object.hasOwn(handled, value);
+}
+
+// src/renderer/lib/browser-cookie-import-toast.ts
+var HANDLED_WARNING_CODES = {
+  "restart-fallback-unavailable": true,
+  "cookies-undecryptable": true
+};
+var HANDLED_UNDECRYPTABLE_REASONS = {
+  "app-bound-encryption": true,
+  "linux-keyring-unavailable": true,
+  unknown: true
+};
+function formatCookieImportWarning(warning) {
+  const code = warning.code;
+  if (!isHandledWireDiscriminant(code, HANDLED_WARNING_CODES)) {
+    return translate(
+      "auto.lib.browser.cookie.import.toast.unrecognizedWarning",
+      "The cookie import finished with a warning this version of Orca does not recognize. Update Orca to see the details, then check this profile before relying on its cookies."
+    );
+  }
+  switch (warning.code) {
+    case "restart-fallback-unavailable":
+      return warning.loadedCookies === 0 ? translate(
+        "auto.lib.browser.cookie.import.toast.restartFallbackUnavailableNone",
+        "None of the {{value0}} cookies could be loaded, and the restart fallback was unavailable. The previous cookies for this profile were replaced. Try the import again.",
+        { value0: warning.failedCookies }
+      ) : translate(
+        "auto.lib.browser.cookie.import.toast.restartFallbackUnavailablePartial",
+        "Imported {{value0}} of {{value1}} cookies. The rest could not be loaded, and the restart fallback was unavailable. Try the import again.",
+        {
+          value0: warning.loadedCookies,
+          value1: warning.loadedCookies + warning.failedCookies
+        }
+      );
+    case "cookies-undecryptable": {
+      const reason = warning.reason;
+      if (!isHandledWireDiscriminant(reason, HANDLED_UNDECRYPTABLE_REASONS)) {
+        return translate(
+          "auto.lib.browser.cookie.import.toast.undecryptableUnrecognizedReason",
+          "{{value0}} cookies could not be decrypted and were skipped for a reason this version of Orca does not recognize. Update Orca to see the details, then try the import again.",
+          { value0: warning.failedCookies }
+        );
+      }
+      switch (warning.reason) {
+        case "app-bound-encryption":
+          return warning.otherFailedCookies ? translate(
+            "auto.lib.browser.cookie.import.toast.undecryptableAppBoundMixed",
+            "Orca cannot decrypt {{value0}} of this browser's cookies because they use app-bound encryption; {{value1}} more could not be decrypted for another reason. You can import cookies from a file using \u201CFrom File\u2026\u201D.",
+            { value0: warning.failedCookies, value1: warning.otherFailedCookies }
+          ) : translate(
+            "auto.lib.browser.cookie.import.toast.undecryptableAppBound",
+            "Orca cannot decrypt {{value0}} of this browser's cookies because they use app-bound encryption. You can import cookies from a file using \u201CFrom File\u2026\u201D.",
+            { value0: warning.failedCookies }
+          );
+        case "linux-keyring-unavailable":
+          return warning.otherFailedCookies ? translate(
+            "auto.lib.browser.cookie.import.toast.undecryptableKeyringMixed",
+            "{{value0}} cookies could not be decrypted because the system keyring was unavailable; {{value1}} more could not be decrypted for another reason. Unlock your login keyring (or install a Secret Service provider such as gnome-keyring) and import again.",
+            { value0: warning.failedCookies, value1: warning.otherFailedCookies }
+          ) : translate(
+            "auto.lib.browser.cookie.import.toast.undecryptableKeyring",
+            "{{value0}} cookies could not be decrypted because the system keyring was unavailable. Unlock your login keyring (or install a Secret Service provider such as gnome-keyring) and import again.",
+            { value0: warning.failedCookies }
+          );
+        case "unknown":
+          return translate(
+            "auto.lib.browser.cookie.import.toast.undecryptableUnknown",
+            "{{value0}} cookies could not be decrypted and were skipped. Close the source browser completely and try the import again.",
+            { value0: warning.failedCookies }
+          );
+      }
+    }
+  }
+}
+function emitGoogleCookieImportWarning(summary) {
+  if (!summary.googleCookiesSkipped) {
+    return;
+  }
+  toast.warning(
+    translate(
+      "auto.lib.browser.cookie.import.toast.googleCookiesSkippedLocal",
+      "Google cookies were not imported. Open a browser in Orca with this profile, then sign into Google."
+    ),
+    { duration: 12e3 }
+  );
+}
+function emitPartitionSkippedImportWarning(summary) {
+  if (!summary.partitionSkippedCookies) {
+    return;
+  }
+  toast.warning(
+    translate(
+      "auto.lib.browser.cookie.import.toast.partitionSkipped",
+      "{{value0}} cookies were not imported because their site-partition could not be read. Sign in to those sites again in Orca.",
+      { value0: summary.partitionSkippedCookies }
+    ),
+    { duration: 12e3 }
+  );
+}
+function emitBrowserCookieImportToast(summary, successMessage) {
+  const warning = summary.warning;
+  if (warning) {
+    toast.warning(formatCookieImportWarning(warning));
+  } else {
+    toast.success(successMessage);
+  }
+  emitGoogleCookieImportWarning(summary);
+  emitPartitionSkippedImportWarning(summary);
+}
+
+// src/renderer/components/BrowserCookieImportDisclosure.tsx
+import { Info } from "lucide-react";
+import { Fragment as Fragment2, jsx as jsx16, jsxs as jsxs11 } from "react/jsx-runtime";
+function BrowserCookieImportDisclosure() {
+  return /* @__PURE__ */ jsxs11(Fragment2, { children: [
+    /* @__PURE__ */ jsx16(DropdownMenuSeparator, {}),
+    /* @__PURE__ */ jsxs11(DropdownMenuLabel, { className: "flex max-w-64 items-start gap-2 whitespace-normal py-2 font-normal", children: [
+      /* @__PURE__ */ jsx16(Info, { "aria-hidden": true, className: "mt-0.5 size-3.5 shrink-0" }),
+      /* @__PURE__ */ jsxs11("span", { className: "min-w-0", children: [
+        /* @__PURE__ */ jsx16("span", { className: "block font-medium leading-4 text-foreground", children: translate(
+          "auto.components.BrowserCookieImportDisclosure.title",
+          "Google logins aren't imported"
+        ) }),
+        /* @__PURE__ */ jsx16("span", { className: "block leading-4 text-muted-foreground", children: translate(
+          "auto.components.BrowserCookieImportDisclosure.description",
+          "Sign in to Google directly in Orca."
+        ) })
+      ] })
+    ] })
+  ] });
+}
+
+// src/renderer/ui/dialog.tsx
+import { cva as cva4 } from "class-variance-authority";
+import { Minus, XIcon } from "lucide-react";
+import * as DialogPrimitive2 from "radix-ui/dialog";
+import { jsx as jsx17, jsxs as jsxs12 } from "react/jsx-runtime";
+function Dialog({ ...props }) {
+  return /* @__PURE__ */ jsx17(DialogPrimitive2.Root, { "data-slot": "dialog", ...props });
+}
+function DialogPortal({ ...props }) {
+  return /* @__PURE__ */ jsx17(DialogPrimitive2.Portal, { "data-slot": "dialog-portal", ...props });
+}
+function DialogOverlay({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx17(
+    DialogPrimitive2.Overlay,
+    {
+      "data-slot": "dialog-overlay",
+      className: cn(
+        "fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        className
+      ),
+      ...props
+    }
+  );
+}
+var dialogContentSurfaceVariants = cva4("", {
+  variants: {
+    surface: {
+      default: "",
+      /** The tinted, edge-to-edge panel of the two-column feature tip dialogs. */
+      "feature-tip": "gap-0 bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background))] p-0 dark:bg-[color-mix(in_srgb,var(--foreground)_16%,var(--background))]"
+    }
+  },
+  defaultVariants: { surface: "default" }
+});
+function DialogContentCloseButton({ variant }) {
+  const label = variant === "minimize" ? translate("auto.components.ui.dialog.minimize", "Minimize") : translate("auto.components.ui.dialog.f26c4baeda", "Close");
+  const button = /* @__PURE__ */ jsxs12(
+    DialogPrimitive2.Close,
+    {
+      "data-slot": "dialog-close",
+      className: "absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+      children: [
+        variant === "minimize" ? /* @__PURE__ */ jsx17(Minus, { className: "size-3.5" }) : /* @__PURE__ */ jsx17(XIcon, {}),
+        /* @__PURE__ */ jsx17("span", { className: "sr-only", children: label })
+      ]
+    }
+  );
+  return variant === "minimize" ? /* @__PURE__ */ jsxs12(Tooltip, { children: [
+    /* @__PURE__ */ jsx17(TooltipTrigger, { asChild: true, children: button }),
+    /* @__PURE__ */ jsx17(TooltipContent, { side: "top", sideOffset: 4, children: label })
+  ] }) : button;
+}
+function DialogContent({
+  className,
+  children,
+  overlayClassName,
+  showCloseButton = true,
+  closeButtonVariant = "close",
+  surface,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs12(DialogPortal, { "data-slot": "dialog-portal", children: [
+    /* @__PURE__ */ jsx17(DialogOverlay, { className: overlayClassName }),
+    /* @__PURE__ */ jsxs12(
+      DialogPrimitive2.Content,
+      {
+        "data-slot": "dialog-content",
+        className: cn(
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] grid-cols-[minmax(0,1fr)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border border-black/14 bg-background/96 p-6 text-foreground shadow-[0_20px_60px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl duration-200 outline-none dark:border-white/14 dark:bg-[rgba(23,23,23,0.96)] dark:shadow-[0_24px_72px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          dialogContentSurfaceVariants({ surface }),
+          className
+        ),
+        ...props,
+        onEscapeKeyDown: (event) => handleImeOverlayEscape(event, props.onEscapeKeyDown),
+        children: [
+          children,
+          showCloseButton && /* @__PURE__ */ jsx17(DialogContentCloseButton, { variant: closeButtonVariant })
+        ]
+      }
+    )
+  ] });
+}
+function DialogHeader({ className, ...props }) {
+  return /* @__PURE__ */ jsx17(
+    "div",
+    {
+      "data-slot": "dialog-header",
+      className: cn("flex flex-col gap-2 text-center sm:text-left", className),
+      ...props
+    }
+  );
+}
+function DialogFooter({
+  className,
+  showCloseButton = false,
+  children,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs12(
+    "div",
+    {
+      "data-slot": "dialog-footer",
+      className: cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className),
+      ...props,
+      children: [
+        children,
+        showCloseButton && /* @__PURE__ */ jsx17(DialogPrimitive2.Close, { asChild: true, children: /* @__PURE__ */ jsx17(Button, { variant: "outline", children: translate("auto.components.ui.dialog.f26c4baeda", "Close") }) })
+      ]
+    }
+  );
+}
+function DialogTitle({
+  className,
+  size = "default",
+  ...props
+}) {
+  return /* @__PURE__ */ jsx17(
+    DialogPrimitive2.Title,
+    {
+      "data-slot": "dialog-title",
+      "data-size": size,
+      className: cn(
+        "text-lg leading-snug font-semibold break-words data-[size=display]:text-2xl data-[size=display]:leading-tight data-[size=display]:tracking-tight md:data-[size=display]:text-[1.75rem]",
+        className
+      ),
+      ...props
+    }
+  );
+}
+function DialogDescription({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx17(
+    DialogPrimitive2.Description,
+    {
+      "data-slot": "dialog-description",
+      className: cn("text-sm text-muted-foreground", className),
+      ...props
+    }
+  );
+}
+
+// src/renderer/components/settings/BrowserSettingsPanel.tsx
+import { useEffect as useEffect8, useState as useState7 } from "react";
+
+// src/renderer/components/settings/BrowserNewProfileDialog.tsx
+import { useState as useState4 } from "react";
+import { toast as toast2 } from "sonner";
+
+// src/renderer/hooks/useMountedRef.ts
+import { useEffect as useEffect7, useRef as useRef7 } from "react";
+function useMountedRef() {
+  const mountedRef = useRef7(true);
+  useEffect7(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  return mountedRef;
+}
+
+// src/renderer/components/settings/BrowserNewProfileDialog.tsx
+import { jsx as jsx18, jsxs as jsxs13 } from "react/jsx-runtime";
+function BrowserNewProfileDialog({
+  open,
+  onOpenChange
+}) {
+  const mountedRef = useMountedRef();
+  const [newProfileName, setNewProfileName] = useState4("");
+  const [isCreatingProfile, setIsCreatingProfile] = useState4(false);
+  const handleClose = () => {
+    onOpenChange(false);
+    setNewProfileName("");
+  };
+  return /* @__PURE__ */ jsx18(
+    Dialog,
+    {
+      open,
+      onOpenChange: (nextOpen) => {
+        if (!nextOpen) {
+          handleClose();
+        }
+      },
+      children: /* @__PURE__ */ jsxs13(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+        /* @__PURE__ */ jsx18(DialogHeader, { children: /* @__PURE__ */ jsx18(DialogTitle, { className: "text-base", children: translate("auto.components.settings.BrowserPane.8481ee0331", "New Browser Profile") }) }),
+        /* @__PURE__ */ jsxs13(
+          "form",
+          {
+            onSubmit: async (e) => {
+              e.preventDefault();
+              const trimmed = newProfileName.trim();
+              if (!trimmed) {
+                return;
+              }
+              setIsCreatingProfile(true);
+              try {
+                const profile = await useBrowserSessionStore.getState().createBrowserSessionProfile("isolated", trimmed);
+                if (!mountedRef.current) {
+                  return;
+                }
+                if (profile) {
+                  handleClose();
+                  toast2.success(
+                    translate(
+                      "auto.components.settings.BrowserPane.8f22b7580d",
+                      'Profile "{{value0}}" created.',
+                      { value0: profile.label }
+                    )
+                  );
+                } else {
+                  toast2.error(
+                    translate(
+                      "auto.components.settings.BrowserPane.612f7f6861",
+                      "Failed to create profile."
+                    )
+                  );
+                }
+              } finally {
+                if (mountedRef.current) {
+                  setIsCreatingProfile(false);
+                }
+              }
+            },
+            children: [
+              /* @__PURE__ */ jsx18(
+                Input,
+                {
+                  value: newProfileName,
+                  onChange: (e) => setNewProfileName(e.target.value),
+                  placeholder: translate(
+                    "auto.components.settings.BrowserPane.7d4c0a2aa4",
+                    "Profile name"
+                  ),
+                  autoFocus: true,
+                  maxLength: 50,
+                  className: "mb-3"
+                }
+              ),
+              /* @__PURE__ */ jsxs13(DialogFooter, { children: [
+                /* @__PURE__ */ jsx18(Button, { type: "button", variant: "outline", size: "sm", onClick: handleClose, children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
+                /* @__PURE__ */ jsx18(Button, { type: "submit", size: "sm", disabled: !newProfileName.trim() || isCreatingProfile, children: isCreatingProfile ? translate("auto.components.settings.BrowserPane.7b649a578a", "Creating\u2026") : translate("auto.components.settings.BrowserPane.64898ecdab", "Create") })
+              ] })
+            ]
+          }
+        )
+      ] })
+    }
+  );
+}
+
+// src/renderer/ui/label.tsx
+import * as LabelPrimitive from "radix-ui/label";
+import { jsx as jsx19 } from "react/jsx-runtime";
+function Label2({ className, ...props }) {
+  return /* @__PURE__ */ jsx19(
+    LabelPrimitive.Root,
+    {
+      "data-slot": "label",
+      className: cn(
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className
+      ),
+      ...props
+    }
+  );
+}
+
+// src/renderer/ui/select.tsx
+import { CheckIcon as CheckIcon2, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import * as SelectPrimitive from "radix-ui/select";
+import { jsx as jsx20, jsxs as jsxs14 } from "react/jsx-runtime";
+function Select({ ...props }) {
+  return /* @__PURE__ */ jsx20(SelectPrimitive.Root, { "data-slot": "select", ...props });
+}
+function SelectValue({ ...props }) {
+  return /* @__PURE__ */ jsx20(SelectPrimitive.Value, { "data-slot": "select-value", ...props });
+}
+function SelectTrigger({
+  className,
+  size = "default",
+  children,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs14(
+    SelectPrimitive.Trigger,
+    {
+      "data-slot": "select-trigger",
+      "data-size": size,
+      className: cn(
+        "flex w-fit items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[placeholder]:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground",
+        className
+      ),
+      ...props,
+      children: [
+        children,
+        /* @__PURE__ */ jsx20(SelectPrimitive.Icon, { asChild: true, children: /* @__PURE__ */ jsx20(ChevronDownIcon, { className: "size-4 opacity-50" }) })
+      ]
+    }
+  );
+}
+function SelectContent({
+  className,
+  children,
+  position = "item-aligned",
+  align = "center",
+  portalContainer,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx20(SelectPrimitive.Portal, { container: portalContainer ?? void 0, children: /* @__PURE__ */ jsxs14(
+    SelectPrimitive.Content,
+    {
+      "data-slot": "select-content",
+      className: cn(
+        "relative z-[70] max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border border-black/14 bg-[rgba(255,255,255,0.82)] text-popover-foreground shadow-[0_16px_36px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:shadow-[0_20px_44px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)] data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+        position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+        className
+      ),
+      position,
+      align,
+      ...props,
+      children: [
+        /* @__PURE__ */ jsx20(SelectScrollUpButton, {}),
+        /* @__PURE__ */ jsx20(
+          SelectPrimitive.Viewport,
+          {
+            className: cn(
+              "p-1",
+              position === "popper" && "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
+            ),
+            children
+          }
+        ),
+        /* @__PURE__ */ jsx20(SelectScrollDownButton, {})
+      ]
+    }
+  ) });
+}
+function SelectItem({
+  className,
+  children,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxs14(
+    SelectPrimitive.Item,
+    {
+      "data-slot": "select-item",
+      className: cn(
+        "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        className
+      ),
+      ...props,
+      children: [
+        /* @__PURE__ */ jsx20(
+          "span",
+          {
+            "data-slot": "select-item-indicator",
+            className: "absolute right-2 flex size-3.5 items-center justify-center",
+            children: /* @__PURE__ */ jsx20(SelectPrimitive.ItemIndicator, { children: /* @__PURE__ */ jsx20(CheckIcon2, { className: "size-4" }) })
+          }
+        ),
+        /* @__PURE__ */ jsx20(SelectPrimitive.ItemText, { children })
+      ]
+    }
+  );
+}
+function SelectScrollUpButton({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx20(
+    SelectPrimitive.ScrollUpButton,
+    {
+      "data-slot": "select-scroll-up-button",
+      className: cn("flex cursor-default items-center justify-center py-1", className),
+      ...props,
+      children: /* @__PURE__ */ jsx20(ChevronUpIcon, { className: "size-4" })
+    }
+  );
+}
+function SelectScrollDownButton({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsx20(
+    SelectPrimitive.ScrollDownButton,
+    {
+      "data-slot": "select-scroll-down-button",
+      className: cn("flex cursor-default items-center justify-center py-1", className),
+      ...props,
+      children: /* @__PURE__ */ jsx20(ChevronDownIcon, { className: "size-4" })
+    }
+  );
+}
+
+// src/renderer/components/settings/BrowserSearchEngineSetting.tsx
+import { jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
+function BrowserSearchEngineSetting({
+  selectedSearchEngine,
+  onSearchEngineChange
+}) {
+  return /* @__PURE__ */ jsxs15("div", { className: "flex items-start justify-between gap-4 py-2", children: [
+    /* @__PURE__ */ jsxs15("div", { className: "space-y-0.5", children: [
+      /* @__PURE__ */ jsx21(Label2, { children: translate("auto.components.settings.BrowserPane.0d9c987f21", "Default Search Engine") }),
+      /* @__PURE__ */ jsx21("p", { className: "text-xs text-muted-foreground", children: translate(
+        "auto.components.settings.BrowserPane.3e46903ad4",
+        "Used when typing non-URL text in the address bar."
+      ) })
+    ] }),
+    /* @__PURE__ */ jsxs15(
+      Select,
+      {
+        value: selectedSearchEngine,
+        onValueChange: (value) => onSearchEngineChange(value),
+        children: [
+          /* @__PURE__ */ jsx21(SelectTrigger, { className: "h-7 w-36 text-xs", children: /* @__PURE__ */ jsx21(SelectValue, {}) }),
+          /* @__PURE__ */ jsx21(SelectContent, { children: Object.keys(SEARCH_ENGINE_LABELS).map((engine) => /* @__PURE__ */ jsx21(SelectItem, { value: engine, className: "text-xs", children: SEARCH_ENGINE_LABELS[engine] }, engine)) })
+        ]
+      }
+    )
+  ] });
+}
+
+// src/renderer/components/settings/BrowserSessionCookiesSection.tsx
+import { Plus } from "lucide-react";
+
+// src/renderer/components/settings/BrowserProfileRow.tsx
+import { useState as useState5 } from "react";
+import { Import, Loader2 as Loader23, Trash2 } from "lucide-react";
+import { toast as toast3 } from "sonner";
+import { jsx as jsx22, jsxs as jsxs16 } from "react/jsx-runtime";
+function BrowserProfileRow({
+  profile,
+  inUse,
+  isDefault
+}) {
+  const detectedBrowsers = useBrowserSessionStore((s) => s.detectedBrowsers);
+  const importState = useBrowserSessionStore((s) => s.browserSessionImportState);
+  const fetchDetectedBrowsers = useBrowserSessionStore((s) => s.fetchDetectedBrowsers);
+  const [confirmingDelete, setConfirmingDelete] = useState5(false);
+  const isImporting = importState?.profileId === profile.id && importState.status === "importing";
+  const handleImportFromBrowser = async (browserFamily, browserProfile) => {
+    const result = await useBrowserSessionStore.getState().importCookiesFromBrowser(profile.id, browserFamily, browserProfile);
+    if (result.ok) {
+      const browser = detectedBrowsers.find((b) => b.family === browserFamily);
+      emitBrowserCookieImportToast(
+        result.summary,
+        browserProfile ? translate(
+          "auto.components.settings.BrowserProfileRow.a3f8c2d1e0b4",
+          "Imported {{value0}} cookies from {{value1}} ({{value2}}) into {{value3}}.",
+          {
+            value0: result.summary.importedCookies,
+            value1: browser?.label ?? browserFamily,
+            value2: browserProfile,
+            value3: profile.label
+          }
+        ) : translate(
+          "auto.components.settings.BrowserProfileRow.b4e9d3f2a1c5",
+          "Imported {{value0}} cookies from {{value1}} into {{value2}}.",
+          {
+            value0: result.summary.importedCookies,
+            value1: browser?.label ?? browserFamily,
+            value2: profile.label
+          }
+        )
+      );
+    } else {
+      toast3.error(result.reason);
+    }
+  };
+  const handleImportFromFile = async () => {
+    const result = await useBrowserSessionStore.getState().importCookiesToProfile(profile.id);
+    if (result.ok) {
+      emitBrowserCookieImportToast(
+        result.summary,
+        translate(
+          "auto.components.settings.BrowserProfileRow.b4c167764d",
+          "Imported {{value0}} cookies from file into {{value1}}.",
+          { value0: result.summary.importedCookies, value1: profile.label }
+        )
+      );
+    } else if (result.reason !== "canceled") {
+      toast3.error(result.reason);
+    }
+  };
+  const handleDelete = async () => {
+    setConfirmingDelete(false);
+    const ok = await useBrowserSessionStore.getState().deleteBrowserSessionProfile(profile.id);
+    if (ok) {
+      toast3.success(
+        translate(
+          "auto.components.settings.BrowserProfileRow.8e636cae25",
+          'Profile "{{value0}}" removed.',
+          { value0: profile.label }
+        )
+      );
+    }
+  };
+  const sourceLabel = profile.source ? `${BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily}${profile.source.profileName ? ` (${profile.source.profileName})` : ""}` : translate("auto.components.settings.BrowserProfileRow.796d846483", "No cookies imported");
+  return /* @__PURE__ */ jsxs16(
+    "div",
+    {
+      "data-profile-id": profile.id,
+      className: `flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left ${inUse ? "border-foreground/20 bg-accent/15" : "border-border/70"}`,
+      children: [
+        /* @__PURE__ */ jsxs16("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ jsxs16("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsx22("span", { className: "truncate text-sm font-medium", children: profile.label }),
+            inUse ? /* @__PURE__ */ jsx22("span", { className: "shrink-0 rounded border border-border/50 px-1.5 text-[10px] font-medium leading-4 text-foreground/80", children: translate("auto.components.browser.settings.currentProfile", "In use") }) : null
+          ] }),
+          /* @__PURE__ */ jsx22("p", { className: "truncate text-[11px] text-muted-foreground", children: sourceLabel })
+        ] }),
+        /* @__PURE__ */ jsxs16("div", { className: "flex shrink-0 items-center gap-1", children: [
+          /* @__PURE__ */ jsxs16(
+            DropdownMenu,
+            {
+              onOpenChange: (open) => {
+                if (open) {
+                  void fetchDetectedBrowsers();
+                }
+              },
+              children: [
+                /* @__PURE__ */ jsx22(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsxs16(
+                  Button,
+                  {
+                    variant: "ghost",
+                    size: "xs",
+                    className: "h-6 gap-1 px-1.5 text-[11px] text-muted-foreground",
+                    disabled: isImporting,
+                    children: [
+                      isImporting ? /* @__PURE__ */ jsx22(Loader23, { className: "size-3 animate-spin" }) : /* @__PURE__ */ jsx22(Import, { className: "size-3" }),
+                      translate("auto.components.settings.BrowserProfileRow.cdec84552f", "Import Cookies")
+                    ]
+                  }
+                ) }),
+                /* @__PURE__ */ jsxs16(DropdownMenuContent, { align: "end", children: [
+                  detectedBrowsers.map(
+                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs16(DropdownMenuSub, { children: [
+                      /* @__PURE__ */ jsx22(DropdownMenuSubTrigger, { children: translate(
+                        "auto.components.settings.BrowserProfileRow.c5a273a809",
+                        "From {{value0}}",
+                        { value0: browser.label }
+                      ) }),
+                      /* @__PURE__ */ jsx22(DropdownMenuPortal, { children: /* @__PURE__ */ jsx22(DropdownMenuSubContent, { children: browser.profiles.map((bp) => /* @__PURE__ */ jsx22(
+                        DropdownMenuItem,
+                        {
+                          onSelect: () => void handleImportFromBrowser(browser.family, bp.directory),
+                          children: bp.name
+                        },
+                        bp.directory
+                      )) }) })
+                    ] }, browser.family) : /* @__PURE__ */ jsx22(
+                      DropdownMenuItem,
+                      {
+                        onSelect: () => void handleImportFromBrowser(browser.family),
+                        children: translate(
+                          "auto.components.settings.BrowserProfileRow.c5a273a809",
+                          "From {{value0}}",
+                          { value0: browser.label }
+                        )
+                      },
+                      browser.family
+                    )
+                  ),
+                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx22(DropdownMenuSeparator, {}),
+                  /* @__PURE__ */ jsx22(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate("auto.components.settings.BrowserProfileRow.ebb78dfd6f", "From File\u2026") }),
+                  /* @__PURE__ */ jsx22(BrowserCookieImportDisclosure, {})
+                ] })
+              ]
+            }
+          ),
+          isDefault ? /* @__PURE__ */ jsx22(
+            Button,
+            {
+              variant: "ghost",
+              size: "icon",
+              className: "size-7 text-muted-foreground hover:text-destructive",
+              disabled: !profile.source,
+              "aria-label": translate("auto.components.browser.settings.clearCookies", "Clear cookies"),
+              onClick: async () => {
+                const ok = await useBrowserSessionStore.getState().clearDefaultSessionCookies();
+                if (ok) {
+                  toast3.success(
+                    translate(
+                      "auto.components.settings.BrowserProfileRow.2d4bea7f35",
+                      "Default cookies cleared."
+                    )
+                  );
+                }
+              },
+              children: /* @__PURE__ */ jsx22(Trash2, { className: "size-3" })
+            }
+          ) : /* @__PURE__ */ jsx22(
+            Button,
+            {
+              variant: "ghost",
+              size: "icon",
+              className: "size-7 text-muted-foreground hover:text-destructive",
+              "aria-label": translate(
+                "auto.components.browser.settings.deleteProfile",
+                "Delete profile"
+              ),
+              onClick: () => setConfirmingDelete(true),
+              children: /* @__PURE__ */ jsx22(Trash2, { className: "size-3" })
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsx22(Dialog, { open: confirmingDelete, onOpenChange: setConfirmingDelete, children: /* @__PURE__ */ jsxs16(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+          /* @__PURE__ */ jsxs16(DialogHeader, { children: [
+            /* @__PURE__ */ jsx22(DialogTitle, { className: "text-base", children: translate(
+              "auto.components.browser.settings.deleteProfileTitle",
+              "Delete this profile?"
+            ) }),
+            /* @__PURE__ */ jsx22(DialogDescription, { className: "text-xs", children: translate(
+              "auto.components.browser.settings.deleteProfileDescription",
+              'Cookies and logins stored in "{{value0}}" will be removed.',
+              { value0: profile.label }
+            ) })
+          ] }),
+          /* @__PURE__ */ jsxs16(DialogFooter, { children: [
+            /* @__PURE__ */ jsx22(Button, { variant: "outline", size: "sm", onClick: () => setConfirmingDelete(false), children: translate("auto.components.settings.BrowserPane.81ff774667", "Cancel") }),
+            /* @__PURE__ */ jsx22(Button, { variant: "destructive", size: "sm", onClick: () => void handleDelete(), children: translate("auto.components.browser.settings.deleteConfirm", "Delete") })
+          ] })
+        ] }) })
+      ]
+    }
+  );
+}
+
+// src/renderer/components/settings/BrowserSessionCookiesSection.tsx
+import { jsx as jsx23, jsxs as jsxs17 } from "react/jsx-runtime";
+function BrowserSessionCookiesSection({
+  inUseProfileId,
+  onAddProfile
+}) {
+  const profiles = useBrowserSessionStore((s) => s.browserSessionProfiles);
+  const defaultProfile = profiles.find((profile) => profile.id === "default");
+  const nonDefaultProfiles = profiles.filter((profile) => profile.id !== "default");
+  return /* @__PURE__ */ jsxs17("div", { className: "space-y-3 py-2", children: [
+    /* @__PURE__ */ jsxs17("div", { className: "flex items-center justify-between gap-3", children: [
+      /* @__PURE__ */ jsxs17("div", { className: "space-y-0.5", children: [
+        /* @__PURE__ */ jsx23(Label2, { children: translate("auto.components.settings.BrowserPane.2d66a6efb5", "Session & Cookies") }),
+        /* @__PURE__ */ jsx23("p", { className: "text-xs text-muted-foreground", children: translate(
+          "auto.components.browser.settings.profilesHint",
+          "Import cookies into a profile, and switch profiles per tab from the toolbar menu."
+        ) })
+      ] }),
+      /* @__PURE__ */ jsxs17(Button, { variant: "outline", size: "xs", onClick: onAddProfile, className: "shrink-0 gap-1.5", children: [
+        /* @__PURE__ */ jsx23(Plus, { className: "size-3" }),
+        translate("auto.components.settings.BrowserPane.6f2584b39e", "Add Profile")
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs17("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsx23(
+        BrowserProfileRow,
+        {
+          profile: defaultProfile ?? {
+            id: "default",
+            scope: "default",
+            partition: "",
+            label: translate("auto.components.settings.BrowserPane.4399c77caa", "Default"),
+            source: null
+          },
+          inUse: inUseProfileId === "default",
+          isDefault: true
+        }
+      ),
+      nonDefaultProfiles.map((profile) => /* @__PURE__ */ jsx23(
+        BrowserProfileRow,
+        {
+          profile,
+          inUse: inUseProfileId === profile.id
+        },
+        profile.id
+      ))
+    ] })
+  ] });
+}
+
+// src/renderer/components/settings/BrowserUserAgentSetting.tsx
+import { useState as useState6 } from "react";
+import { jsx as jsx24, jsxs as jsxs18 } from "react/jsx-runtime";
+function BrowserUserAgentSetting() {
+  const status = useBrowserSessionStore((s) => s.identity);
+  const setIdentityMode = useBrowserSessionStore((s) => s.setIdentityMode);
+  const [error, setError] = useState6(null);
+  const [saving, setSaving] = useState6(false);
+  const title = translate("settings.browser.userAgent.title", "Browser identity");
+  const description = translate(
+    "settings.browser.userAgent.description",
+    "Choose the user agent for every browser profile and page. Native mode disables Google sign-in. Changes take effect after a restart."
+  );
+  const setMode = (mode) => {
+    setSaving(true);
+    setError(null);
+    setIdentityMode(mode).then((result) => {
+      if (!result) {
+        setError(
+          translate("settings.browser.userAgent.unavailable", "Browser identity is unavailable.")
+        );
+      } else if (!result.ok) {
+        setError(result.error.message);
+      }
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setSaving(false));
+  };
+  let control;
+  if (!status) {
+    control = /* @__PURE__ */ jsx24("span", { className: "text-xs text-muted-foreground", children: translate("settings.browser.userAgent.loading", "Loading\u2026") });
+  } else if (status.identity.configuredMode === null) {
+    control = /* @__PURE__ */ jsx24("div", { className: "text-xs text-destructive", children: translate(
+      "settings.browser.userAgent.resetRequired",
+      "Identity data must be reset explicitly before it can be changed."
+    ) });
+  } else {
+    const configuredMode = status.identity.configuredMode;
+    const options = [
+      {
+        value: "clean",
+        label: translate("settings.browser.userAgent.optionClean", "Cleaned"),
+        tooltip: translate(
+          "settings.browser.userAgent.optionCleanTooltip",
+          "Removes Orca and Electron tokens to match imported Chrome sessions."
+        )
+      },
+      {
+        value: "native",
+        label: translate("settings.browser.userAgent.optionNative", "Native"),
+        tooltip: translate(
+          "settings.browser.userAgent.optionNativeTooltip",
+          "Keeps Electron's built-in identity for sites that reject the cleaned identity. Google sign-in is unavailable in Native mode."
+        )
+      }
+    ];
+    control = /* @__PURE__ */ jsxs18("div", { className: "space-y-1 text-right", children: [
+      /* @__PURE__ */ jsx24("div", { role: "radiogroup", "aria-label": title, className: "inline-flex gap-1", children: options.map((option) => /* @__PURE__ */ jsx24(
+        Button,
+        {
+          type: "button",
+          role: "radio",
+          "aria-checked": configuredMode === option.value,
+          size: "sm",
+          variant: configuredMode === option.value ? "secondary" : "outline",
+          className: "h-7 text-xs",
+          title: option.tooltip,
+          disabled: saving,
+          onClick: () => setMode(option.value),
+          children: option.label
+        },
+        option.value
+      )) }),
+      status.identity.restartRequired ? /* @__PURE__ */ jsx24("div", { className: "text-[11px] text-muted-foreground", children: translate("settings.browser.userAgent.restartRequired", "Restart required") }) : null,
+      error ? /* @__PURE__ */ jsx24("div", { className: "text-[11px] text-destructive", children: error }) : null
+    ] });
+  }
+  return /* @__PURE__ */ jsxs18("div", { className: "flex items-start justify-between gap-4 py-2", children: [
+    /* @__PURE__ */ jsxs18("div", { className: "space-y-0.5", children: [
+      /* @__PURE__ */ jsx24(Label2, { children: title }),
+      /* @__PURE__ */ jsx24("p", { className: "text-xs text-muted-foreground", children: description })
+    ] }),
+    /* @__PURE__ */ jsx24("div", { className: "shrink-0", children: control })
+  ] });
+}
+
+// src/renderer/components/settings/BrowserSettingsPanel.tsx
+import { jsx as jsx25, jsxs as jsxs19 } from "react/jsx-runtime";
+function BrowserSettingsPanel(props) {
+  const { scopeId } = props;
+  const searchEngine = useBrowserSessionStore((s) => s.settings.searchEngine);
+  const updateSettings = useBrowserSessionStore((s) => s.updateSettings);
+  const [newProfileDialogOpen, setNewProfileDialogOpen] = useState7(false);
+  const inUseProfileId = useBrowserStore((s) => {
+    if (scopeId === void 0) {
+      return void 0;
+    }
+    const activePageId = s.activePageIdByScope[scopeId];
+    const activePage = s.pagesByScope[scopeId]?.find((page) => page.id === activePageId);
+    return activePage ? activePage.sessionProfileId ?? "default" : void 0;
+  });
+  useEffect8(() => {
+    const state = useBrowserSessionStore.getState();
+    if (!state.settingsLoaded) {
+      void state.loadSettings();
+    }
+    if (state.browserSessionProfiles.length === 0) {
+      void state.fetchBrowserSessionProfiles();
+    }
+    if (state.identity === null) {
+      void state.loadIdentity();
+    }
+  }, []);
+  return /* @__PURE__ */ jsxs19("div", { className: "space-y-4", children: [
+    /* @__PURE__ */ jsx25(
+      BrowserSearchEngineSetting,
+      {
+        selectedSearchEngine: searchEngine,
+        onSearchEngineChange: (engine) => void updateSettings({ searchEngine: engine })
+      }
+    ),
+    /* @__PURE__ */ jsx25(BrowserUserAgentSetting, {}),
+    /* @__PURE__ */ jsx25(
+      BrowserSessionCookiesSection,
+      {
+        inUseProfileId,
+        onAddProfile: () => setNewProfileDialogOpen(true)
+      }
+    ),
+    /* @__PURE__ */ jsx25(BrowserNewProfileDialog, { open: newProfileDialogOpen, onOpenChange: setNewProfileDialogOpen })
+  ] });
+}
+
+// src/renderer/components/settings/BrowserSettingsDialog.tsx
+import { jsx as jsx26, jsxs as jsxs20 } from "react/jsx-runtime";
+function BrowserSettingsDialog(props) {
+  const { open, onOpenChange, scopeId } = props;
+  return /* @__PURE__ */ jsx26(Dialog, { open, onOpenChange, children: /* @__PURE__ */ jsxs20(DialogContent, { className: "max-h-[85vh] overflow-y-auto sm:max-w-xl", children: [
+    /* @__PURE__ */ jsx26(DialogHeader, { children: /* @__PURE__ */ jsx26(DialogTitle, { className: "text-base", children: translate(
+      "auto.components.browser.pane.BrowserToolbarMenu.a771c2b6c8",
+      "Browser Settings\u2026"
+    ) }) }),
+    open ? /* @__PURE__ */ jsx26(BrowserSettingsPanel, { scopeId }) : null
+  ] }) });
+}
+
+// src/shared/browser-cookie-import-sources.ts
+var CHROMIUM_COOKIE_IMPORT_SOURCES = [
+  { label: "Google Chrome", mac: true, win: true, linux: true },
+  { label: "Microsoft Edge", mac: true, win: true, linux: true },
+  { label: "Arc", mac: true, win: false, linux: false },
+  { label: "Brave", mac: true, win: true, linux: true },
+  { label: "Comet", mac: true, win: true, linux: false },
+  { label: "Helium", mac: true, win: false, linux: false }
+];
+function getBrowserCookieImportSourceLabels(platform) {
+  const labels = [];
+  for (const source of CHROMIUM_COOKIE_IMPORT_SOURCES) {
+    if (platform === "darwin" && source.mac) {
+      labels.push(source.label);
+    } else if (platform === "win32" && source.win) {
+      labels.push(source.label);
+    } else if (platform === "linux" && source.linux) {
+      labels.push(source.label);
+    }
+  }
+  labels.push("Firefox");
+  if (platform === "darwin") {
+    labels.push("Safari");
+  }
+  return labels;
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-import-hint-visibility.ts
+function shouldShowBrowserImportHint({
+  settingsLoaded,
+  browserImportHintHidden
+}) {
+  return settingsLoaded && !browserImportHintHidden;
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-detected-browsers-summary.ts
+function formatLabelList(prefix, labels, maxNamed) {
+  if (labels.length === 0) {
+    return `${prefix} file.`;
+  }
+  if (labels.length <= maxNamed) {
+    return `${prefix}: ${labels.join(", ")}.`;
+  }
+  const named = labels.slice(0, maxNamed);
+  const remaining = labels.length - maxNamed;
+  return `${prefix}: ${named.join(", ")}, +${remaining} more.`;
+}
+function formatBrowserImportSummary({
+  detectedBrowsers,
+  detectedBrowsersLoaded,
+  supportedImportLabels,
+  maxNamed = 4
+}) {
+  if (detectedBrowsersLoaded && detectedBrowsers.length > 0) {
+    return formatLabelList(
+      "Detected",
+      detectedBrowsers.map((browser) => browser.label),
+      maxNamed
+    );
+  }
+  return formatLabelList("Import from", supportedImportLabels, maxNamed);
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/BrowserImportHintButton.tsx
+import { Fragment as Fragment3, jsx as jsx27, jsxs as jsxs21 } from "react/jsx-runtime";
+function BrowserImportHintButton({
+  profileId,
+  compact = false
+}) {
+  const [open, setOpen] = useState8(false);
+  const [importMenuOpen, setImportMenuOpen] = useState8(false);
+  const [settingsOpen, setSettingsOpen] = useState8(false);
+  const browserSessionImportState = useBrowserSessionStore((s) => s.browserSessionImportState);
+  const browserImportHintHidden = useBrowserSessionStore((s) => s.settings.importHintHidden);
+  const settingsLoaded = useBrowserSessionStore((s) => s.settingsLoaded);
+  const detectedBrowsers = useBrowserSessionStore((s) => s.detectedBrowsers);
+  const detectedBrowsersLoaded = useBrowserSessionStore((s) => s.detectedBrowsersLoaded);
+  const fetchDetectedBrowsers = useBrowserSessionStore((s) => s.fetchDetectedBrowsers);
+  const importCookiesFromBrowser = useBrowserSessionStore((s) => s.importCookiesFromBrowser);
+  const importCookiesToProfile = useBrowserSessionStore((s) => s.importCookiesToProfile);
+  const updateSettings = useBrowserSessionStore((s) => s.updateSettings);
+  const effectiveProfileId = profileId ?? "default";
+  const shouldShow = shouldShowBrowserImportHint({
+    settingsLoaded,
+    browserImportHintHidden
+  });
+  const supportedImportLabels = useMemo4(() => {
+    return getBrowserCookieImportSourceLabels(getRendererPlatform());
+  }, []);
+  const importSummary = useMemo4(
+    () => formatBrowserImportSummary({
+      detectedBrowsers,
+      detectedBrowsersLoaded,
+      supportedImportLabels
+    }),
+    [detectedBrowsers, detectedBrowsersLoaded, supportedImportLabels]
+  );
+  const handleOpenChange = useCallback6(
+    (nextOpen) => {
+      setOpen(nextOpen);
+      if (!nextOpen) {
+        setImportMenuOpen(false);
+      }
+      if (nextOpen) {
+        void fetchDetectedBrowsers();
+      }
+    },
+    [fetchDetectedBrowsers]
+  );
+  const handleImportFromBrowser = useCallback6(
+    async (browserFamily, browserProfile) => {
+      setOpen(false);
+      setImportMenuOpen(false);
+      const result = await importCookiesFromBrowser(
+        effectiveProfileId,
+        browserFamily,
+        browserProfile
+      );
+      if (result.ok) {
+        const browser = detectedBrowsers.find((entry) => entry.family === browserFamily);
+        emitBrowserCookieImportToast(
+          result.summary,
+          translate(
+            "auto.components.browser.pane.BrowserImportHintButton.02e89014c5",
+            "Imported {{value0}} cookies from {{value1}}{{value2}}.",
+            {
+              value0: result.summary.importedCookies,
+              value1: browser?.label ?? browserFamily,
+              value2: browserProfile ? ` (${browserProfile})` : ""
+            }
+          )
+        );
+        return;
+      }
+      toast4.error(result.reason);
+    },
+    [detectedBrowsers, effectiveProfileId, importCookiesFromBrowser]
+  );
+  const handleImportFromFile = useCallback6(async () => {
+    setOpen(false);
+    setImportMenuOpen(false);
+    const result = await importCookiesToProfile(effectiveProfileId);
+    if (result.ok) {
+      emitBrowserCookieImportToast(
+        result.summary,
+        translate(
+          "auto.components.browser.pane.BrowserImportHintButton.d40d584769",
+          "Imported {{value0}} cookies from file.",
+          { value0: result.summary.importedCookies }
+        )
+      );
+      return;
+    }
+    if (result.reason !== "canceled") {
+      toast4.error(result.reason);
+    }
+  }, [effectiveProfileId, importCookiesToProfile]);
+  const handleOpenBrowserSettings = useCallback6(() => {
+    setSettingsOpen(true);
+    setOpen(false);
+  }, []);
+  const handleHideHint = useCallback6(() => {
+    void updateSettings({ importHintHidden: true });
+    setOpen(false);
+  }, [updateSettings]);
+  useEffect9(() => {
+    if (!open) {
+      return;
+    }
+    const dismiss = () => {
+      handleOpenChange(false);
+    };
+    window.addEventListener("blur", dismiss);
+    return () => window.removeEventListener("blur", dismiss);
+  }, [handleOpenChange, open]);
+  if (!shouldShow) {
+    return null;
+  }
+  return /* @__PURE__ */ jsxs21(Fragment3, { children: [
+    /* @__PURE__ */ jsxs21(Popover, { modal: false, open, onOpenChange: handleOpenChange, children: [
+      /* @__PURE__ */ jsx27(PopoverTrigger, { asChild: true, children: /* @__PURE__ */ jsxs21(
+        Button,
+        {
+          type: "button",
+          variant: "secondary",
+          size: "sm",
+          className: "h-7 shrink-0 rounded-full px-2.5 text-xs",
+          "aria-label": translate(
+            "auto.components.browser.pane.BrowserImportHintButton.4f5ffaa6a1",
+            "Import browser data"
+          ),
+          children: [
+            /* @__PURE__ */ jsx27(Import2, { className: "size-3.5" }),
+            compact ? null : translate(
+              "auto.components.browser.pane.BrowserImportHintButton.b24fef25be",
+              "Import"
+            )
+          ]
+        }
+      ) }),
+      /* @__PURE__ */ jsx27(PopoverContent, { align: "end", side: "bottom", sideOffset: 6, className: "w-80 p-3", children: /* @__PURE__ */ jsxs21("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ jsxs21("div", { className: "space-y-1.5", children: [
+          /* @__PURE__ */ jsx27("div", { className: "text-sm font-medium text-foreground", children: translate(
+            "auto.components.browser.pane.BrowserImportHintButton.4f5ffaa6a1",
+            "Import browser data"
+          ) }),
+          /* @__PURE__ */ jsx27("p", { className: "text-xs leading-5 text-muted-foreground", children: importSummary }),
+          /* @__PURE__ */ jsx27("p", { className: "text-[11px] leading-4 text-muted-foreground/80", children: translate(
+            "auto.components.browser.pane.BrowserImportHintButton.e52a955e6f",
+            "You can always find this in Settings > Browser."
+          ) })
+        ] }),
+        /* @__PURE__ */ jsxs21("div", { className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ jsxs21(DropdownMenu, { modal: false, open: importMenuOpen, onOpenChange: setImportMenuOpen, children: [
+            /* @__PURE__ */ jsx27(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx27(
+              Button,
+              {
+                type: "button",
+                size: "sm",
+                variant: "secondary",
+                className: "h-7 px-2.5 text-xs",
+                disabled: browserSessionImportState?.status === "importing",
+                children: translate(
+                  "auto.components.browser.pane.BrowserImportHintButton.244266c122",
+                  "Import\u2026"
+                )
+              }
+            ) }),
+            /* @__PURE__ */ jsxs21(DropdownMenuContent, { align: "start", className: "w-52", children: [
+              detectedBrowsers.map(
+                (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs21(DropdownMenuSub, { children: [
+                  /* @__PURE__ */ jsx27(DropdownMenuSubTrigger, { children: translate(
+                    "auto.components.browser.pane.BrowserImportHintButton.0c6d254eca",
+                    "From {{value0}}",
+                    { value0: browser.label }
+                  ) }),
+                  /* @__PURE__ */ jsx27(DropdownMenuPortal, { children: /* @__PURE__ */ jsx27(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx27(
+                    DropdownMenuItem,
+                    {
+                      onSelect: () => void handleImportFromBrowser(browser.family, profile.directory),
+                      children: profile.name
+                    },
+                    profile.directory
+                  )) }) })
+                ] }, browser.family) : /* @__PURE__ */ jsx27(
+                  DropdownMenuItem,
+                  {
+                    onSelect: () => void handleImportFromBrowser(browser.family),
+                    children: translate(
+                      "auto.components.browser.pane.BrowserImportHintButton.0c6d254eca",
+                      "From {{value0}}",
+                      { value0: browser.label }
+                    )
+                  },
+                  browser.family
+                )
+              ),
+              detectedBrowsers.length > 0 ? /* @__PURE__ */ jsx27(DropdownMenuSeparator, {}) : null,
+              /* @__PURE__ */ jsx27(DropdownMenuItem, { onSelect: () => void handleImportFromFile(), children: translate(
+                "auto.components.browser.pane.BrowserImportHintButton.e0e125e074",
+                "From File\u2026"
+              ) }),
+              /* @__PURE__ */ jsx27(BrowserCookieImportDisclosure, {})
+            ] })
+          ] }),
+          /* @__PURE__ */ jsx27(
+            "button",
+            {
+              type: "button",
+              onClick: handleOpenBrowserSettings,
+              className: "rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              children: translate(
+                "auto.components.browser.pane.BrowserImportHintButton.77351d22f5",
+                "Browser Settings"
+              )
+            }
+          ),
+          /* @__PURE__ */ jsx27(
+            "button",
+            {
+              type: "button",
+              onClick: handleHideHint,
+              className: "ml-auto rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              children: translate(
+                "auto.components.browser.pane.BrowserImportHintButton.05e675fe96",
+                "Hide Hint"
+              )
+            }
+          )
+        ] })
+      ] }) })
+    ] }),
+    /* @__PURE__ */ jsx27(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen })
+  ] });
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/BrowserToolbarMenu.tsx
+import { useState as useState9 } from "react";
+import { toast as toast5 } from "sonner";
+
+// src/shared/browser-viewport-presets.ts
+var BROWSER_VIEWPORT_PRESETS = [
+  {
+    id: "mobile-s",
+    label: "Mobile S \u2014 320 \xD7 568",
+    width: 320,
+    height: 568,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "mobile-m",
+    label: "Mobile M \u2014 375 \xD7 667",
+    width: 375,
+    height: 667,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "mobile-l",
+    label: "Mobile L \u2014 425 \xD7 812",
+    width: 425,
+    height: 812,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "tablet",
+    label: "Tablet \u2014 768 \xD7 1024",
+    width: 768,
+    height: 1024,
+    deviceScaleFactor: 2,
+    mobile: true
+  },
+  {
+    id: "laptop",
+    label: "Laptop \u2014 1024 \xD7 768",
+    width: 1024,
+    height: 768,
+    deviceScaleFactor: 1,
+    mobile: false
+  },
+  {
+    id: "laptop-l",
+    label: "Laptop L \u2014 1440 \xD7 900",
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false
+  },
+  {
+    id: "desktop",
+    label: "Desktop \u2014 1920 \xD7 1080",
+    width: 1920,
+    height: 1080,
+    deviceScaleFactor: 1,
+    mobile: false
+  }
+];
+function getBrowserViewportPreset(id) {
+  if (!id) {
+    return null;
+  }
+  return BROWSER_VIEWPORT_PRESETS.find((p) => p.id === id) ?? null;
+}
+function browserViewportPresetToOverride(preset) {
+  return {
+    width: preset.width,
+    height: preset.height,
+    deviceScaleFactor: preset.deviceScaleFactor,
+    mobile: preset.mobile
+  };
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-menu-dropdown.tsx
+import { Check as Check2, Ellipsis as Ellipsis2, Import as Import3, Monitor, Plus as Plus2, Settings } from "lucide-react";
+import { jsx as jsx28, jsxs as jsxs22 } from "react/jsx-runtime";
+function BrowserToolbarMenuDropdown({
+  onOpenSettings,
+  allProfiles,
+  effectiveProfileId,
+  onSwitchProfile,
+  onNewProfile,
+  detectedBrowsers,
+  onFetchDetectedBrowsers,
+  browserSessionImportState,
+  onImportFromBrowser,
+  onImportFromFile,
+  viewportPresetId,
+  onApplyViewportPreset,
+  overflow
+}) {
+  return /* @__PURE__ */ jsxs22(DropdownMenu, { modal: false, children: [
+    /* @__PURE__ */ jsx28(DropdownMenuTrigger, { asChild: true, children: /* @__PURE__ */ jsx28(
+      Button,
+      {
+        ref: overflow.triggerRef,
+        size: "icon",
+        variant: "ghost",
+        className: "h-8 w-8",
+        title: translate(
+          "auto.components.browser.pane.BrowserToolbarMenu.7b838540c7",
+          "Browser menu"
+        ),
+        children: /* @__PURE__ */ jsx28(Ellipsis2, { className: "size-4" })
+      }
+    ) }),
+    /* @__PURE__ */ jsxs22(
+      DropdownMenuContent,
+      {
+        align: "end",
+        className: "w-56",
+        onCloseAutoFocus: overflow.onMenuCloseAutoFocus,
+        children: [
+          /* @__PURE__ */ jsx28(
+            BrowserChromeFoldedMenuItems,
+            {
+              tools: overflow.tools,
+              deferUntilClose: overflow.deferUntilClose
+            }
+          ),
+          allProfiles.map((profile) => {
+            const isSelectedProfile = profile.id === effectiveProfileId;
+            return /* @__PURE__ */ jsxs22(
+              DropdownMenuItem,
+              {
+                onSelect: () => onSwitchProfile(profile.id === "default" ? null : profile.id),
+                children: [
+                  /* @__PURE__ */ jsx28(
+                    Check2,
+                    {
+                      className: `mr-2 size-3.5 shrink-0 ${isSelectedProfile ? "opacity-100" : "opacity-0"}`
+                    }
+                  ),
+                  /* @__PURE__ */ jsx28("span", { className: "truncate", children: profile.label }),
+                  profile.source?.browserFamily && /* @__PURE__ */ jsx28("span", { className: "ml-auto pl-2 text-[11px] text-muted-foreground", children: BROWSER_FAMILY_LABELS[profile.source.browserFamily] ?? profile.source.browserFamily })
+                ]
+              },
+              profile.id
+            );
+          }),
+          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs22(DropdownMenuItem, { onSelect: onNewProfile, children: [
+            /* @__PURE__ */ jsx28(Plus2, { className: "mr-2 size-3.5" }),
+            translate("auto.components.browser.pane.BrowserToolbarMenu.cf7cdc67ef", "New Profile\u2026")
+          ] }),
+          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs22(
+            DropdownMenuSub,
+            {
+              onOpenChange: (open) => {
+                if (open) {
+                  onFetchDetectedBrowsers();
+                }
+              },
+              children: [
+                /* @__PURE__ */ jsxs22(
+                  DropdownMenuSubTrigger,
+                  {
+                    disabled: browserSessionImportState?.profileId === effectiveProfileId && browserSessionImportState.status === "importing",
+                    children: [
+                      /* @__PURE__ */ jsx28(Import3, { className: "mr-2 size-3.5" }),
+                      translate(
+                        "auto.components.browser.pane.BrowserToolbarMenu.2293adf620",
+                        "Import Cookies"
+                      )
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsxs22(DropdownMenuSubContent, { children: [
+                  detectedBrowsers.map(
+                    (browser) => browser.profiles.length > 1 ? /* @__PURE__ */ jsxs22(DropdownMenuSub, { children: [
+                      /* @__PURE__ */ jsx28(DropdownMenuSubTrigger, { children: translate(
+                        "auto.components.browser.pane.BrowserToolbarMenu.eb280bfb11",
+                        "From {{value0}}",
+                        { value0: browser.label }
+                      ) }),
+                      /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsx28(DropdownMenuSubContent, { children: browser.profiles.map((profile) => /* @__PURE__ */ jsx28(
+                        DropdownMenuItem,
+                        {
+                          onSelect: () => onImportFromBrowser(browser.family, profile.directory),
+                          children: profile.name
+                        },
+                        profile.directory
+                      )) }) })
+                    ] }, browser.family) : /* @__PURE__ */ jsx28(
+                      DropdownMenuItem,
+                      {
+                        onSelect: () => onImportFromBrowser(browser.family),
+                        children: translate(
+                          "auto.components.browser.pane.BrowserToolbarMenu.eb280bfb11",
+                          "From {{value0}}",
+                          { value0: browser.label }
+                        )
+                      },
+                      browser.family
+                    )
+                  ),
+                  detectedBrowsers.length > 0 && /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
+                  /* @__PURE__ */ jsx28(DropdownMenuItem, { onSelect: onImportFromFile, children: translate(
+                    "auto.components.browser.pane.BrowserToolbarMenu.56f94f4ffa",
+                    "From File\u2026"
+                  ) }),
+                  /* @__PURE__ */ jsx28(BrowserCookieImportDisclosure, {})
+                ] }) })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs22(DropdownMenuSub, { children: [
+            /* @__PURE__ */ jsxs22(DropdownMenuSubTrigger, { children: [
+              /* @__PURE__ */ jsx28(Monitor, { className: "mr-2 size-3.5" }),
+              translate(
+                "auto.components.browser.pane.BrowserToolbarMenu.e5d31de1a9",
+                "Viewport Size"
+              )
+            ] }),
+            /* @__PURE__ */ jsx28(DropdownMenuPortal, { children: /* @__PURE__ */ jsx28(DropdownMenuSubContent, { children: /* @__PURE__ */ jsxs22(
+              DropdownMenuRadioGroup,
+              {
+                value: viewportPresetId ?? "default",
+                onValueChange: (v) => onApplyViewportPreset(v === "default" ? null : v),
+                children: [
+                  /* @__PURE__ */ jsx28(DropdownMenuRadioItem, { value: "default", children: translate(
+                    "auto.components.browser.pane.BrowserToolbarMenu.ed8f54509d",
+                    "Default"
+                  ) }),
+                  /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
+                  BROWSER_VIEWPORT_PRESETS.map((preset) => /* @__PURE__ */ jsx28(DropdownMenuRadioItem, { value: preset.id, children: /* @__PURE__ */ jsx28("span", { className: "truncate", children: preset.label }) }, preset.id))
+                ]
+              }
+            ) }) })
+          ] }),
+          /* @__PURE__ */ jsx28(DropdownMenuSeparator, {}),
+          /* @__PURE__ */ jsxs22(DropdownMenuItem, { onSelect: onOpenSettings, children: [
+            /* @__PURE__ */ jsx28(Settings, { className: "mr-2 size-3.5" }),
+            translate(
+              "auto.components.browser.pane.BrowserToolbarMenu.a771c2b6c8",
+              "Browser Settings\u2026"
+            )
+          ] })
+        ]
+      }
+    )
+  ] });
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-toolbar-profile-dialogs.tsx
+import { Fragment as Fragment4, jsx as jsx29, jsxs as jsxs23 } from "react/jsx-runtime";
+function BrowserToolbarProfileDialogs({
+  pendingSwitchProfileId,
+  onPendingSwitchChange,
+  onConfirmSwitch,
+  newProfileDialogOpen,
+  onNewProfileDialogOpenChange,
+  newProfileName,
+  onNewProfileNameChange,
+  isCreatingProfile,
+  onCreateProfile,
+  onCancelNewProfile
+}) {
+  return /* @__PURE__ */ jsxs23(Fragment4, { children: [
+    /* @__PURE__ */ jsx29(
+      Dialog,
+      {
+        open: pendingSwitchProfileId !== void 0,
+        onOpenChange: (open) => {
+          if (!open) {
+            onPendingSwitchChange(false);
+          }
+        },
+        children: /* @__PURE__ */ jsxs23(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+          /* @__PURE__ */ jsxs23(DialogHeader, { children: [
+            /* @__PURE__ */ jsx29(DialogTitle, { className: "text-base", children: translate(
+              "auto.components.browser.pane.BrowserToolbarMenu.fe683eb3b4",
+              "Switch Profile"
+            ) }),
+            /* @__PURE__ */ jsx29(DialogDescription, { className: "text-xs", children: translate(
+              "auto.components.browser.pane.BrowserToolbarMenu.a38f217b46",
+              "Switching profiles will reload this page. Any unsaved form data will be lost."
+            ) })
+          ] }),
+          /* @__PURE__ */ jsxs23(DialogFooter, { children: [
+            /* @__PURE__ */ jsx29(Button, { variant: "outline", size: "sm", onClick: () => onPendingSwitchChange(false), children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
+            /* @__PURE__ */ jsx29(Button, { size: "sm", onClick: onConfirmSwitch, children: translate("auto.components.browser.pane.BrowserToolbarMenu.58f2c81542", "Switch") })
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsx29(Dialog, { open: newProfileDialogOpen, onOpenChange: onNewProfileDialogOpenChange, children: /* @__PURE__ */ jsxs23(DialogContent, { className: "sm:max-w-sm", showCloseButton: false, children: [
+      /* @__PURE__ */ jsx29(DialogHeader, { children: /* @__PURE__ */ jsx29(DialogTitle, { className: "text-base", children: translate(
+        "auto.components.browser.pane.BrowserToolbarMenu.67e9b9fcd6",
+        "New Browser Profile"
+      ) }) }),
+      /* @__PURE__ */ jsxs23(
+        "form",
+        {
+          onSubmit: (e) => {
+            e.preventDefault();
+            onCreateProfile();
+          },
+          children: [
+            /* @__PURE__ */ jsx29(
+              Input,
+              {
+                value: newProfileName,
+                onChange: (e) => onNewProfileNameChange(e.target.value),
+                placeholder: translate(
+                  "auto.components.browser.pane.BrowserToolbarMenu.64f448fb6e",
+                  "Profile name"
+                ),
+                autoFocus: true,
+                maxLength: 50,
+                className: "mb-3"
+              }
+            ),
+            /* @__PURE__ */ jsxs23(DialogFooter, { children: [
+              /* @__PURE__ */ jsx29(Button, { type: "button", variant: "outline", size: "sm", onClick: onCancelNewProfile, children: translate("auto.components.browser.pane.BrowserToolbarMenu.429ef481f9", "Cancel") }),
+              /* @__PURE__ */ jsx29(
+                Button,
+                {
+                  type: "submit",
+                  size: "sm",
+                  disabled: !newProfileName.trim() || isCreatingProfile,
+                  children: isCreatingProfile ? translate(
+                    "auto.components.browser.pane.BrowserToolbarMenu.bf648471c5",
+                    "Creating\u2026"
+                  ) : translate(
+                    "auto.components.browser.pane.BrowserToolbarMenu.569bce8eb1",
+                    "Create"
+                  )
+                }
+              )
+            ] })
+          ]
+        }
+      )
+    ] }) })
+  ] });
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/BrowserToolbarMenu.tsx
+import { Fragment as Fragment5, jsx as jsx30, jsxs as jsxs24 } from "react/jsx-runtime";
+function BrowserToolbarMenu({
+  currentProfileId,
+  scopeId,
   browserPageId,
+  viewportPresetId,
+  onDestroyWebview,
+  overflow
+}) {
+  const browserSessionProfiles = useBrowserSessionStore((s) => s.browserSessionProfiles);
+  const detectedBrowsers = useBrowserSessionStore((s) => s.detectedBrowsers);
+  const createBrowserSessionProfile = useBrowserSessionStore((s) => s.createBrowserSessionProfile);
+  const importCookiesFromBrowser = useBrowserSessionStore((s) => s.importCookiesFromBrowser);
+  const importCookiesToProfile = useBrowserSessionStore((s) => s.importCookiesToProfile);
+  const fetchDetectedBrowsers = useBrowserSessionStore((s) => s.fetchDetectedBrowsers);
+  const browserSessionImportState = useBrowserSessionStore((s) => s.browserSessionImportState);
+  const switchBrowserTabProfile = useBrowserStore((s) => s.switchBrowserTabProfile);
+  const setBrowserPageViewportPreset = useBrowserStore((s) => s.setBrowserPageViewportPreset);
+  const applyViewportPreset = (nextId) => {
+    setBrowserPageViewportPreset(browserPageId, nextId);
+    const preset = getBrowserViewportPreset(nextId);
+    const override = preset ? browserViewportPresetToOverride(preset) : null;
+    void window.browserAPI.setViewportOverride({ browserPageId, override });
+  };
+  const [newProfileDialogOpen, setNewProfileDialogOpen] = useState9(false);
+  const [newProfileName, setNewProfileName] = useState9("");
+  const [isCreatingProfile, setIsCreatingProfile] = useState9(false);
+  const [pendingSwitchProfileId, setPendingSwitchProfileId] = useState9(
+    void 0
+  );
+  const [settingsOpen, setSettingsOpen] = useState9(false);
+  const mountedRef = useMountedRef();
+  const handleNewProfileDialogOpenChange = (open) => {
+    setNewProfileDialogOpen(open);
+    if (!open) {
+      setNewProfileName("");
+    }
+  };
+  const effectiveProfileId = currentProfileId ?? "default";
+  const defaultProfile = browserSessionProfiles.find((p) => p.id === "default");
+  const allProfiles = defaultProfile ? [defaultProfile, ...browserSessionProfiles.filter((p) => p.id !== "default")] : browserSessionProfiles;
+  const handleSwitchProfile = (profileId) => {
+    const targetId = profileId ?? "default";
+    if (targetId === effectiveProfileId) {
+      return;
+    }
+    setPendingSwitchProfileId(profileId);
+  };
+  const confirmSwitchProfile = () => {
+    if (pendingSwitchProfileId === void 0) {
+      return;
+    }
+    const targetId = pendingSwitchProfileId ?? "default";
+    const profile = browserSessionProfiles.find((p) => p.id === targetId);
+    onDestroyWebview();
+    switchBrowserTabProfile(browserPageId, pendingSwitchProfileId, profile?.partition ?? null);
+    toast5.success(
+      translate(
+        "auto.components.browser.pane.BrowserToolbarMenu.3ccd29d771",
+        "Switched to {{value0}} profile",
+        { value0: profile?.label ?? "Default" }
+      )
+    );
+    setPendingSwitchProfileId(void 0);
+  };
+  const handleCreateProfile = async () => {
+    const trimmed = newProfileName.trim();
+    if (!trimmed) {
+      return;
+    }
+    setIsCreatingProfile(true);
+    try {
+      const profile = await createBrowserSessionProfile("isolated", trimmed);
+      if (!profile) {
+        if (mountedRef.current) {
+          toast5.error(
+            translate(
+              "auto.components.browser.pane.BrowserToolbarMenu.4d2f9f13a7",
+              "Failed to create profile."
+            )
+          );
+        }
+        return;
+      }
+      if (!mountedRef.current) {
+        return;
+      }
+      setNewProfileDialogOpen(false);
+      setNewProfileName("");
+      onDestroyWebview();
+      switchBrowserTabProfile(browserPageId, profile.id, profile.partition);
+      toast5.success(
+        translate(
+          "auto.components.browser.pane.BrowserToolbarMenu.a7a86702b3",
+          "Created and switched to {{value0}} profile",
+          { value0: profile.label }
+        )
+      );
+    } finally {
+      if (mountedRef.current) {
+        setIsCreatingProfile(false);
+      }
+    }
+  };
+  const handleImportFromBrowser = async (browserFamily, browserProfile) => {
+    const result = await importCookiesFromBrowser(effectiveProfileId, browserFamily, browserProfile);
+    if (result.ok) {
+      const browser = detectedBrowsers.find((b) => b.family === browserFamily);
+      emitBrowserCookieImportToast(
+        result.summary,
+        browserProfile ? translate(
+          "auto.components.browser.pane.BrowserToolbarMenu.c5f0e4d3b2a1",
+          "Imported {{value0}} cookies from {{value1}} ({{value2}}).",
+          {
+            value0: result.summary.importedCookies,
+            value1: browser?.label ?? browserFamily,
+            value2: browserProfile
+          }
+        ) : translate(
+          "auto.components.browser.pane.BrowserToolbarMenu.d6a1f5e4c3b2",
+          "Imported {{value0}} cookies from {{value1}}.",
+          {
+            value0: result.summary.importedCookies,
+            value1: browser?.label ?? browserFamily
+          }
+        )
+      );
+    } else {
+      toast5.error(result.reason);
+    }
+  };
+  const handleImportFromFile = async () => {
+    const result = await importCookiesToProfile(effectiveProfileId);
+    if (result.ok) {
+      emitBrowserCookieImportToast(
+        result.summary,
+        translate(
+          "auto.components.browser.pane.BrowserToolbarMenu.53bbe3dab4",
+          "Imported {{value0}} cookies from file.",
+          { value0: result.summary.importedCookies }
+        )
+      );
+    } else if (result.reason !== "canceled") {
+      toast5.error(result.reason);
+    }
+  };
+  return /* @__PURE__ */ jsxs24(Fragment5, { children: [
+    /* @__PURE__ */ jsx30(
+      BrowserToolbarMenuDropdown,
+      {
+        onOpenSettings: () => setSettingsOpen(true),
+        allProfiles,
+        effectiveProfileId,
+        onSwitchProfile: handleSwitchProfile,
+        onNewProfile: () => setNewProfileDialogOpen(true),
+        detectedBrowsers,
+        onFetchDetectedBrowsers: () => void fetchDetectedBrowsers(),
+        browserSessionImportState,
+        onImportFromBrowser: (browserFamily, browserProfile) => void handleImportFromBrowser(browserFamily, browserProfile),
+        onImportFromFile: () => void handleImportFromFile(),
+        viewportPresetId,
+        onApplyViewportPreset: applyViewportPreset,
+        overflow
+      }
+    ),
+    /* @__PURE__ */ jsx30(BrowserSettingsDialog, { open: settingsOpen, onOpenChange: setSettingsOpen, scopeId }),
+    /* @__PURE__ */ jsx30(
+      BrowserToolbarProfileDialogs,
+      {
+        pendingSwitchProfileId,
+        onPendingSwitchChange: () => setPendingSwitchProfileId(void 0),
+        onConfirmSwitch: confirmSwitchProfile,
+        newProfileDialogOpen,
+        onNewProfileDialogOpenChange: handleNewProfileDialogOpenChange,
+        newProfileName,
+        onNewProfileNameChange: setNewProfileName,
+        isCreatingProfile,
+        onCreateProfile: () => void handleCreateProfile(),
+        onCancelNewProfile: () => {
+          setNewProfileDialogOpen(false);
+          setNewProfileName("");
+        }
+      }
+    )
+  ] });
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-page-toolbar.tsx
+import { jsx as jsx31 } from "react/jsx-runtime";
+function BrowserPageToolbar({
+  page,
+  isActive,
   canGoBack,
   canGoForward,
   loading,
@@ -3842,8 +5913,9 @@ function BrowserPageToolbar({
   addressBarInputRef,
   dismissAddressBarSuggestionsRef
 }) {
+  const browserPageId = page.id;
   const externalUrl = getOpenableExternalUrl(currentUrl);
-  return /* @__PURE__ */ jsx16(TooltipProvider, { children: /* @__PURE__ */ jsx16(
+  return /* @__PURE__ */ jsx31(TooltipProvider, { children: /* @__PURE__ */ jsx31(
     BrowserChromeToolbar,
     {
       controls: {
@@ -3855,7 +5927,7 @@ function BrowserPageToolbar({
         reload: () => runReloadTrigger("button"),
         navigate: navigateToUrl
       },
-      addressSlot: /* @__PURE__ */ jsx16(
+      addressSlot: /* @__PURE__ */ jsx31(
         BrowserAddressBar,
         {
           value: addressBarValue,
@@ -3866,7 +5938,7 @@ function BrowserPageToolbar({
           dismissSuggestionsRef: dismissAddressBarSuggestionsRef
         }
       ),
-      reloadControl: /* @__PURE__ */ jsx16(
+      reloadControl: /* @__PURE__ */ jsx31(
         BrowserReloadControl,
         {
           menuOpen: reloadMenuOpen,
@@ -3879,6 +5951,19 @@ function BrowserPageToolbar({
           onPrimary: () => runReloadTrigger("button"),
           onReload: () => runReloadTrigger("reload"),
           onHardReload: () => runReloadTrigger("hard-reload")
+        }
+      ),
+      importControl: (compact) => /* @__PURE__ */ jsx31(BrowserImportHintButton, { profileId: page.sessionProfileId, compact }),
+      overflowMenu: (overflow) => /* @__PURE__ */ jsx31(
+        BrowserToolbarMenu,
+        {
+          currentProfileId: page.sessionProfileId,
+          scopeId: page.scopeId,
+          browserPageId: page.id,
+          viewportPresetId: page.viewportPresetId,
+          onDestroyWebview: () => void destroyPersistentWebview(page.id),
+          isActive,
+          overflow
         }
       ),
       viewSource: {
@@ -3906,10 +5991,11 @@ function BrowserPageToolbar({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-chrome-header.tsx
-import { jsx as jsx17, jsxs as jsxs11 } from "react/jsx-runtime";
+import { jsx as jsx32, jsxs as jsxs25 } from "react/jsx-runtime";
 function BrowserPageChromeHeader({
   chromeHeaderRef,
   browserTab,
+  isActive,
   webviewRef,
   addressBarInputRef,
   dismissAddressBarSuggestionsRef,
@@ -3922,11 +6008,12 @@ function BrowserPageChromeHeader({
   resourceNotice,
   setResourceNotice
 }) {
-  return /* @__PURE__ */ jsxs11("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
-    /* @__PURE__ */ jsx17(
+  return /* @__PURE__ */ jsxs25("div", { ref: chromeHeaderRef, className: "pointer-events-auto shrink-0", children: [
+    /* @__PURE__ */ jsx32(
       BrowserPageToolbar,
       {
-        browserPageId: browserTab.id,
+        page: browserTab,
+        isActive,
         canGoBack: browserTab.canGoBack,
         canGoForward: browserTab.canGoForward,
         loading: browserTab.loading,
@@ -3947,9 +6034,9 @@ function BrowserPageChromeHeader({
         dismissAddressBarSuggestionsRef
       }
     ),
-    resourceNotice ? /* @__PURE__ */ jsxs11("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
-      /* @__PURE__ */ jsx17("span", { children: resourceNotice }),
-      /* @__PURE__ */ jsx17(
+    resourceNotice ? /* @__PURE__ */ jsxs25("div", { className: "flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
+      /* @__PURE__ */ jsx32("span", { children: resourceNotice }),
+      /* @__PURE__ */ jsx32(
         "button",
         {
           type: "button",
@@ -3964,7 +6051,7 @@ function BrowserPageChromeHeader({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-chrome-focus.ts
-import { useCallback as useCallback6, useEffect as useEffect7, useRef as useRef7 } from "react";
+import { useCallback as useCallback7, useEffect as useEffect10, useRef as useRef8 } from "react";
 
 // src/renderer/components/browser-pane/host-guest/browser-focus.ts
 var ORCA_BROWSER_FOCUS_REQUEST_EVENT = "orca:browser-focus-request";
@@ -4007,12 +6094,12 @@ function useBrowserPageChromeFocus({
   guestFocus
 }) {
   const consumeAddressBarFocusRequest = useBrowserStore((s) => s.consumeAddressBarFocusRequest);
-  const keepAddressBarFocusRef = useRef7(false);
-  const addressBarFocusGrabRef = useRef7(null);
-  const cancelAddressBarFocusGrab = useCallback6(() => {
+  const keepAddressBarFocusRef = useRef8(false);
+  const addressBarFocusGrabRef = useRef8(null);
+  const cancelAddressBarFocusGrab = useCallback7(() => {
     addressBarFocusGrabRef.current?.();
   }, []);
-  const focusAddressBarNow = useCallback6(
+  const focusAddressBarNow = useCallback7(
     (selection) => {
       const input = addressBarInputRef.current;
       if (!input) {
@@ -4029,14 +6116,14 @@ function useBrowserPageChromeFocus({
     },
     [addressBarInputRef, guestFocus]
   );
-  const focusGuestNow = useCallback6(() => {
+  const focusGuestNow = useCallback7(() => {
     if (!guestFocus.isAttached()) {
       return false;
     }
     addressBarInputRef.current?.blur();
     return guestFocus.focus();
   }, [addressBarInputRef, guestFocus]);
-  const startAddressBarFocusGrab = useCallback6(
+  const startAddressBarFocusGrab = useCallback7(
     (selection) => {
       cancelAddressBarFocusGrab();
       let cancelled = false;
@@ -4073,7 +6160,7 @@ function useBrowserPageChromeFocus({
     },
     [addressBarInputRef, cancelAddressBarFocusGrab, focusAddressBarNow]
   );
-  useEffect7(() => {
+  useEffect10(() => {
     if (!isActive) {
       return;
     }
@@ -4082,7 +6169,7 @@ function useBrowserPageChromeFocus({
     }
     return startAddressBarFocusGrab();
   }, [browserTabId, consumeAddressBarFocusRequest, isActive, startAddressBarFocusGrab]);
-  useEffect7(() => {
+  useEffect10(() => {
     if (!isActive) {
       return;
     }
@@ -4092,7 +6179,7 @@ function useBrowserPageChromeFocus({
       }
     });
   }, [browserTabId, focusAddressBarNow, isActive]);
-  useEffect7(() => {
+  useEffect10(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -4110,7 +6197,7 @@ function useBrowserPageChromeFocus({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, focusAddressBarNow, workspaceId]);
-  useEffect7(() => {
+  useEffect10(() => {
     if (!isActive) {
       return;
     }
@@ -4140,7 +6227,7 @@ function useBrowserPageChromeFocus({
       window.cancelAnimationFrame(frameId);
     };
   }, [browserTabId, cancelAddressBarFocusGrab, focusGuestNow, isActive, startAddressBarFocusGrab]);
-  useEffect7(() => {
+  useEffect10(() => {
     if (!isActive) {
       return;
     }
@@ -4170,9 +6257,9 @@ function useBrowserPageChromeFocus({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-guest-focus.ts
-import { useMemo as useMemo4 } from "react";
+import { useMemo as useMemo5 } from "react";
 function useWebviewGuestFocus(webviewRef) {
-  return useMemo4(
+  return useMemo5(
     () => ({
       blur: () => webviewRef.current?.blur(),
       isAttached: () => webviewRef.current !== null,
@@ -4199,23 +6286,23 @@ function isBrowserPagePanePaintable({ isActive }) {
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-slot-viewport.ts
-import { useCallback as useCallback7, useSyncExternalStore as useSyncExternalStore2 } from "react";
+import { useCallback as useCallback8, useSyncExternalStore as useSyncExternalStore2 } from "react";
 function useBrowserPageSlotViewport(workspaceId) {
-  const subscribe = useCallback7(
+  const subscribe = useCallback8(
     (listener) => subscribeBrowserOverlaySlotViewport(workspaceId, listener),
     [workspaceId]
   );
-  const getSnapshot = useCallback7(() => getBrowserOverlaySlotViewport(workspaceId), [workspaceId]);
+  const getSnapshot = useCallback8(() => getBrowserOverlaySlotViewport(workspaceId), [workspaceId]);
   return useSyncExternalStore2(subscribe, getSnapshot, () => null);
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-lifecycle.ts
 import {
-  useCallback as useCallback8,
-  useEffect as useEffect8,
+  useCallback as useCallback9,
+  useEffect as useEffect11,
   useLayoutEffect as useLayoutEffect4,
-  useRef as useRef8,
-  useState as useState4
+  useRef as useRef9,
+  useState as useState10
 } from "react";
 
 // src/shared/browser-guest-web-preferences.ts
@@ -5022,18 +7109,18 @@ function useBrowserPageWebviewLifecycle({
   onUpdatePageStateRef,
   onSetUrlRef
 }) {
-  const [guestRecoveryGeneration, setGuestRecoveryGeneration] = useState4(0);
-  const guestRecoveryPendingRef = useRef8(false);
-  const validateVisibleGuestRegistrationRef = useRef8(() => {
+  const [guestRecoveryGeneration, setGuestRecoveryGeneration] = useState10(0);
+  const guestRecoveryPendingRef = useRef9(false);
+  const validateVisibleGuestRegistrationRef = useRef9(() => {
   });
-  const wasPaintableForGuestValidationRef = useRef8(isPaintable);
-  const browserTabLoadingRef = useRef8(browserTabLoading);
-  const inputLockedRef = useRef8(inputLocked);
-  const faviconUrlRef = useRef8(faviconUrl);
-  const initialBrowserUrlRef = useRef8(browserTabUrl);
+  const wasPaintableForGuestValidationRef = useRef9(isPaintable);
+  const browserTabLoadingRef = useRef9(browserTabLoading);
+  const inputLockedRef = useRef9(inputLocked);
+  const faviconUrlRef = useRef9(faviconUrl);
+  const initialBrowserUrlRef = useRef9(browserTabUrl);
   const addBrowserHistoryEntry = useBrowserStore((s) => s.addBrowserHistoryEntry);
-  const addBrowserHistoryEntryRef = useRef8(addBrowserHistoryEntry);
-  const isPaintableRef = useRef8(isPaintable);
+  const addBrowserHistoryEntryRef = useRef9(addBrowserHistoryEntry);
+  const isPaintableRef = useRef9(isPaintable);
   useLayoutEffect4(() => {
     browserTabLoadingRef.current = browserTabLoading;
     inputLockedRef.current = inputLocked;
@@ -5045,21 +7132,21 @@ function useBrowserPageWebviewLifecycle({
       setBrowserPageWebviewInputLock(webview, inputLocked);
     }
   }, [inputLocked, webviewRef]);
-  useEffect8(() => {
+  useEffect11(() => {
     initialBrowserUrlRef.current = browserTabUrl;
   }, [browserTabId, browserTabUrl]);
-  useEffect8(() => {
+  useEffect11(() => {
     browserTabUrlRef.current = browserTabUrl;
   }, [browserTabUrl, browserTabUrlRef]);
-  useEffect8(() => {
+  useEffect11(() => {
     activeLoadFailureRef.current = browserTabLoadError;
   }, [activeLoadFailureRef, browserTabLoadError]);
-  useEffect8(() => {
+  useEffect11(() => {
     onUpdatePageStateRef.current = onUpdatePageState;
     onSetUrlRef.current = onSetUrl;
     addBrowserHistoryEntryRef.current = addBrowserHistoryEntry;
   }, [onSetUrl, onUpdatePageState, addBrowserHistoryEntry, onSetUrlRef, onUpdatePageStateRef]);
-  const syncNavigationState = useCallback8(
+  const syncNavigationState = useCallback9(
     (webview) => {
       try {
         const loading = browserTabLoadingRef.current ? webview.isLoading() : void 0;
@@ -5077,7 +7164,7 @@ function useBrowserPageWebviewLifecycle({
     },
     [browserTabId, browserTabUrlRef, onUpdatePageStateRef]
   );
-  useEffect8(() => {
+  useEffect11(() => {
     return attachBrowserPageWebview({
       browserTabId,
       browserTabUrl,
@@ -5128,7 +7215,7 @@ function useBrowserPageWebviewLifecycle({
     focusWebviewNow,
     syncNavigationState
   ]);
-  useEffect8(() => {
+  useEffect11(() => {
     const becamePaintable = isPaintable && !wasPaintableForGuestValidationRef.current;
     wasPaintableForGuestValidationRef.current = isPaintable;
     if (becamePaintable) {
@@ -5138,32 +7225,35 @@ function useBrowserPageWebviewLifecycle({
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-webview-partition.ts
-function useBrowserPageWebviewPartition(_args) {
-  return ORCA_BROWSER_PARTITION;
+function useBrowserPageWebviewPartition(args) {
+  const profilePartition = useBrowserSessionStore(
+    (state) => args.sessionProfileId === null ? null : state.browserSessionProfiles.find((profile) => profile.id === args.sessionProfileId)?.partition ?? null
+  );
+  return args.sessionPartition ?? profilePartition ?? ORCA_BROWSER_PARTITION;
 }
 
 // src/renderer/components/browser-pane/host-guest/use-browser-page-zoom-feedback.ts
-import { useCallback as useCallback9, useEffect as useEffect9, useRef as useRef9, useState as useState5 } from "react";
+import { useCallback as useCallback10, useEffect as useEffect12, useRef as useRef10, useState as useState11 } from "react";
 var BROWSER_PAGE_ZOOM_FEEDBACK_MS = 1400;
 var noopSetDefaultZoomLevel = () => {
 };
 function useBrowserPageZoomFeedback(browserTabId) {
   const browserDefaultZoomPercent = browserPageZoomLevelToPercent(DEFAULT_BROWSER_PAGE_ZOOM_LEVEL);
-  const [initialZoomLevel] = useState5(
+  const [initialZoomLevel] = useState11(
     () => getExplicitBrowserPageZoomLevel(browserTabId) ?? DEFAULT_BROWSER_PAGE_ZOOM_LEVEL
   );
-  const paneZoomLevelRef = useRef9(initialZoomLevel);
-  const [browserZoomPercent, setBrowserZoomPercent] = useState5(
+  const paneZoomLevelRef = useRef10(initialZoomLevel);
+  const [browserZoomPercent, setBrowserZoomPercent] = useState11(
     browserPageZoomLevelToPercent(initialZoomLevel)
   );
-  const [browserZoomFeedbackVisible, setBrowserZoomFeedbackVisible] = useState5(false);
-  const browserZoomFeedbackTimerRef = useRef9(void 0);
-  useEffect9(() => {
+  const [browserZoomFeedbackVisible, setBrowserZoomFeedbackVisible] = useState11(false);
+  const browserZoomFeedbackTimerRef = useRef10(void 0);
+  useEffect12(() => {
     return () => {
       clearTimeout(browserZoomFeedbackTimerRef.current);
     };
   }, []);
-  const showBrowserZoomFeedback = useCallback9((level) => {
+  const showBrowserZoomFeedback = useCallback10((level) => {
     setBrowserZoomPercent(browserPageZoomLevelToPercent(level));
     setBrowserZoomFeedbackVisible(true);
     clearTimeout(browserZoomFeedbackTimerRef.current);
@@ -5183,7 +7273,7 @@ function useBrowserPageZoomFeedback(browserTabId) {
 }
 
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
-import { useEffect as useEffect10, useState as useState6 } from "react";
+import { useEffect as useEffect13, useState as useState12 } from "react";
 
 // src/renderer/components/browser-pane/navigate/browser-notices.ts
 function humanizePermission(permission) {
@@ -5266,15 +7356,15 @@ function formatLoadFailureRecoveryHint(meta, loadError) {
 
 // src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
 function useBrowserPageResourceNotices(browserTabId) {
-  const [resourceNotice, setResourceNotice] = useState6(null);
-  useEffect10(() => {
+  const [resourceNotice, setResourceNotice] = useState12(null);
+  useEffect13(() => {
     if (!resourceNotice) {
       return;
     }
     const timer = setTimeout(() => setResourceNotice(null), 1e4);
     return () => clearTimeout(timer);
   }, [resourceNotice]);
-  useEffect10(() => {
+  useEffect13(() => {
     return window.browserAPI.onPermissionDenied((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -5282,7 +7372,7 @@ function useBrowserPageResourceNotices(browserTabId) {
       setResourceNotice(formatPermissionNotice(event));
     });
   }, [browserTabId]);
-  useEffect10(() => {
+  useEffect13(() => {
     return window.browserAPI.onPopup((event) => {
       if (event.browserPageId !== browserTabId) {
         return;
@@ -5298,14 +7388,14 @@ function useBrowserPageResourceNotices(browserTabId) {
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
 import {
-  useCallback as useCallback10,
-  useEffect as useEffect11,
+  useCallback as useCallback11,
+  useEffect as useEffect14,
   useLayoutEffect as useLayoutEffect5,
-  useRef as useRef10,
-  useState as useState7
+  useRef as useRef11,
+  useState as useState13
 } from "react";
 import { createPortal } from "react-dom";
-import { Fragment as Fragment2, jsx as jsx18, jsxs as jsxs12 } from "react/jsx-runtime";
+import { Fragment as Fragment6, jsx as jsx33, jsxs as jsxs26 } from "react/jsx-runtime";
 var MENU_ITEM_CLASS = "relative flex w-full cursor-default items-center gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium outline-none select-none hover:bg-black/8 focus:bg-black/8 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/14 dark:focus:bg-white/14";
 function BrowserPageContextMenu({
   browserPageId,
@@ -5316,9 +7406,9 @@ function BrowserPageContextMenu({
   onReload
 }) {
   const createBrowserPage = useBrowserStore((s) => s.createBrowserPage);
-  const [contextMenu, setContextMenu] = useState7(null);
-  const contextMenuRef = useRef10(null);
-  useEffect11(() => {
+  const [contextMenu, setContextMenu] = useState13(null);
+  const contextMenuRef = useRef11(null);
+  useEffect14(() => {
     return window.browserAPI.onContextMenuRequested((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -5334,7 +7424,7 @@ function BrowserPageContextMenu({
       });
     });
   }, [browserPageId]);
-  useEffect11(() => {
+  useEffect14(() => {
     return window.browserAPI.onContextMenuDismissed((event) => {
       if (event.browserPageId !== browserPageId) {
         return;
@@ -5342,21 +7432,21 @@ function BrowserPageContextMenu({
       setContextMenu(null);
     });
   }, [browserPageId]);
-  const closeMenu = useCallback10(() => {
+  const closeMenu = useCallback11(() => {
     setContextMenu(null);
     try {
       webviewRef.current?.focus();
     } catch {
     }
   }, [webviewRef]);
-  const menuItems = useCallback10(() => {
+  const menuItems = useCallback11(() => {
     const el = contextMenuRef.current;
     if (!el) {
       return [];
     }
     return [...el.querySelectorAll('[role="menuitem"]:not(:disabled)')];
   }, []);
-  useEffect11(() => {
+  useEffect14(() => {
     if (!contextMenu) {
       return;
     }
@@ -5369,13 +7459,13 @@ function BrowserPageContextMenu({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [closeMenu, contextMenu]);
-  useEffect11(() => {
+  useEffect14(() => {
     if (!contextMenu) {
       return;
     }
     menuItems()[0]?.focus();
   }, [contextMenu, menuItems]);
-  const handleMenuKeyDown = useCallback10(
+  const handleMenuKeyDown = useCallback11(
     (e) => {
       const items = menuItems();
       if (items.length === 0) {
@@ -5427,9 +7517,9 @@ function BrowserPageContextMenu({
     return null;
   }
   return createPortal(
-    /* @__PURE__ */ jsxs12(Fragment2, { children: [
-      /* @__PURE__ */ jsx18("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
-      /* @__PURE__ */ jsxs12(
+    /* @__PURE__ */ jsxs26(Fragment6, { children: [
+      /* @__PURE__ */ jsx33("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
+      /* @__PURE__ */ jsxs26(
         "div",
         {
           ref: contextMenuRef,
@@ -5441,8 +7531,8 @@ function BrowserPageContextMenu({
           style: { left: contextMenu.x, top: contextMenu.y },
           className: "fixed z-50 min-w-[13rem] overflow-hidden rounded-[11px] border border-black/14 bg-[rgba(255,255,255,0.82)] p-1 text-black shadow-[0_16px_36px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:text-white dark:shadow-[0_20px_44px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)]",
           children: [
-            contextMenu.linkUrl ? /* @__PURE__ */ jsxs12(Fragment2, { children: [
-              /* @__PURE__ */ jsx18(
+            contextMenu.linkUrl ? /* @__PURE__ */ jsxs26(Fragment6, { children: [
+              /* @__PURE__ */ jsx33(
                 "button",
                 {
                   role: "menuitem",
@@ -5459,7 +7549,7 @@ function BrowserPageContextMenu({
                   )
                 }
               ),
-              /* @__PURE__ */ jsx18(
+              /* @__PURE__ */ jsx33(
                 "button",
                 {
                   role: "menuitem",
@@ -5477,7 +7567,7 @@ function BrowserPageContextMenu({
                   )
                 }
               ),
-              /* @__PURE__ */ jsx18(
+              /* @__PURE__ */ jsx33(
                 "button",
                 {
                   role: "menuitem",
@@ -5489,10 +7579,10 @@ function BrowserPageContextMenu({
                   children: translate("auto.components.browser.contextMenu.copyLink", "Copy Link")
                 }
               ),
-              /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" })
+              /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs12(Fragment2, { children: [
-              /* @__PURE__ */ jsx18(
+            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs26(Fragment6, { children: [
+              /* @__PURE__ */ jsx33(
                 "button",
                 {
                   role: "menuitem",
@@ -5504,9 +7594,9 @@ function BrowserPageContextMenu({
                   children: translate("auto.components.browser.pane.BrowserPane.2a4c4b8e1f", "Copy")
                 }
               ),
-              /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" })
+              /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" })
             ] }) : null,
-            /* @__PURE__ */ jsx18(
+            /* @__PURE__ */ jsx33(
               "button",
               {
                 role: "menuitem",
@@ -5519,7 +7609,7 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.40edfa75cb", "Back")
               }
             ),
-            /* @__PURE__ */ jsx18(
+            /* @__PURE__ */ jsx33(
               "button",
               {
                 role: "menuitem",
@@ -5532,7 +7622,7 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.250a9b3e42", "Forward")
               }
             ),
-            /* @__PURE__ */ jsx18(
+            /* @__PURE__ */ jsx33(
               "button",
               {
                 role: "menuitem",
@@ -5544,8 +7634,8 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.0e080d820e", "Reload")
               }
             ),
-            /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" }),
-            /* @__PURE__ */ jsx18(
+            /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx33(
               "button",
               {
                 role: "menuitem",
@@ -5563,7 +7653,7 @@ function BrowserPageContextMenu({
                 )
               }
             ),
-            /* @__PURE__ */ jsx18(
+            /* @__PURE__ */ jsx33(
               "button",
               {
                 role: "menuitem",
@@ -5575,8 +7665,8 @@ function BrowserPageContextMenu({
                 children: translate("auto.components.browser.pane.BrowserPane.1b179ab561", "Copy Page URL")
               }
             ),
-            /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" }),
-            /* @__PURE__ */ jsx18(
+            /* @__PURE__ */ jsx33("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx33(
               "button",
               {
                 role: "menuitem",
@@ -5598,7 +7688,7 @@ function BrowserPageContextMenu({
 
 // src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.tsx
 import { Copy, ExternalLink as ExternalLink2, Globe as Globe3, RefreshCw as RefreshCw3 } from "lucide-react";
-import { jsx as jsx19, jsxs as jsxs13 } from "react/jsx-runtime";
+import { jsx as jsx34, jsxs as jsxs27 } from "react/jsx-runtime";
 function getLoadErrorMetadata(loadError) {
   try {
     const parsed = new URL(loadError.validatedUrl);
@@ -5623,15 +7713,15 @@ function BrowserLoadFailureOverlay({
   const meta = getLoadErrorMetadata(loadError);
   const guestRecoveryError = loadError.code === BROWSER_GUEST_RECOVERY_ERROR_CODE;
   const recoveryHint = formatLoadFailureRecoveryHint(meta, loadError);
-  return /* @__PURE__ */ jsx19("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs13("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
-    /* @__PURE__ */ jsx19("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx19(Globe3, { className: "size-5" }) }),
-    /* @__PURE__ */ jsx19("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
+  return /* @__PURE__ */ jsx34("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs27("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
+    /* @__PURE__ */ jsx34("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx34(Globe3, { className: "size-5" }) }),
+    /* @__PURE__ */ jsx34("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
       value0: meta.host
     }) : translate("browser.loadFailure.cantLoadPage", "Can't load this page") }),
-    /* @__PURE__ */ jsx19("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
-    recoveryHint ? /* @__PURE__ */ jsx19("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
-    /* @__PURE__ */ jsxs13("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
-      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx19(
+    /* @__PURE__ */ jsx34("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
+    recoveryHint ? /* @__PURE__ */ jsx34("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
+    /* @__PURE__ */ jsxs27("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
+      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx34(
         Button,
         {
           size: "sm",
@@ -5640,11 +7730,11 @@ function BrowserLoadFailureOverlay({
           children: translate("browser.loadFailure.tryHttps", "Try HTTPS")
         }
       ) : null,
-      /* @__PURE__ */ jsxs13(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
-        /* @__PURE__ */ jsx19(RefreshCw3, { className: "size-4" }),
+      /* @__PURE__ */ jsxs27(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
+        /* @__PURE__ */ jsx34(RefreshCw3, { className: "size-4" }),
         translate("browser.loadFailure.retry", "Retry")
       ] }),
-      /* @__PURE__ */ jsxs13(
+      /* @__PURE__ */ jsxs27(
         Button,
         {
           size: "sm",
@@ -5652,12 +7742,12 @@ function BrowserLoadFailureOverlay({
           className: "h-9 gap-2 px-3",
           onClick: () => onCopy(currentUrl),
           children: [
-            /* @__PURE__ */ jsx19(Copy, { className: "size-4" }),
+            /* @__PURE__ */ jsx34(Copy, { className: "size-4" }),
             translate("browser.loadFailure.copyAddress", "Copy Address")
           ]
         }
       ),
-      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs13(
+      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs27(
         Button,
         {
           size: "sm",
@@ -5665,7 +7755,7 @@ function BrowserLoadFailureOverlay({
           className: "h-9 gap-2 px-3",
           onClick: () => onOpenExternal(externalUrl),
           children: [
-            /* @__PURE__ */ jsx19(ExternalLink2, { className: "size-4" }),
+            /* @__PURE__ */ jsx34(ExternalLink2, { className: "size-4" }),
             translate("browser.loadFailure.openExternally", "Open Externally")
           ]
         }
@@ -5675,12 +7765,12 @@ function BrowserLoadFailureOverlay({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.tsx
-import { jsxs as jsxs14 } from "react/jsx-runtime";
+import { jsxs as jsxs28 } from "react/jsx-runtime";
 function BrowserPageZoomIndicator({
   state,
   percent
 }) {
-  return /* @__PURE__ */ jsxs14(
+  return /* @__PURE__ */ jsxs28(
     "div",
     {
       role: "status",
@@ -5699,7 +7789,7 @@ function BrowserPageZoomIndicator({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { useCallback as useCallback11, useEffect as useEffect12, useRef as useRef11, useState as useState8 } from "react";
+import { useCallback as useCallback12, useEffect as useEffect15, useRef as useRef12, useState as useState14 } from "react";
 import { ChevronUp, ChevronDown, X as X2 } from "lucide-react";
 
 // src/renderer/lib/find-query-bounds.ts
@@ -5712,21 +7802,21 @@ function getFindRequestQuery(query) {
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
-import { jsx as jsx20, jsxs as jsxs15 } from "react/jsx-runtime";
+import { jsx as jsx35, jsxs as jsxs29 } from "react/jsx-runtime";
 function BrowserFind({
   isOpen,
   onClose,
   webviewRef,
   guestGeneration = null
 }) {
-  const inputRef = useRef11(null);
-  const wasOpenRef = useRef11(isOpen);
-  const activeFindQueryRef = useRef11(null);
-  const [query, setQuery] = useState8("");
-  const [activeMatch, setActiveMatch] = useState8(0);
-  const [totalMatches, setTotalMatches] = useState8(0);
+  const inputRef = useRef12(null);
+  const wasOpenRef = useRef12(isOpen);
+  const activeFindQueryRef = useRef12(null);
+  const [query, setQuery] = useState14("");
+  const [activeMatch, setActiveMatch] = useState14(0);
+  const [totalMatches, setTotalMatches] = useState14(0);
   const requestQuery = getFindRequestQuery(query);
-  const safeFindInPage = useCallback11(
+  const safeFindInPage = useCallback12(
     (text, opts) => {
       const webview = webviewRef.current;
       if (!webview || !text) {
@@ -5739,7 +7829,7 @@ function BrowserFind({
     },
     [webviewRef]
   );
-  const safeStopFindInPage = useCallback11(() => {
+  const safeStopFindInPage = useCallback12(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
@@ -5749,21 +7839,21 @@ function BrowserFind({
     } catch {
     }
   }, [webviewRef]);
-  const findNext = useCallback11(() => {
+  const findNext = useCallback12(() => {
     if (requestQuery) {
       const findNext2 = activeFindQueryRef.current !== requestQuery;
       safeFindInPage(requestQuery, { forward: true, findNext: findNext2 });
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  const findPrevious = useCallback11(() => {
+  const findPrevious = useCallback12(() => {
     if (requestQuery) {
       const findNext2 = activeFindQueryRef.current !== requestQuery;
       safeFindInPage(requestQuery, { forward: false, findNext: findNext2 });
       activeFindQueryRef.current = requestQuery;
     }
   }, [requestQuery, safeFindInPage]);
-  useEffect12(() => {
+  useEffect15(() => {
     if (isOpen) {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -5771,7 +7861,7 @@ function BrowserFind({
       safeStopFindInPage();
     }
   }, [isOpen, safeStopFindInPage]);
-  useEffect12(() => {
+  useEffect15(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
     if (!isOpen) {
@@ -5797,7 +7887,7 @@ function BrowserFind({
     const id = window.setTimeout(runFind, 200);
     return () => window.clearTimeout(id);
   }, [isOpen, requestQuery, safeFindInPage, safeStopFindInPage]);
-  useEffect12(() => {
+  useEffect15(() => {
     const webview = webviewRef.current;
     if (!webview || !isOpen) {
       return;
@@ -5819,7 +7909,7 @@ function BrowserFind({
     setActiveMatch(0);
     setTotalMatches(0);
   }
-  const handleKeyDown = useCallback11(
+  const handleKeyDown = useCallback12(
     (e) => {
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -5835,14 +7925,14 @@ function BrowserFind({
   if (!isOpen) {
     return null;
   }
-  return /* @__PURE__ */ jsxs15(
+  return /* @__PURE__ */ jsxs29(
     "div",
     {
       className: "absolute top-2 right-2 z-50 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/95 px-2 py-1 shadow-lg backdrop-blur-sm",
       style: { width: 300 },
       onKeyDown: handleKeyDown,
       children: [
-        /* @__PURE__ */ jsx20(
+        /* @__PURE__ */ jsx35(
           ImeInput,
           {
             ref: inputRef,
@@ -5856,13 +7946,13 @@ function BrowserFind({
             className: "min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
           }
         ),
-        query ? /* @__PURE__ */ jsx20("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
+        query ? /* @__PURE__ */ jsx35("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
           "auto.components.browser.pane.BrowserFind.fc63f336aa",
           "{{value0}} of {{value1}}",
           { value0: activeMatch, value1: totalMatches }
         ) : translate("auto.components.browser.pane.BrowserFind.7baca7b1b8", "No matches") }) : null,
-        /* @__PURE__ */ jsx20("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
-        /* @__PURE__ */ jsx20(
+        /* @__PURE__ */ jsx35("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx35(
           Button,
           {
             type: "button",
@@ -5871,10 +7961,10 @@ function BrowserFind({
             onClick: findPrevious,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.ca7aebbd7f", "Previous match"),
-            children: /* @__PURE__ */ jsx20(ChevronUp, { size: 14 })
+            children: /* @__PURE__ */ jsx35(ChevronUp, { size: 14 })
           }
         ),
-        /* @__PURE__ */ jsx20(
+        /* @__PURE__ */ jsx35(
           Button,
           {
             type: "button",
@@ -5883,11 +7973,11 @@ function BrowserFind({
             onClick: findNext,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.5c0c02ae76", "Next match"),
-            children: /* @__PURE__ */ jsx20(ChevronDown, { size: 14 })
+            children: /* @__PURE__ */ jsx35(ChevronDown, { size: 14 })
           }
         ),
-        /* @__PURE__ */ jsx20("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
-        /* @__PURE__ */ jsx20(
+        /* @__PURE__ */ jsx35("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx35(
           Button,
           {
             type: "button",
@@ -5896,7 +7986,7 @@ function BrowserFind({
             onClick: onClose,
             className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
             title: translate("auto.components.browser.pane.BrowserFind.c9d5f63fdc", "Close"),
-            children: /* @__PURE__ */ jsx20(X2, { size: 14 })
+            children: /* @__PURE__ */ jsx35(X2, { size: 14 })
           }
         )
       ]
@@ -5905,7 +7995,7 @@ function BrowserFind({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
-import { Fragment as Fragment3, jsx as jsx21, jsxs as jsxs16 } from "react/jsx-runtime";
+import { Fragment as Fragment7, jsx as jsx36, jsxs as jsxs30 } from "react/jsx-runtime";
 function BrowserPageViewportOverlays({
   browserZoomIndicatorState,
   browserZoomPercent,
@@ -5921,10 +8011,10 @@ function BrowserPageViewportOverlays({
   navigateToUrl,
   setResourceNotice
 }) {
-  return /* @__PURE__ */ jsxs16(Fragment3, { children: [
-    /* @__PURE__ */ jsx21(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
-    /* @__PURE__ */ jsx21(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
-    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx21(
+  return /* @__PURE__ */ jsxs30(Fragment7, { children: [
+    /* @__PURE__ */ jsx36(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
+    /* @__PURE__ */ jsx36(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
+    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx36(
       BrowserLoadFailureOverlay,
       {
         loadError: browserTab.loadError,
@@ -5957,7 +8047,7 @@ function BrowserPageViewportOverlays({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
-import { useEffect as useEffect13 } from "react";
+import { useEffect as useEffect16 } from "react";
 function useBrowserPageFindShortcuts({
   browserTabId,
   workspaceId,
@@ -5965,7 +8055,7 @@ function useBrowserPageFindShortcuts({
   chromeShortcutScope,
   setFindOpen
 }) {
-  useEffect13(() => {
+  useEffect16(() => {
     if (chromeShortcutScope === "inactive") {
       return;
     }
@@ -5983,7 +8073,7 @@ function useBrowserPageFindShortcuts({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [chromeShortcutScope, setFindOpen, workspaceId]);
-  useEffect13(() => {
+  useEffect16(() => {
     if (!isActive) {
       return;
     }
@@ -5994,7 +8084,7 @@ function useBrowserPageFindShortcuts({
       }
     );
   }, [browserTabId, isActive, setFindOpen, workspaceId]);
-  useEffect13(() => {
+  useEffect16(() => {
     if (!isActive) {
       setFindOpen(false);
     }
@@ -6002,7 +8092,7 @@ function useBrowserPageFindShortcuts({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { jsx as jsx22, jsxs as jsxs17 } from "react/jsx-runtime";
+import { jsx as jsx37, jsxs as jsxs31 } from "react/jsx-runtime";
 function BrowserPagePane({
   browserTab,
   workspaceId,
@@ -6018,41 +8108,41 @@ function BrowserPagePane({
   const isPaintable = isBrowserPagePanePaintable({ isActive });
   const slotViewport = useBrowserPageSlotViewport(workspaceId);
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
-  const chromeHeaderRef = useRef12(null);
-  const webviewRef = useRef12(null);
-  const addressBarInputRef = useRef12(null);
-  const dismissAddressBarSuggestionsRef = useRef12(null);
-  const addressBarValueRef = useRef12(toDisplayUrl(browserTab.url));
-  const browserTabUrlRef = useRef12(browserTab.url);
-  const lastKnownWebviewUrlRef = useRef12(null);
-  const trackNextLoadingEventRef = useRef12(false);
-  const recoveryNavigationValidationRef = useRef12(
+  const chromeHeaderRef = useRef13(null);
+  const webviewRef = useRef13(null);
+  const addressBarInputRef = useRef13(null);
+  const dismissAddressBarSuggestionsRef = useRef13(null);
+  const addressBarValueRef = useRef13(toDisplayUrl(browserTab.url));
+  const browserTabUrlRef = useRef13(browserTab.url);
+  const lastKnownWebviewUrlRef = useRef13(null);
+  const trackNextLoadingEventRef = useRef13(false);
+  const recoveryNavigationValidationRef = useRef13(
     null
   );
-  const activeLoadFailureRef = useRef12(browserTab.loadError);
-  const retryGuestRecoveryRef = useRef12(() => {
+  const activeLoadFailureRef = useRef13(browserTab.loadError);
+  const retryGuestRecoveryRef = useRef13(() => {
   });
-  const onUpdatePageStateRef = useRef12(onUpdatePageState);
-  const onSetUrlRef = useRef12(onSetUrl);
-  const isActiveRef = useRef12(isActive);
+  const onUpdatePageStateRef = useRef13(onUpdatePageState);
+  const onSetUrlRef = useRef13(onSetUrl);
+  const isActiveRef = useRef13(isActive);
   useLayoutEffect6(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  const handleInternalFileDragOverRef = useRef12(() => {
+  const handleInternalFileDragOverRef = useRef13(() => {
   });
-  const handleInternalFileDropRef = useRef12(() => {
+  const handleInternalFileDropRef = useRef13(() => {
   });
-  const [findOpen, setFindOpen] = useState9(false);
+  const [findOpen, setFindOpen] = useState15(false);
   const zoom = useBrowserPageZoomFeedback(browserTab.id);
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
-  const [addressBarValue, setAddressBarValue] = useState9(() => toDisplayUrl(browserTab.url));
-  useEffect14(() => {
+  const [addressBarValue, setAddressBarValue] = useState15(() => toDisplayUrl(browserTab.url));
+  useEffect17(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
     }
     setAddressBarValue(toDisplayUrl(browserTab.url));
   }, [browserTab.url]);
-  useEffect14(() => {
+  useEffect17(() => {
     addressBarValueRef.current = addressBarValue;
   }, [addressBarValue]);
   const guestFocus = useWebviewGuestFocus(webviewRef);
@@ -6068,7 +8158,7 @@ function BrowserPagePane({
     addressBarInputRef,
     guestFocus
   });
-  const navigateToUrl = useCallback12(
+  const navigateToUrl = useCallback13(
     (url) => {
       navigateBrowserPageToUrl({
         url,
@@ -6189,21 +8279,21 @@ function BrowserPagePane({
     feedbackVisible: zoom.browserZoomFeedbackVisible,
     isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
   });
-  useEffect14(() => {
+  useEffect17(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.pointerEvents = inputLocked ? "none" : "auto";
   }, [inputLocked]);
-  useEffect14(() => {
+  useEffect17(() => {
     const webview = webviewRef.current;
     if (!webview) {
       return;
     }
     webview.style.display = showFailureOverlay ? "none" : "flex";
   }, [showFailureOverlay]);
-  return /* @__PURE__ */ jsxs17(
+  return /* @__PURE__ */ jsxs31(
     "div",
     {
       "data-browser-page-pane-id": browserTab.id,
@@ -6214,7 +8304,7 @@ function BrowserPagePane({
       inert: !isActive,
       "aria-hidden": !isActive,
       children: [
-        /* @__PURE__ */ jsx22(
+        /* @__PURE__ */ jsx37(
           BrowserPageContextMenu,
           {
             browserPageId: browserTab.id,
@@ -6225,11 +8315,12 @@ function BrowserPagePane({
             onReload: () => reload.reloadWebviewOrRecoverGuest(false)
           }
         ),
-        /* @__PURE__ */ jsx22(
+        /* @__PURE__ */ jsx37(
           BrowserPageChromeHeader,
           {
             chromeHeaderRef,
             browserTab,
+            isActive,
             webviewRef,
             addressBarInputRef,
             dismissAddressBarSuggestionsRef,
@@ -6244,7 +8335,7 @@ function BrowserPagePane({
           }
         ),
         pageViewport?.container ? createPortal2(
-          /* @__PURE__ */ jsx22(
+          /* @__PURE__ */ jsx37(
             BrowserPageViewportOverlays,
             {
               browserZoomIndicatorState,
@@ -6270,14 +8361,14 @@ function BrowserPagePane({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/DeferredBrowserContent.tsx
-import { useLayoutEffect as useLayoutEffect7, useState as useState10 } from "react";
-import { Fragment as Fragment4, jsx as jsx23 } from "react/jsx-runtime";
+import { useLayoutEffect as useLayoutEffect7, useState as useState16 } from "react";
+import { Fragment as Fragment8, jsx as jsx38 } from "react/jsx-runtime";
 function DeferredBrowserContent({
   mountEligible,
   retainMounted = true,
   children
 }) {
-  const [hasCommittedMount, setHasCommittedMount] = useState10(false);
+  const [hasCommittedMount, setHasCommittedMount] = useState16(false);
   useLayoutEffect7(() => {
     if (!retainMounted) {
       setHasCommittedMount(false);
@@ -6285,11 +8376,11 @@ function DeferredBrowserContent({
       setHasCommittedMount(true);
     }
   }, [hasCommittedMount, mountEligible, retainMounted]);
-  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx23(Fragment4, { children }) : null;
+  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx38(Fragment8, { children }) : null;
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { jsx as jsx24, jsxs as jsxs18 } from "react/jsx-runtime";
+import { jsx as jsx39, jsxs as jsxs32 } from "react/jsx-runtime";
 function BrowserScopePane({
   scopeId,
   isActive
@@ -6301,10 +8392,10 @@ function BrowserScopePane({
   const setActiveBrowserPage = useBrowserStore((s) => s.setActiveBrowserPage);
   const closeBrowserPage = useBrowserStore((s) => s.closeBrowserPage);
   const activeBrowserPage = browserPages.find((page) => page.id === activePageId) ?? browserPages[0] ?? null;
-  const browserPageIds = useMemo5(() => browserPages.map((page) => page.id), [browserPages]);
+  const browserPageIds = useMemo6(() => browserPages.map((page) => page.id), [browserPages]);
   const hasAdmittedPage = useAnyBrowserPageMountAdmission(browserPageIds);
-  return /* @__PURE__ */ jsxs18("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
-    browserPages.length >= 2 ? /* @__PURE__ */ jsx24(
+  return /* @__PURE__ */ jsxs32("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
+    browserPages.length >= 2 ? /* @__PURE__ */ jsx39(
       BrowserPageStrip,
       {
         pages: browserPages,
@@ -6313,21 +8404,21 @@ function BrowserScopePane({
         onClose: closeBrowserPage
       }
     ) : null,
-    /* @__PURE__ */ jsx24("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx24(
+    /* @__PURE__ */ jsx39("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx39(
       DeferredBrowserContent,
       {
         retainMounted: isActive,
         mountEligible: isBrowserPagePanePaintable({
           isActive: isActive && page.id === activeBrowserPage?.id || hasAdmittedPage && isBrowserPageMountAdmitted(page.id)
         }),
-        children: /* @__PURE__ */ jsx24(
+        children: /* @__PURE__ */ jsx39(
           BrowserPagePane,
           {
             browserTab: page,
             workspaceId: scopeId,
             scopeId,
-            sessionProfileId: null,
-            sessionPartition: null,
+            sessionProfileId: page.sessionProfileId,
+            sessionPartition: page.sessionPartition,
             isActive: isActive && page.id === activeBrowserPage?.id,
             chromeShortcutScope: isActive && page.id === activeBrowserPage?.id ? "owned-target" : "inactive",
             inputLocked: false,
@@ -6343,19 +8434,19 @@ function BrowserScopePane({
 var browser_workspace_pane_default = BrowserScopePane;
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { Fragment as Fragment5, jsx as jsx25, jsxs as jsxs19 } from "react/jsx-runtime";
+import { Fragment as Fragment9, jsx as jsx40, jsxs as jsxs33 } from "react/jsx-runtime";
 var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
   scopeId
 }) {
   const isActive = useBrowserStore((state) => state.paneMountByScope[scopeId]?.active === true);
-  const setSlotViewportRef = useCallback13(
+  const setSlotViewportRef = useCallback14(
     (node) => {
       registerBrowserOverlaySlotViewport(scopeId, node);
     },
     [scopeId]
   );
   const anchorName = browserScopeAnchorName(scopeId);
-  const style = useMemo6(
+  const style = useMemo7(
     () => ({
       position: "fixed",
       positionAnchor: anchorName,
@@ -6368,7 +8459,7 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
     }),
     [anchorName, isActive]
   );
-  return /* @__PURE__ */ jsxs19(
+  return /* @__PURE__ */ jsxs33(
     "div",
     {
       style,
@@ -6377,21 +8468,21 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
       "data-orca-browser-anchor": anchorName,
       "data-browser-overlay-tab-id": scopeId,
       children: [
-        /* @__PURE__ */ jsx25("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
-        /* @__PURE__ */ jsx25(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx25(browser_workspace_pane_default, { scopeId, isActive }) })
+        /* @__PURE__ */ jsx40("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
+        /* @__PURE__ */ jsx40(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx40(browser_workspace_pane_default, { scopeId, isActive }) })
       ]
     }
   );
 });
 var BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer2() {
   const scopeIds = useBrowserStore(useShallow((state) => Object.keys(state.pagesByScope)));
-  return /* @__PURE__ */ jsx25(Fragment5, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx25(BrowserOverlaySlot, { scopeId }, scopeId)) });
+  return /* @__PURE__ */ jsx40(Fragment9, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx40(BrowserOverlaySlot, { scopeId }, scopeId)) });
 });
 
 // src/renderer/ipc/browser-state-ipc-bridge.ts
-import { useEffect as useEffect15 } from "react";
+import { useEffect as useEffect18 } from "react";
 function useBrowserStateIpcBridge() {
-  useEffect15(() => {
+  useEffect18(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -6404,7 +8495,7 @@ function useBrowserStateIpcBridge() {
       useBrowserStore.getState().createBrowserPage(scopeId, url, { activate: activate ?? true });
     });
   }, []);
-  useEffect15(() => {
+  useEffect18(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -6418,7 +8509,7 @@ function useBrowserStateIpcBridge() {
       });
     });
   }, []);
-  useEffect15(() => {
+  useEffect18(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -6445,23 +8536,33 @@ function useBrowserStateIpcBridge() {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { jsx as jsx26, jsxs as jsxs20 } from "react/jsx-runtime";
+import { jsx as jsx41, jsxs as jsxs34 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
-  useEffect16(() => {
+  useEffect19(() => {
     setBrowserRendererHost(host);
     return () => clearBrowserRendererHost(host);
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  return /* @__PURE__ */ jsxs20(BrowserRendererHostContext.Provider, { value: host, children: [
+  useEffect19(() => {
+    if (!hasBrowserApi) {
+      return;
+    }
+    const state = useBrowserSessionStore.getState();
+    void state.loadSettings();
+    void state.fetchBrowserSessionProfiles();
+    void state.loadIdentity();
+  }, [hasBrowserApi]);
+  return /* @__PURE__ */ jsxs34(BrowserRendererHostContext.Provider, { value: host, children: [
     children,
-    hasBrowserApi ? /* @__PURE__ */ jsx26(BrowserPaneOverlayLayer, {}) : null
+    hasBrowserApi ? /* @__PURE__ */ jsx41(BrowserPaneOverlayLayer, {}) : null
   ] });
 }
 export {
   BrowserPane,
   BrowserPluginProvider,
+  BrowserSettingsPanel,
   useBrowserRendererHost
 };

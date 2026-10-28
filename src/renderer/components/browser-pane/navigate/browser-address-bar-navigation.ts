@@ -1,9 +1,9 @@
 import { translate } from '../../../i18n'
 import {
-  DEFAULT_SEARCH_ENGINE,
   normalizeBrowserNavigationUrl,
   redactKagiSessionToken
 } from '../../../../shared/browser-url'
+import { useBrowserSessionStore } from '../../../store/browser-session-store'
 import type { BrowserLoadError } from '../../../../shared/browser-workspace-types'
 
 export type BrowserAddressBarSubmission =
@@ -21,7 +21,10 @@ export function resolveBrowserAddressBarSubmission(
 ): BrowserAddressBarSubmission {
   // Why: the search-engine argument opts into search fallback; without it typed
   // queries parse as hosts ("google maps" -> https://google%20maps/).
-  const url = normalizeBrowserNavigationUrl(rawValue, DEFAULT_SEARCH_ENGINE)
+  const url = normalizeBrowserNavigationUrl(
+    rawValue,
+    useBrowserSessionStore.getState().settings.searchEngine
+  )
   // Why: client-hosted guests refuse file: by design (a remote page must not probe
   // this machine's disk). Saying so beats the blank tab that refusal used to produce.
   const fileUrlUnsupported =

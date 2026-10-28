@@ -53,8 +53,8 @@ export function BrowserScopePane({
               browserTab={page}
               workspaceId={scopeId}
               scopeId={scopeId}
-              sessionProfileId={null}
-              sessionPartition={null}
+              sessionProfileId={page.sessionProfileId}
+              sessionPartition={page.sessionPartition}
               isActive={isActive && page.id === activeBrowserPage?.id}
               chromeShortcutScope={
                 isActive && page.id === activeBrowserPage?.id ? 'owned-target' : 'inactive'
