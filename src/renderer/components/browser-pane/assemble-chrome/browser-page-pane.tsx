@@ -1,12 +1,18 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, DragEvent, SetStateAction } from 'react'
 import { cn } from '../../../lib/utils'
+import { getLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
+import { resolveBrowserAddressBarSubmission } from '../navigate/browser-address-bar-navigation'
+import { navigateBrowserPageToUrl } from '../navigate/navigate-browser-page-url'
+import { useBrowserPageReloadActions } from '../navigate/use-browser-page-reload-actions'
+import { useBrowserPageWebviewUrlSync } from '../navigate/use-browser-page-webview-url-sync'
+import { useBrowserPageKeyboardShortcuts } from '../host-guest/use-browser-page-keyboard-shortcuts'
+import { BrowserPageChromeHeader } from './browser-page-chrome-header'
+import { useBrowserPageChromeFocus } from './use-browser-page-chrome-focus'
+import { useWebviewGuestFocus } from './browser-page-guest-focus'
 import type { BrowserPage as BrowserPageState } from '../../../../shared/browser-workspace-types'
 import { DEFAULT_BROWSER_PAGE_ZOOM_LEVEL } from '../host-guest/browser-page-zoom'
-import {
-  applyBrowserPageViewportLayout,
-  ensureBrowserPageViewport
-} from '../host-guest/browser-page-viewport'
+import { ensureBrowserPageViewport } from '../host-guest/browser-page-viewport'
 import { isBrowserPagePanePaintable } from '../host-guest/browser-page-paintability'
 import { useBrowserPageSlotViewport } from '../host-guest/use-browser-page-slot-viewport'
 import { useBrowserPageWebviewLifecycle } from '../host-guest/use-browser-page-webview-lifecycle'
@@ -26,6 +32,7 @@ export function BrowserPagePane({
   sessionProfileId,
   sessionPartition,
   isActive,
+  chromeShortcutScope,
   inputLocked,
   onUpdatePageState,
   onSetUrl
@@ -46,6 +53,7 @@ export function BrowserPagePane({
   // Creating the viewport during render makes it exist before the lifecycle effect attaches the guest.
   ensureBrowserPageViewport(browserTab.id, workspaceId)
 
+  const chromeHeaderRef = useRef<HTMLDivElement | null>(null)
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
   const addressBarInputRef = useRef<HTMLInputElement | null>(null)
   const dismissAddressBarSuggestionsRef = useRef<(() => void) | null>(null)
@@ -61,38 +69,77 @@ export function BrowserPagePane({
   const retryGuestRecoveryRef = useRef<() => void>(() => {})
   const onUpdatePageStateRef = useRef(onUpdatePageState)
   const onSetUrlRef = useRef(onSetUrl)
-  const keepAddressBarFocusRef = useRef(false)
+  const isActiveRef = useRef(isActive)
+  useLayoutEffect(() => {
+    isActiveRef.current = isActive
+  }, [isActive])
   const paneZoomLevelRef = useRef(DEFAULT_BROWSER_PAGE_ZOOM_LEVEL)
   const handleInternalFileDragOverRef = useRef<(event: DragEvent<HTMLDivElement>) => void>(() => {})
   const handleInternalFileDropRef = useRef<(event: DragEvent<HTMLDivElement>) => void>(() => {})
 
-  // The address bar and find bar are not mounted yet; these keep the lifecycle contract intact.
-  const setAddressBarValue = useCallback<Dispatch<SetStateAction<string>>>((value) => {
-    addressBarValueRef.current =
-      typeof value === 'function' ? value(addressBarValueRef.current) : value
-  }, [])
+  // The find bar and zoom indicator are not mounted yet; these keep the lifecycle contract intact.
   const setFindOpen = useCallback<Dispatch<SetStateAction<boolean>>>(() => {}, [])
   const setBrowserZoomPercent = useCallback<Dispatch<SetStateAction<number>>>(() => {}, [])
-  const focusAddressBarNow = useCallback((): boolean => false, [])
-  const focusWebviewNow = useCallback((): boolean => {
-    const webview = webviewRef.current
-    if (!webview) {
-      return false
+  const setBrowserDefaultZoomLevel = useCallback((): void => {}, [])
+  const showBrowserZoomFeedback = useCallback((): void => {}, [])
+  const setResourceNotice = useCallback((): void => {}, [])
+
+  const [addressBarValue, setAddressBarValue] = useState(() => toDisplayUrl(browserTab.url))
+  useEffect(() => {
+    // An async URL update must not clobber a query the user is still typing; syncing resumes on blur.
+    if (document.activeElement === addressBarInputRef.current) {
+      return
     }
-    try {
-      webview.focus()
-      return true
-    } catch {
-      return false
+    setAddressBarValue(toDisplayUrl(browserTab.url))
+  }, [browserTab.url])
+  useEffect(() => {
+    addressBarValueRef.current = addressBarValue
+  }, [addressBarValue])
+
+  const guestFocus = useWebviewGuestFocus(webviewRef)
+  const {
+    focusAddressBarNow,
+    focusGuestNow: focusWebviewNow,
+    keepAddressBarFocusRef
+  } = useBrowserPageChromeFocus({
+    browserTabId: browserTab.id,
+    workspaceId,
+    isActive,
+    chromeShortcutScope,
+    addressBarInputRef,
+    guestFocus
+  })
+
+  const navigateToUrl = useCallback(
+    (url: string): void => {
+      navigateBrowserPageToUrl({
+        url,
+        browserTabId: browserTab.id,
+        activeLoadFailureRef,
+        lastKnownWebviewUrlRef,
+        trackNextLoadingEventRef,
+        recoveryNavigationValidationRef,
+        webviewRef,
+        onSetUrlRef,
+        onUpdatePageStateRef,
+        setAddressBarValue,
+        setResourceNotice,
+        focusWebviewNow
+      })
+    },
+    [browserTab.id, focusWebviewNow, setResourceNotice]
+  )
+  const submitAddressBar = (): void => {
+    keepAddressBarFocusRef.current = false
+    const submission = resolveBrowserAddressBarSubmission(addressBarValue)
+    if (submission.status === 'invalid') {
+      onUpdatePageStateRef.current(browserTab.id, { loadError: submission.loadError })
+      return
     }
-  }, [])
+    navigateToUrl(submission.url)
+  }
 
   const webviewPartition = useBrowserPageWebviewPartition({ sessionProfileId, sessionPartition })
-
-  useLayoutEffect(() => {
-    applyBrowserPageViewportLayout(browserTab.id, { paintable: isPaintable, active: isActive })
-    // Why: a replacement slot root needs visibility re-applied.
-  }, [browserTab.id, isActive, isPaintable, slotViewport])
 
   useBrowserPageWebviewLifecycle({
     browserTabId: browserTab.id,
@@ -132,6 +179,46 @@ export function BrowserPagePane({
     onUpdatePageStateRef,
     onSetUrlRef
   })
+  useBrowserPageWebviewUrlSync({
+    browserTabId: browserTab.id,
+    browserTabUrl: browserTab.url,
+    browserTabLoading: browserTab.loading,
+    isActive,
+    isPaintable,
+    slotViewport,
+    webviewRef,
+    chromeHeaderRef,
+    lastKnownWebviewUrlRef,
+    trackNextLoadingEventRef,
+    keepAddressBarFocusRef,
+    addressBarInputRef,
+    browserTabUrlRef,
+    addressBarValueRef,
+    onUpdatePageStateRef,
+    focusWebviewNow
+  })
+  const reload = useBrowserPageReloadActions({
+    browserTab,
+    webviewRef,
+    trackNextLoadingEventRef,
+    retryGuestRecoveryRef,
+    onUpdatePageStateRef
+  })
+  useBrowserPageKeyboardShortcuts({
+    browserTabId: browserTab.id,
+    workspaceId,
+    isActive,
+    chromeShortcutScope,
+    isActiveRef,
+    webviewRef,
+    paneZoomLevelRef,
+    setBrowserDefaultZoomLevel,
+    showBrowserZoomFeedback,
+    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest
+  })
+
+  // The live URL is cached by the navigation handlers before their store writes re-render the pane.
+  const liveBrowserUrl = getLiveBrowserUrl(browserTab.id) ?? browserTab.url
 
   return (
     <div
@@ -147,6 +234,20 @@ export function BrowserPagePane({
       // Hidden panes stay paintable but must not stay keyboard-focusable.
       inert={!isActive}
       aria-hidden={!isActive}
-    />
+    >
+      <BrowserPageChromeHeader
+        chromeHeaderRef={chromeHeaderRef}
+        browserTab={browserTab}
+        webviewRef={webviewRef}
+        addressBarInputRef={addressBarInputRef}
+        dismissAddressBarSuggestionsRef={dismissAddressBarSuggestionsRef}
+        reload={reload}
+        addressBarValue={addressBarValue}
+        setAddressBarValue={setAddressBarValue}
+        submitAddressBar={submitAddressBar}
+        navigateToUrl={navigateToUrl}
+        currentUrl={liveBrowserUrl}
+      />
+    </div>
   )
 }
