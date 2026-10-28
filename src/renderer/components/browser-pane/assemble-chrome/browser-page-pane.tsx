@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Dispatch, DragEvent, SetStateAction } from 'react'
+import type { DragEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '../../../lib/utils'
+import { translate } from '../../../i18n'
+import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
+import { normalizeExternalBrowserUrl } from '../../../../shared/browser-url'
 import { getLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
 import { resolveBrowserAddressBarSubmission } from '../navigate/browser-address-bar-navigation'
 import { navigateBrowserPageToUrl } from '../navigate/navigate-browser-page-url'
@@ -11,13 +15,18 @@ import { BrowserPageChromeHeader } from './browser-page-chrome-header'
 import { useBrowserPageChromeFocus } from './use-browser-page-chrome-focus'
 import { useWebviewGuestFocus } from './browser-page-guest-focus'
 import type { BrowserPage as BrowserPageState } from '../../../../shared/browser-workspace-types'
-import { DEFAULT_BROWSER_PAGE_ZOOM_LEVEL } from '../host-guest/browser-page-zoom'
+import { getBrowserPageZoomIndicatorState } from '../host-guest/browser-page-zoom'
 import { ensureBrowserPageViewport } from '../host-guest/browser-page-viewport'
 import { isBrowserPagePanePaintable } from '../host-guest/browser-page-paintability'
 import { useBrowserPageSlotViewport } from '../host-guest/use-browser-page-slot-viewport'
 import { useBrowserPageWebviewLifecycle } from '../host-guest/use-browser-page-webview-lifecycle'
 import { useBrowserPageWebviewPartition } from '../host-guest/use-browser-page-webview-partition'
 import { toDisplayUrl } from '../describe-page/browser-page-url-display'
+import { useBrowserPageZoomFeedback } from '../host-guest/use-browser-page-zoom-feedback'
+import { useBrowserPageResourceNotices } from '../navigate/use-browser-page-resource-notices'
+import { BrowserPageContextMenu } from './browser-page-context-menu'
+import { BrowserPageViewportOverlays } from './browser-page-viewport-overlays'
+import { useBrowserPageFindShortcuts } from './use-browser-page-find-shortcuts'
 import type {
   BrowserChromeShortcutScope,
   BrowserPageRecoveryNavigationValidation,
@@ -51,7 +60,7 @@ export function BrowserPagePane({
   const isPaintable = isBrowserPagePanePaintable({ isActive })
   const slotViewport = useBrowserPageSlotViewport(workspaceId)
   // Creating the viewport during render makes it exist before the lifecycle effect attaches the guest.
-  ensureBrowserPageViewport(browserTab.id, workspaceId)
+  const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId)
 
   const chromeHeaderRef = useRef<HTMLDivElement | null>(null)
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
@@ -73,16 +82,12 @@ export function BrowserPagePane({
   useLayoutEffect(() => {
     isActiveRef.current = isActive
   }, [isActive])
-  const paneZoomLevelRef = useRef(DEFAULT_BROWSER_PAGE_ZOOM_LEVEL)
   const handleInternalFileDragOverRef = useRef<(event: DragEvent<HTMLDivElement>) => void>(() => {})
   const handleInternalFileDropRef = useRef<(event: DragEvent<HTMLDivElement>) => void>(() => {})
 
-  // The find bar and zoom indicator are not mounted yet; these keep the lifecycle contract intact.
-  const setFindOpen = useCallback<Dispatch<SetStateAction<boolean>>>(() => {}, [])
-  const setBrowserZoomPercent = useCallback<Dispatch<SetStateAction<number>>>(() => {}, [])
-  const setBrowserDefaultZoomLevel = useCallback((): void => {}, [])
-  const showBrowserZoomFeedback = useCallback((): void => {}, [])
-  const setResourceNotice = useCallback((): void => {}, [])
+  const [findOpen, setFindOpen] = useState(false)
+  const zoom = useBrowserPageZoomFeedback(browserTab.id)
+  const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id)
 
   const [addressBarValue, setAddressBarValue] = useState(() => toDisplayUrl(browserTab.url))
   useEffect(() => {
@@ -166,8 +171,8 @@ export function BrowserPagePane({
     setFindOpen,
     focusAddressBarNow,
     focusWebviewNow,
-    paneZoomLevelRef,
-    setBrowserZoomPercent,
+    paneZoomLevelRef: zoom.paneZoomLevelRef,
+    setBrowserZoomPercent: zoom.setBrowserZoomPercent,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,
     webviewRef,
@@ -204,6 +209,13 @@ export function BrowserPagePane({
     retryGuestRecoveryRef,
     onUpdatePageStateRef
   })
+  useBrowserPageFindShortcuts({
+    browserTabId: browserTab.id,
+    workspaceId,
+    isActive,
+    chromeShortcutScope,
+    setFindOpen
+  })
   useBrowserPageKeyboardShortcuts({
     browserTabId: browserTab.id,
     workspaceId,
@@ -211,14 +223,42 @@ export function BrowserPagePane({
     chromeShortcutScope,
     isActiveRef,
     webviewRef,
-    paneZoomLevelRef,
-    setBrowserDefaultZoomLevel,
-    showBrowserZoomFeedback,
+    paneZoomLevelRef: zoom.paneZoomLevelRef,
+    setBrowserDefaultZoomLevel: zoom.setBrowserDefaultZoomLevel,
+    showBrowserZoomFeedback: zoom.showBrowserZoomFeedback,
     reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest
   })
 
   // The live URL is cached by the navigation handlers before their store writes re-render the pane.
   const liveBrowserUrl = getLiveBrowserUrl(browserTab.id) ?? browserTab.url
+  // A blank tab reads as 'about:blank' or the resolved data: URL, so match both.
+  const isBlankTab = browserTab.url === 'about:blank' || browserTab.url === ORCA_BROWSER_BLANK_URL
+  const currentBrowserUrl = toDisplayUrl(liveBrowserUrl)
+  const failedNavigationUrl = browserTab.loadError?.validatedUrl ?? currentBrowserUrl
+  const failureExternalUrl = normalizeExternalBrowserUrl(failedNavigationUrl)
+  const showFailureOverlay = Boolean(browserTab.loadError) && !isBlankTab
+  const browserZoomIndicatorState = getBrowserPageZoomIndicatorState({
+    feedbackVisible: zoom.browserZoomFeedbackVisible,
+    isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
+  })
+
+  useEffect(() => {
+    const webview = webviewRef.current
+    if (!webview) {
+      return
+    }
+    // Electron webviews keep receiving native input under a React overlay unless their own hit testing is disabled.
+    webview.style.pointerEvents = inputLocked ? 'none' : 'auto'
+  }, [inputLocked])
+
+  useEffect(() => {
+    const webview = webviewRef.current
+    if (!webview) {
+      return
+    }
+    // Some Electron builds keep painting a hidden guest layer, so drop it from layout (display:none) instead of just hiding it.
+    webview.style.display = showFailureOverlay ? 'none' : 'flex'
+  }, [showFailureOverlay])
 
   return (
     <div
@@ -235,6 +275,15 @@ export function BrowserPagePane({
       inert={!isActive}
       aria-hidden={!isActive}
     >
+      {/* IPC-driven context menu in a Portal so position:fixed escapes ancestor transform/backdrop-filter containing blocks. */}
+      <BrowserPageContextMenu
+        browserPageId={browserTab.id}
+        scopeId={scopeId}
+        canGoBack={browserTab.canGoBack}
+        canGoForward={browserTab.canGoForward}
+        webviewRef={webviewRef}
+        onReload={() => reload.reloadWebviewOrRecoverGuest(false)}
+      />
       <BrowserPageChromeHeader
         chromeHeaderRef={chromeHeaderRef}
         browserTab={browserTab}
@@ -248,6 +297,39 @@ export function BrowserPagePane({
         navigateToUrl={navigateToUrl}
         currentUrl={liveBrowserUrl}
       />
+      {resourceNotice ? (
+        <div className="pointer-events-auto flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground">
+          <span>{resourceNotice}</span>
+          <button
+            type="button"
+            onClick={() => setResourceNotice(null)}
+            className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+            aria-label={translate('auto.components.browser.pane.BrowserPane.2fdca7df09', 'Dismiss')}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
+      {pageViewport?.container
+        ? createPortal(
+            <BrowserPageViewportOverlays
+              browserZoomIndicatorState={browserZoomIndicatorState}
+              browserZoomPercent={zoom.browserZoomPercent}
+              findOpen={findOpen}
+              setFindOpen={setFindOpen}
+              webviewRef={webviewRef}
+              showFailureOverlay={showFailureOverlay}
+              browserTab={browserTab}
+              failureExternalUrl={failureExternalUrl}
+              failedNavigationUrl={failedNavigationUrl}
+              onUpdatePageStateRef={onUpdatePageStateRef}
+              retryGuestRecoveryRef={retryGuestRecoveryRef}
+              navigateToUrl={navigateToUrl}
+              setResourceNotice={setResourceNotice}
+            />,
+            pageViewport.container
+          )
+        : null}
     </div>
   )
 }

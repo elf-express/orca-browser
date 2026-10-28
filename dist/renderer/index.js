@@ -89,6 +89,36 @@ function classifySchemeLessDomainPortAddress(input) {
     return null;
   }
 }
+function isIpv4Loopback(hostname) {
+  const octets = hostname.split(".");
+  if (octets.length !== 4 || octets.some((octet) => !/^\d{1,3}$/.test(octet))) {
+    return false;
+  }
+  const values = octets.map(Number);
+  return values[0] === 127 && values.every((value, index) => value >= 0 && value <= 255 && octets[index] === String(value));
+}
+function isEligibleLocalCertificateHost(hostname) {
+  const normalized = normalizeCertificateHostname(hostname);
+  if (normalized === "::1" || isIpv4Loopback(normalized)) {
+    return true;
+  }
+  if (!isValidDnsName(normalized)) {
+    return false;
+  }
+  return normalized === "localhost" || normalized.endsWith(".localhost");
+}
+function toHttpsRecoveryUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" || !isEligibleLocalCertificateHost(parsed.hostname)) {
+      return null;
+    }
+    parsed.protocol = "https:";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
 function normalizeKagiSessionLink(rawLink) {
   const trimmed = rawLink.trim();
   if (!trimmed) {
@@ -523,11 +553,22 @@ function setBrowserPageZoomLevel(webview, level) {
   }
 }
 var explicitPaneZoomLevels = /* @__PURE__ */ new Map();
+function getExplicitBrowserPageZoomLevel(browserPageId) {
+  return explicitPaneZoomLevels.get(browserPageId) ?? null;
+}
 function rememberExplicitBrowserPageZoomLevel(browserPageId, level) {
   explicitPaneZoomLevels.set(browserPageId, level);
 }
 function forgetExplicitBrowserPageZoomLevel(browserPageId) {
   explicitPaneZoomLevels.delete(browserPageId);
+}
+function getBrowserPageZoomIndicatorState({
+  feedbackVisible
+}) {
+  return {
+    ariaHidden: !feedbackVisible,
+    opacityClassName: feedbackVisible ? "opacity-100" : "opacity-0"
+  };
 }
 function addBrowserPageZoomEventListener(callback) {
   const listener = (event) => {
@@ -990,7 +1031,7 @@ function BrowserPane(props) {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { useEffect as useEffect11 } from "react";
+import { useEffect as useEffect16 } from "react";
 
 // src/renderer/i18n.ts
 var currentHost = null;
@@ -1016,7 +1057,7 @@ function translate(key, fallback, vars) {
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { memo, useCallback as useCallback10, useMemo as useMemo6 } from "react";
+import { memo, useCallback as useCallback13, useMemo as useMemo6 } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
@@ -1144,7 +1185,8 @@ function BrowserPageStrip({
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { useCallback as useCallback9, useEffect as useEffect9, useLayoutEffect as useLayoutEffect5, useRef as useRef9, useState as useState5 } from "react";
+import { useCallback as useCallback12, useEffect as useEffect14, useLayoutEffect as useLayoutEffect6, useRef as useRef12, useState as useState9 } from "react";
+import { createPortal as createPortal2 } from "react-dom";
 
 // src/renderer/components/browser-pane/navigate/browser-address-bar-navigation.ts
 function resolveBrowserAddressBarSubmission(rawValue, options) {
@@ -2042,20 +2084,34 @@ function useBrowserPageWebviewShortcuts({
         applyActivePageZoom(direction);
       }
     };
+    const handleKeyDown = (e) => {
+      const action = matchBrowserShortcutEvent(e);
+      const direction = action === "zoom.in" ? "in" : action === "zoom.out" ? "out" : action === "zoom.reset" ? "reset" : null;
+      if (direction === null || chromeShortcutScope === "inactive" || !browserChromeShortcutOwnsEvent(chromeShortcutScope, e, workspaceId)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      applyActivePageZoom(direction);
+    };
     const removeGuestListener = window.browserAPI.onZoomPage(handleZoom);
     const removeLocalListener = addBrowserPageZoomEventListener(handleZoom);
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       removeGuestListener();
       removeLocalListener();
+      window.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [
     browserTabId,
+    chromeShortcutScope,
     isActive,
     isActiveRef,
     paneZoomLevelRef,
     setBrowserDefaultZoomLevel,
     showBrowserZoomFeedback,
-    webviewRef
+    webviewRef,
+    workspaceId
   ]);
 }
 
@@ -5060,8 +5116,867 @@ function useBrowserPageWebviewPartition(_args) {
   return ORCA_BROWSER_PARTITION;
 }
 
+// src/renderer/components/browser-pane/host-guest/use-browser-page-zoom-feedback.ts
+import { useCallback as useCallback9, useEffect as useEffect9, useRef as useRef9, useState as useState5 } from "react";
+var BROWSER_PAGE_ZOOM_FEEDBACK_MS = 1400;
+var noopSetDefaultZoomLevel = () => {
+};
+function useBrowserPageZoomFeedback(browserTabId) {
+  const browserDefaultZoomPercent = browserPageZoomLevelToPercent(DEFAULT_BROWSER_PAGE_ZOOM_LEVEL);
+  const [initialZoomLevel] = useState5(
+    () => getExplicitBrowserPageZoomLevel(browserTabId) ?? DEFAULT_BROWSER_PAGE_ZOOM_LEVEL
+  );
+  const paneZoomLevelRef = useRef9(initialZoomLevel);
+  const [browserZoomPercent, setBrowserZoomPercent] = useState5(
+    browserPageZoomLevelToPercent(initialZoomLevel)
+  );
+  const [browserZoomFeedbackVisible, setBrowserZoomFeedbackVisible] = useState5(false);
+  const browserZoomFeedbackTimerRef = useRef9(void 0);
+  useEffect9(() => {
+    return () => {
+      clearTimeout(browserZoomFeedbackTimerRef.current);
+    };
+  }, []);
+  const showBrowserZoomFeedback = useCallback9((level) => {
+    setBrowserZoomPercent(browserPageZoomLevelToPercent(level));
+    setBrowserZoomFeedbackVisible(true);
+    clearTimeout(browserZoomFeedbackTimerRef.current);
+    browserZoomFeedbackTimerRef.current = setTimeout(() => {
+      setBrowserZoomFeedbackVisible(false);
+    }, BROWSER_PAGE_ZOOM_FEEDBACK_MS);
+  }, []);
+  return {
+    paneZoomLevelRef,
+    browserZoomPercent,
+    setBrowserZoomPercent,
+    browserZoomFeedbackVisible,
+    showBrowserZoomFeedback,
+    browserDefaultZoomPercent,
+    setBrowserDefaultZoomLevel: noopSetDefaultZoomLevel
+  };
+}
+
+// src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
+import { useEffect as useEffect10, useState as useState6 } from "react";
+
+// src/renderer/components/browser-pane/navigate/browser-notices.ts
+function humanizePermission(permission) {
+  switch (permission) {
+    case "media":
+      return "camera or microphone access";
+    case "pointerLock":
+      return "pointer lock";
+    case "storage-access":
+      return "access to its own cookies and storage while embedded on this page";
+    case "top-level-storage-access":
+      return "cookie access on behalf of an embedded site";
+    case "geolocation":
+      return "your location";
+    case "idle-detection":
+      return "permission to detect when you are idle";
+    case "display-capture":
+      return "permission to capture your screen";
+    case "window-management":
+      return "screen information and multi-screen window placement";
+    case "keyboardLock":
+      return "permission to capture keyboard input";
+    case "openExternal":
+      return "permission to open a link outside Orca";
+    case "fileSystem":
+      return "access to your files or folders";
+    case "hid":
+      return "access to a connected human interface device";
+    case "usb":
+      return "access to a USB device";
+    case "serial":
+      return "access to a serial device";
+    case "midi":
+      return "access to your MIDI devices";
+    case "midiSysex":
+      return "access to system-exclusive MIDI messages";
+    case "mediaKeySystem":
+      return "access to protected media playback";
+    case "speaker-selection":
+      return "permission to choose an audio output device";
+    default:
+      return permission;
+  }
+}
+function formatPermissionNotice(event) {
+  const target = event.origin === "unknown" ? "this page" : event.origin;
+  return `${target} asked for ${humanizePermission(event.permission)}, and Orca denied it.`;
+}
+function formatPopupNotice(event) {
+  const target = event.origin === "unknown" ? "A site" : event.origin;
+  if (event.action === "opened-in-orca") {
+    return null;
+  }
+  if (event.action === "opened-external") {
+    return `${target} opened a new window in your default browser.`;
+  }
+  return `${target} tried to open a popup Orca does not support here.`;
+}
+function formatLoadFailureDescription(loadError, meta) {
+  if (!loadError) {
+    return "The page did not respond.";
+  }
+  if (loadError.code === BROWSER_GUEST_RECOVERY_ERROR_CODE) {
+    return loadError.description;
+  }
+  if (meta.isLocalhostLike) {
+    return "We couldn't connect to your local server.";
+  }
+  if (loadError.code === 0) {
+    return loadError.description;
+  }
+  return "We couldn't connect to this page.";
+}
+function formatLoadFailureRecoveryHint(meta, loadError) {
+  if (!meta.isLocalhostLike || loadError?.code === BROWSER_GUEST_RECOVERY_ERROR_CODE) {
+    return null;
+  }
+  return "If this should be a local app, make sure the server is running and listening on the expected port.";
+}
+
+// src/renderer/components/browser-pane/navigate/use-browser-page-resource-notices.ts
+function useBrowserPageResourceNotices(browserTabId) {
+  const [resourceNotice, setResourceNotice] = useState6(null);
+  useEffect10(() => {
+    if (!resourceNotice) {
+      return;
+    }
+    const timer = setTimeout(() => setResourceNotice(null), 1e4);
+    return () => clearTimeout(timer);
+  }, [resourceNotice]);
+  useEffect10(() => {
+    return window.browserAPI.onPermissionDenied((event) => {
+      if (event.browserPageId !== browserTabId) {
+        return;
+      }
+      setResourceNotice(formatPermissionNotice(event));
+    });
+  }, [browserTabId]);
+  useEffect10(() => {
+    return window.browserAPI.onPopup((event) => {
+      if (event.browserPageId !== browserTabId) {
+        return;
+      }
+      const notice = formatPopupNotice(event);
+      if (notice) {
+        setResourceNotice(notice);
+      }
+    });
+  }, [browserTabId]);
+  return { resourceNotice, setResourceNotice };
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-page-context-menu.tsx
+import {
+  useCallback as useCallback10,
+  useEffect as useEffect11,
+  useLayoutEffect as useLayoutEffect5,
+  useRef as useRef10,
+  useState as useState7
+} from "react";
+import { createPortal } from "react-dom";
+import { Fragment as Fragment2, jsx as jsx18, jsxs as jsxs11 } from "react/jsx-runtime";
+var MENU_ITEM_CLASS = "relative flex w-full cursor-default items-center gap-2 rounded-[7px] px-2 py-0.5 text-[12px] leading-5 font-medium outline-none select-none hover:bg-black/8 focus:bg-black/8 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/14 dark:focus:bg-white/14";
+function BrowserPageContextMenu({
+  browserPageId,
+  scopeId,
+  canGoBack,
+  canGoForward,
+  webviewRef,
+  onReload
+}) {
+  const createBrowserPage = useBrowserStore((s) => s.createBrowserPage);
+  const [contextMenu, setContextMenu] = useState7(null);
+  const contextMenuRef = useRef10(null);
+  useEffect11(() => {
+    return window.browserAPI.onContextMenuRequested((event) => {
+      if (event.browserPageId !== browserPageId) {
+        return;
+      }
+      const x = Math.round(event.screenX - window.screenX);
+      const y = Math.round(event.screenY - window.screenY);
+      setContextMenu({
+        x,
+        y,
+        linkUrl: event.linkUrl,
+        pageUrl: event.pageUrl,
+        selectionText: event.selectionText ?? ""
+      });
+    });
+  }, [browserPageId]);
+  useEffect11(() => {
+    return window.browserAPI.onContextMenuDismissed((event) => {
+      if (event.browserPageId !== browserPageId) {
+        return;
+      }
+      setContextMenu(null);
+    });
+  }, [browserPageId]);
+  const closeMenu = useCallback10(() => {
+    setContextMenu(null);
+    try {
+      webviewRef.current?.focus();
+    } catch {
+    }
+  }, [webviewRef]);
+  const menuItems = useCallback10(() => {
+    const el = contextMenuRef.current;
+    if (!el) {
+      return [];
+    }
+    return [...el.querySelectorAll('[role="menuitem"]:not(:disabled)')];
+  }, []);
+  useEffect11(() => {
+    if (!contextMenu) {
+      return;
+    }
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeMenu();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [closeMenu, contextMenu]);
+  useEffect11(() => {
+    if (!contextMenu) {
+      return;
+    }
+    menuItems()[0]?.focus();
+  }, [contextMenu, menuItems]);
+  const handleMenuKeyDown = useCallback10(
+    (e) => {
+      const items = menuItems();
+      if (items.length === 0) {
+        return;
+      }
+      const currentIndex = items.indexOf(document.activeElement);
+      let nextIndex;
+      if (e.key === "ArrowDown") {
+        nextIndex = (currentIndex + 1) % items.length;
+      } else if (e.key === "ArrowUp") {
+        nextIndex = (currentIndex <= 0 ? items.length : currentIndex) - 1;
+      } else if (e.key === "Home") {
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        nextIndex = items.length - 1;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      items[nextIndex]?.focus();
+    },
+    [menuItems]
+  );
+  useLayoutEffect5(() => {
+    const el = contextMenuRef.current;
+    if (!el || !contextMenu) {
+      return;
+    }
+    el.style.left = `${contextMenu.x}px`;
+    el.style.top = `${contextMenu.y}px`;
+    const rect = el.getBoundingClientRect();
+    const offsetX = contextMenu.x - rect.left;
+    const offsetY = contextMenu.y - rect.top;
+    let renderX = contextMenu.x;
+    let renderY = contextMenu.y;
+    if (rect.right > window.innerWidth) {
+      renderX = contextMenu.x - rect.width;
+    }
+    if (rect.bottom > window.innerHeight) {
+      renderY = contextMenu.y - rect.height;
+    }
+    renderX = Math.max(0, renderX);
+    renderY = Math.max(0, renderY);
+    el.style.left = `${renderX + offsetX}px`;
+    el.style.top = `${renderY + offsetY}px`;
+  }, [contextMenu]);
+  if (!contextMenu) {
+    return null;
+  }
+  return createPortal(
+    /* @__PURE__ */ jsxs11(Fragment2, { children: [
+      /* @__PURE__ */ jsx18("div", { className: "fixed inset-0 z-50", onPointerDown: closeMenu }),
+      /* @__PURE__ */ jsxs11(
+        "div",
+        {
+          ref: contextMenuRef,
+          role: "menu",
+          "aria-orientation": "vertical",
+          tabIndex: -1,
+          onKeyDown: handleMenuKeyDown,
+          "data-testid": "browser-context-menu",
+          style: { left: contextMenu.x, top: contextMenu.y },
+          className: "fixed z-50 min-w-[13rem] overflow-hidden rounded-[11px] border border-black/14 bg-[rgba(255,255,255,0.82)] p-1 text-black shadow-[0_16px_36px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl dark:border-white/14 dark:bg-[rgba(0,0,0,0.72)] dark:text-white dark:shadow-[0_20px_44px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)]",
+          children: [
+            contextMenu.linkUrl ? /* @__PURE__ */ jsxs11(Fragment2, { children: [
+              /* @__PURE__ */ jsx18(
+                "button",
+                {
+                  role: "menuitem",
+                  className: MENU_ITEM_CLASS,
+                  onClick: () => {
+                    if (!isFileUrl(contextMenu.linkUrl)) {
+                      createBrowserPage(scopeId, contextMenu.linkUrl, { activate: false });
+                    }
+                    closeMenu();
+                  },
+                  children: translate(
+                    "auto.components.browser.pane.BrowserPane.b5b87d6cbb",
+                    "Open Link in New Page"
+                  )
+                }
+              ),
+              /* @__PURE__ */ jsx18(
+                "button",
+                {
+                  role: "menuitem",
+                  className: MENU_ITEM_CLASS,
+                  onClick: () => {
+                    const targetUrl = normalizeExternalBrowserUrl(contextMenu.linkUrl);
+                    if (targetUrl) {
+                      void window.browserAPI.openExternal({ url: targetUrl });
+                    }
+                    closeMenu();
+                  },
+                  children: translate(
+                    "auto.components.browser.pane.BrowserPane.8ce4f6b12e",
+                    "Open Link in Default Browser"
+                  )
+                }
+              ),
+              /* @__PURE__ */ jsx18(
+                "button",
+                {
+                  role: "menuitem",
+                  className: MENU_ITEM_CLASS,
+                  onClick: () => {
+                    void window.browserAPI.writeClipboardText(contextMenu.linkUrl ?? "");
+                    closeMenu();
+                  },
+                  children: translate("auto.components.browser.pane.BrowserPane.efb0e8f7f3", "Copy Link")
+                }
+              ),
+              /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" })
+            ] }) : null,
+            contextMenu.selectionText.trim() ? /* @__PURE__ */ jsxs11(Fragment2, { children: [
+              /* @__PURE__ */ jsx18(
+                "button",
+                {
+                  role: "menuitem",
+                  className: MENU_ITEM_CLASS,
+                  onClick: () => {
+                    void window.browserAPI.writeClipboardText(contextMenu.selectionText);
+                    closeMenu();
+                  },
+                  children: translate("auto.components.browser.pane.BrowserPane.2a4c4b8e1f", "Copy")
+                }
+              ),
+              /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" })
+            ] }) : null,
+            /* @__PURE__ */ jsx18(
+              "button",
+              {
+                role: "menuitem",
+                disabled: !canGoBack,
+                className: MENU_ITEM_CLASS,
+                onClick: () => {
+                  webviewRef.current?.goBack();
+                  closeMenu();
+                },
+                children: translate("auto.components.browser.pane.BrowserPane.40edfa75cb", "Back")
+              }
+            ),
+            /* @__PURE__ */ jsx18(
+              "button",
+              {
+                role: "menuitem",
+                disabled: !canGoForward,
+                className: MENU_ITEM_CLASS,
+                onClick: () => {
+                  webviewRef.current?.goForward();
+                  closeMenu();
+                },
+                children: translate("auto.components.browser.pane.BrowserPane.250a9b3e42", "Forward")
+              }
+            ),
+            /* @__PURE__ */ jsx18(
+              "button",
+              {
+                role: "menuitem",
+                className: MENU_ITEM_CLASS,
+                onClick: () => {
+                  onReload();
+                  closeMenu();
+                },
+                children: translate("auto.components.browser.pane.BrowserPane.0e080d820e", "Reload")
+              }
+            ),
+            /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx18(
+              "button",
+              {
+                role: "menuitem",
+                className: MENU_ITEM_CLASS,
+                onClick: () => {
+                  const targetUrl = normalizeExternalBrowserUrl(contextMenu.pageUrl);
+                  if (targetUrl) {
+                    void window.browserAPI.openExternal({ url: targetUrl });
+                  }
+                  closeMenu();
+                },
+                children: translate(
+                  "auto.components.browser.pane.BrowserPane.f7ab83f7ed",
+                  "Open Page in Default Browser"
+                )
+              }
+            ),
+            /* @__PURE__ */ jsx18(
+              "button",
+              {
+                role: "menuitem",
+                className: MENU_ITEM_CLASS,
+                onClick: () => {
+                  void window.browserAPI.writeClipboardText(contextMenu.pageUrl);
+                  closeMenu();
+                },
+                children: translate("auto.components.browser.pane.BrowserPane.1b179ab561", "Copy Page URL")
+              }
+            ),
+            /* @__PURE__ */ jsx18("div", { className: "my-1 h-px bg-border/70" }),
+            /* @__PURE__ */ jsx18(
+              "button",
+              {
+                role: "menuitem",
+                className: MENU_ITEM_CLASS,
+                onClick: () => {
+                  void window.browserAPI.openDevTools({ browserPageId });
+                  closeMenu();
+                },
+                children: translate("auto.components.browser.pane.BrowserPane.a8f37f70c3", "Inspect Page")
+              }
+            )
+          ]
+        }
+      )
+    ] }),
+    document.body
+  );
+}
+
+// src/renderer/components/browser-pane/navigate/browser-load-failure-overlay.tsx
+import { Copy, ExternalLink as ExternalLink2, Globe as Globe3, RefreshCw as RefreshCw3 } from "lucide-react";
+import { jsx as jsx19, jsxs as jsxs12 } from "react/jsx-runtime";
+function getLoadErrorMetadata(loadError) {
+  try {
+    const parsed = new URL(loadError.validatedUrl);
+    return {
+      host: parsed.host || null,
+      isLocalhostLike: parsed.hostname === "0.0.0.0" || isEligibleLocalCertificateHost(parsed.hostname)
+    };
+  } catch {
+    return { host: null, isLocalhostLike: false };
+  }
+}
+function BrowserLoadFailureOverlay({
+  loadError,
+  externalUrl,
+  currentUrl,
+  httpsRecoveryUrl,
+  onRetry,
+  onTryHttps,
+  onCopy,
+  onOpenExternal
+}) {
+  const meta = getLoadErrorMetadata(loadError);
+  const guestRecoveryError = loadError.code === BROWSER_GUEST_RECOVERY_ERROR_CODE;
+  const recoveryHint = formatLoadFailureRecoveryHint(meta, loadError);
+  return /* @__PURE__ */ jsx19("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-background px-6", children: /* @__PURE__ */ jsxs12("div", { "aria-live": "polite", className: "flex max-w-lg flex-col items-center px-8 py-8 text-center", children: [
+    /* @__PURE__ */ jsx19("div", { className: "mb-4 rounded-full border border-border bg-muted p-3 text-muted-foreground", children: /* @__PURE__ */ jsx19(Globe3, { className: "size-5" }) }),
+    /* @__PURE__ */ jsx19("h2", { className: "text-base font-semibold text-foreground", children: guestRecoveryError ? translate("browser.guestRecovery.title", "Browser page stopped") : meta.host ? translate("browser.loadFailure.cantReachHost", "Can't reach {{value0}}", {
+      value0: meta.host
+    }) : translate("browser.loadFailure.cantLoadPage", "Can't load this page") }),
+    /* @__PURE__ */ jsx19("p", { className: "mt-2 text-sm text-muted-foreground", children: formatLoadFailureDescription(loadError, meta) }),
+    recoveryHint ? /* @__PURE__ */ jsx19("p", { className: "mt-2 text-xs text-muted-foreground", children: recoveryHint }) : null,
+    /* @__PURE__ */ jsxs12("div", { className: "mt-5 flex flex-wrap items-center justify-center gap-2", children: [
+      httpsRecoveryUrl && !guestRecoveryError ? /* @__PURE__ */ jsx19(
+        Button,
+        {
+          size: "sm",
+          className: "h-9 gap-2 px-3",
+          onClick: () => onTryHttps(httpsRecoveryUrl),
+          children: translate("browser.loadFailure.tryHttps", "Try HTTPS")
+        }
+      ) : null,
+      /* @__PURE__ */ jsxs12(Button, { size: "sm", variant: "outline", className: "h-9 gap-2 px-3", onClick: onRetry, children: [
+        /* @__PURE__ */ jsx19(RefreshCw3, { className: "size-4" }),
+        translate("browser.loadFailure.retry", "Retry")
+      ] }),
+      /* @__PURE__ */ jsxs12(
+        Button,
+        {
+          size: "sm",
+          variant: "ghost",
+          className: "h-9 gap-2 px-3",
+          onClick: () => onCopy(currentUrl),
+          children: [
+            /* @__PURE__ */ jsx19(Copy, { className: "size-4" }),
+            translate("browser.loadFailure.copyAddress", "Copy Address")
+          ]
+        }
+      ),
+      externalUrl && onOpenExternal ? /* @__PURE__ */ jsxs12(
+        Button,
+        {
+          size: "sm",
+          variant: "ghost",
+          className: "h-9 gap-2 px-3",
+          onClick: () => onOpenExternal(externalUrl),
+          children: [
+            /* @__PURE__ */ jsx19(ExternalLink2, { className: "size-4" }),
+            translate("browser.loadFailure.openExternally", "Open Externally")
+          ]
+        }
+      ) : null
+    ] })
+  ] }) });
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-page-zoom-indicator.tsx
+import { jsxs as jsxs13 } from "react/jsx-runtime";
+function BrowserPageZoomIndicator({
+  state,
+  percent
+}) {
+  return /* @__PURE__ */ jsxs13(
+    "div",
+    {
+      role: "status",
+      "aria-live": "polite",
+      "aria-hidden": state.ariaHidden,
+      className: cn(
+        "pointer-events-none absolute top-3 right-3 z-30 rounded-md border border-border bg-popover/95 px-2.5 py-1 text-xs font-medium text-popover-foreground shadow-xs transition-opacity duration-300 ease-out",
+        state.opacityClassName
+      ),
+      children: [
+        percent,
+        "%"
+      ]
+    }
+  );
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
+import { useCallback as useCallback11, useEffect as useEffect12, useRef as useRef11, useState as useState8 } from "react";
+import { ChevronUp, ChevronDown, X as X2 } from "lucide-react";
+
+// src/renderer/lib/find-query-bounds.ts
+var FIND_QUERY_MAX_BYTES = 2 * 1024;
+function isFindQueryTooLarge(query, maxBytes = FIND_QUERY_MAX_BYTES) {
+  return isClipboardTextByteLengthOverLimit(query, maxBytes);
+}
+function getFindRequestQuery(query) {
+  return isFindQueryTooLarge(query) ? null : query;
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/BrowserFind.tsx
+import { jsx as jsx20, jsxs as jsxs14 } from "react/jsx-runtime";
+function BrowserFind({
+  isOpen,
+  onClose,
+  webviewRef,
+  guestGeneration = null
+}) {
+  const inputRef = useRef11(null);
+  const wasOpenRef = useRef11(isOpen);
+  const activeFindQueryRef = useRef11(null);
+  const [query, setQuery] = useState8("");
+  const [activeMatch, setActiveMatch] = useState8(0);
+  const [totalMatches, setTotalMatches] = useState8(0);
+  const requestQuery = getFindRequestQuery(query);
+  const safeFindInPage = useCallback11(
+    (text, opts) => {
+      const webview = webviewRef.current;
+      if (!webview || !text) {
+        return;
+      }
+      try {
+        webview.findInPage(text, opts);
+      } catch {
+      }
+    },
+    [webviewRef]
+  );
+  const safeStopFindInPage = useCallback11(() => {
+    const webview = webviewRef.current;
+    if (!webview) {
+      return;
+    }
+    try {
+      webview.stopFindInPage("clearSelection");
+    } catch {
+    }
+  }, [webviewRef]);
+  const findNext = useCallback11(() => {
+    if (requestQuery) {
+      const findNext2 = activeFindQueryRef.current !== requestQuery;
+      safeFindInPage(requestQuery, { forward: true, findNext: findNext2 });
+      activeFindQueryRef.current = requestQuery;
+    }
+  }, [requestQuery, safeFindInPage]);
+  const findPrevious = useCallback11(() => {
+    if (requestQuery) {
+      const findNext2 = activeFindQueryRef.current !== requestQuery;
+      safeFindInPage(requestQuery, { forward: false, findNext: findNext2 });
+      activeFindQueryRef.current = requestQuery;
+    }
+  }, [requestQuery, safeFindInPage]);
+  useEffect12(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    } else {
+      safeStopFindInPage();
+    }
+  }, [isOpen, safeStopFindInPage]);
+  useEffect12(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (!isOpen) {
+      activeFindQueryRef.current = null;
+      return;
+    }
+    if (!requestQuery) {
+      activeFindQueryRef.current = null;
+      safeStopFindInPage();
+      return;
+    }
+    const runFind = () => {
+      if (activeFindQueryRef.current === requestQuery) {
+        return;
+      }
+      safeFindInPage(requestQuery, { findNext: true });
+      activeFindQueryRef.current = requestQuery;
+    };
+    if (!wasOpen) {
+      runFind();
+      return;
+    }
+    const id = window.setTimeout(runFind, 200);
+    return () => window.clearTimeout(id);
+  }, [isOpen, requestQuery, safeFindInPage, safeStopFindInPage]);
+  useEffect12(() => {
+    const webview = webviewRef.current;
+    if (!webview || !isOpen) {
+      return;
+    }
+    const handleFoundInPage = (event) => {
+      const { activeMatchOrdinal, matches } = event.result;
+      setActiveMatch(activeMatchOrdinal);
+      setTotalMatches(matches);
+    };
+    webview.addEventListener("found-in-page", handleFoundInPage);
+    return () => {
+      try {
+        webview.removeEventListener("found-in-page", handleFoundInPage);
+      } catch {
+      }
+    };
+  }, [webviewRef, isOpen, guestGeneration]);
+  if ((!isOpen || !requestQuery) && (activeMatch !== 0 || totalMatches !== 0)) {
+    setActiveMatch(0);
+    setTotalMatches(0);
+  }
+  const handleKeyDown = useCallback11(
+    (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "Enter" && e.shiftKey) {
+        findPrevious();
+      } else if (e.key === "Enter") {
+        findNext();
+      }
+    },
+    [onClose, findNext, findPrevious]
+  );
+  if (!isOpen) {
+    return null;
+  }
+  return /* @__PURE__ */ jsxs14(
+    "div",
+    {
+      className: "absolute top-2 right-2 z-50 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/95 px-2 py-1 shadow-lg backdrop-blur-sm",
+      style: { width: 300 },
+      onKeyDown: handleKeyDown,
+      children: [
+        /* @__PURE__ */ jsx20(
+          ImeInput,
+          {
+            ref: inputRef,
+            type: "text",
+            value: query,
+            onChange: (e) => setQuery(e.target.value),
+            placeholder: translate(
+              "auto.components.browser.pane.BrowserFind.636a69cd66",
+              "Find in page..."
+            ),
+            className: "min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
+          }
+        ),
+        query ? /* @__PURE__ */ jsx20("span", { className: "shrink-0 text-xs text-zinc-400", children: totalMatches > 0 ? translate(
+          "auto.components.browser.pane.BrowserFind.fc63f336aa",
+          "{{value0}} of {{value1}}",
+          { value0: activeMatch, value1: totalMatches }
+        ) : translate("auto.components.browser.pane.BrowserFind.7baca7b1b8", "No matches") }) : null,
+        /* @__PURE__ */ jsx20("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx20(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            size: "icon-xs",
+            onClick: findPrevious,
+            className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
+            title: translate("auto.components.browser.pane.BrowserFind.ca7aebbd7f", "Previous match"),
+            children: /* @__PURE__ */ jsx20(ChevronUp, { size: 14 })
+          }
+        ),
+        /* @__PURE__ */ jsx20(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            size: "icon-xs",
+            onClick: findNext,
+            className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
+            title: translate("auto.components.browser.pane.BrowserFind.5c0c02ae76", "Next match"),
+            children: /* @__PURE__ */ jsx20(ChevronDown, { size: 14 })
+          }
+        ),
+        /* @__PURE__ */ jsx20("div", { className: "mx-0.5 h-4 w-px bg-zinc-700" }),
+        /* @__PURE__ */ jsx20(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            size: "icon-xs",
+            onClick: onClose,
+            className: "flex size-6 shrink-0 items-center justify-center rounded text-zinc-400 hover:text-zinc-200",
+            title: translate("auto.components.browser.pane.BrowserFind.c9d5f63fdc", "Close"),
+            children: /* @__PURE__ */ jsx20(X2, { size: 14 })
+          }
+        )
+      ]
+    }
+  );
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/browser-page-viewport-overlays.tsx
+import { Fragment as Fragment3, jsx as jsx21, jsxs as jsxs15 } from "react/jsx-runtime";
+function BrowserPageViewportOverlays({
+  browserZoomIndicatorState,
+  browserZoomPercent,
+  findOpen,
+  setFindOpen,
+  webviewRef,
+  showFailureOverlay,
+  browserTab,
+  failureExternalUrl,
+  failedNavigationUrl,
+  onUpdatePageStateRef,
+  retryGuestRecoveryRef,
+  navigateToUrl,
+  setResourceNotice
+}) {
+  return /* @__PURE__ */ jsxs15(Fragment3, { children: [
+    /* @__PURE__ */ jsx21(BrowserPageZoomIndicator, { state: browserZoomIndicatorState, percent: browserZoomPercent }),
+    /* @__PURE__ */ jsx21(BrowserFind, { isOpen: findOpen, onClose: () => setFindOpen(false), webviewRef }),
+    showFailureOverlay && browserTab.loadError ? /* @__PURE__ */ jsx21(
+      BrowserLoadFailureOverlay,
+      {
+        loadError: browserTab.loadError,
+        externalUrl: failureExternalUrl,
+        currentUrl: toDisplayUrl(failedNavigationUrl),
+        httpsRecoveryUrl: toHttpsRecoveryUrl(failedNavigationUrl),
+        onRetry: () => {
+          const webview = webviewRef.current;
+          if (!webview) {
+            return;
+          }
+          onUpdatePageStateRef.current(browserTab.id, { loading: true });
+          if (browserTab.loadError?.code === BROWSER_GUEST_RECOVERY_ERROR_CODE) {
+            retryGuestRecoveryRef.current();
+            return;
+          }
+          retryBrowserTabLoad(webview, browserTab, onUpdatePageStateRef.current);
+        },
+        onTryHttps: navigateToUrl,
+        onCopy: (url) => {
+          void window.browserAPI.writeClipboardText(url);
+          setResourceNotice(
+            translate("browser.loadFailure.addressCopied", "Copied the current page address.")
+          );
+        },
+        onOpenExternal: (url) => void window.browserAPI.openExternal({ url })
+      }
+    ) : null
+  ] });
+}
+
+// src/renderer/components/browser-pane/assemble-chrome/use-browser-page-find-shortcuts.ts
+import { useEffect as useEffect13 } from "react";
+function useBrowserPageFindShortcuts({
+  browserTabId,
+  workspaceId,
+  isActive,
+  chromeShortcutScope,
+  setFindOpen
+}) {
+  useEffect13(() => {
+    if (chromeShortcutScope === "inactive") {
+      return;
+    }
+    const handleKeyDown = (e) => {
+      if (matchBrowserShortcutEvent(e) !== "browser.find") {
+        return;
+      }
+      if (!browserChromeShortcutOwnsEvent(chromeShortcutScope, e, workspaceId)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      setFindOpen(true);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [chromeShortcutScope, setFindOpen, workspaceId]);
+  useEffect13(() => {
+    if (!isActive) {
+      return;
+    }
+    return window.browserAPI.onFindInPage(
+      { browserPageId: browserTabId, browserWorkspaceId: workspaceId },
+      () => {
+        setFindOpen(true);
+      }
+    );
+  }, [browserTabId, isActive, setFindOpen, workspaceId]);
+  useEffect13(() => {
+    if (!isActive) {
+      setFindOpen(false);
+    }
+  }, [isActive, setFindOpen]);
+}
+
 // src/renderer/components/browser-pane/assemble-chrome/browser-page-pane.tsx
-import { jsx as jsx18 } from "react/jsx-runtime";
+import { jsx as jsx22, jsxs as jsxs16 } from "react/jsx-runtime";
 function BrowserPagePane({
   browserTab,
   workspaceId,
@@ -5076,50 +5991,42 @@ function BrowserPagePane({
 }) {
   const isPaintable = isBrowserPagePanePaintable({ isActive });
   const slotViewport = useBrowserPageSlotViewport(workspaceId);
-  ensureBrowserPageViewport(browserTab.id, workspaceId);
-  const chromeHeaderRef = useRef9(null);
-  const webviewRef = useRef9(null);
-  const addressBarInputRef = useRef9(null);
-  const dismissAddressBarSuggestionsRef = useRef9(null);
-  const addressBarValueRef = useRef9(toDisplayUrl(browserTab.url));
-  const browserTabUrlRef = useRef9(browserTab.url);
-  const lastKnownWebviewUrlRef = useRef9(null);
-  const trackNextLoadingEventRef = useRef9(false);
-  const recoveryNavigationValidationRef = useRef9(
+  const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId);
+  const chromeHeaderRef = useRef12(null);
+  const webviewRef = useRef12(null);
+  const addressBarInputRef = useRef12(null);
+  const dismissAddressBarSuggestionsRef = useRef12(null);
+  const addressBarValueRef = useRef12(toDisplayUrl(browserTab.url));
+  const browserTabUrlRef = useRef12(browserTab.url);
+  const lastKnownWebviewUrlRef = useRef12(null);
+  const trackNextLoadingEventRef = useRef12(false);
+  const recoveryNavigationValidationRef = useRef12(
     null
   );
-  const activeLoadFailureRef = useRef9(browserTab.loadError);
-  const retryGuestRecoveryRef = useRef9(() => {
+  const activeLoadFailureRef = useRef12(browserTab.loadError);
+  const retryGuestRecoveryRef = useRef12(() => {
   });
-  const onUpdatePageStateRef = useRef9(onUpdatePageState);
-  const onSetUrlRef = useRef9(onSetUrl);
-  const isActiveRef = useRef9(isActive);
-  useLayoutEffect5(() => {
+  const onUpdatePageStateRef = useRef12(onUpdatePageState);
+  const onSetUrlRef = useRef12(onSetUrl);
+  const isActiveRef = useRef12(isActive);
+  useLayoutEffect6(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
-  const paneZoomLevelRef = useRef9(DEFAULT_BROWSER_PAGE_ZOOM_LEVEL);
-  const handleInternalFileDragOverRef = useRef9(() => {
+  const handleInternalFileDragOverRef = useRef12(() => {
   });
-  const handleInternalFileDropRef = useRef9(() => {
+  const handleInternalFileDropRef = useRef12(() => {
   });
-  const setFindOpen = useCallback9(() => {
-  }, []);
-  const setBrowserZoomPercent = useCallback9(() => {
-  }, []);
-  const setBrowserDefaultZoomLevel = useCallback9(() => {
-  }, []);
-  const showBrowserZoomFeedback = useCallback9(() => {
-  }, []);
-  const setResourceNotice = useCallback9(() => {
-  }, []);
-  const [addressBarValue, setAddressBarValue] = useState5(() => toDisplayUrl(browserTab.url));
-  useEffect9(() => {
+  const [findOpen, setFindOpen] = useState9(false);
+  const zoom = useBrowserPageZoomFeedback(browserTab.id);
+  const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id);
+  const [addressBarValue, setAddressBarValue] = useState9(() => toDisplayUrl(browserTab.url));
+  useEffect14(() => {
     if (document.activeElement === addressBarInputRef.current) {
       return;
     }
     setAddressBarValue(toDisplayUrl(browserTab.url));
   }, [browserTab.url]);
-  useEffect9(() => {
+  useEffect14(() => {
     addressBarValueRef.current = addressBarValue;
   }, [addressBarValue]);
   const guestFocus = useWebviewGuestFocus(webviewRef);
@@ -5135,7 +6042,7 @@ function BrowserPagePane({
     addressBarInputRef,
     guestFocus
   });
-  const navigateToUrl = useCallback9(
+  const navigateToUrl = useCallback12(
     (url) => {
       navigateBrowserPageToUrl({
         url,
@@ -5189,8 +6096,8 @@ function BrowserPagePane({
     setFindOpen,
     focusAddressBarNow,
     focusWebviewNow,
-    paneZoomLevelRef,
-    setBrowserZoomPercent,
+    paneZoomLevelRef: zoom.paneZoomLevelRef,
+    setBrowserZoomPercent: zoom.setBrowserZoomPercent,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,
     webviewRef,
@@ -5227,6 +6134,13 @@ function BrowserPagePane({
     retryGuestRecoveryRef,
     onUpdatePageStateRef
   });
+  useBrowserPageFindShortcuts({
+    browserTabId: browserTab.id,
+    workspaceId,
+    isActive,
+    chromeShortcutScope,
+    setFindOpen
+  });
   useBrowserPageKeyboardShortcuts({
     browserTabId: browserTab.id,
     workspaceId,
@@ -5234,13 +6148,36 @@ function BrowserPagePane({
     chromeShortcutScope,
     isActiveRef,
     webviewRef,
-    paneZoomLevelRef,
-    setBrowserDefaultZoomLevel,
-    showBrowserZoomFeedback,
+    paneZoomLevelRef: zoom.paneZoomLevelRef,
+    setBrowserDefaultZoomLevel: zoom.setBrowserDefaultZoomLevel,
+    showBrowserZoomFeedback: zoom.showBrowserZoomFeedback,
     reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest
   });
   const liveBrowserUrl = getLiveBrowserUrl(browserTab.id) ?? browserTab.url;
-  return /* @__PURE__ */ jsx18(
+  const isBlankTab = browserTab.url === "about:blank" || browserTab.url === ORCA_BROWSER_BLANK_URL;
+  const currentBrowserUrl = toDisplayUrl(liveBrowserUrl);
+  const failedNavigationUrl = browserTab.loadError?.validatedUrl ?? currentBrowserUrl;
+  const failureExternalUrl = normalizeExternalBrowserUrl(failedNavigationUrl);
+  const showFailureOverlay = Boolean(browserTab.loadError) && !isBlankTab;
+  const browserZoomIndicatorState = getBrowserPageZoomIndicatorState({
+    feedbackVisible: zoom.browserZoomFeedbackVisible,
+    isDefaultZoom: zoom.browserZoomPercent === zoom.browserDefaultZoomPercent
+  });
+  useEffect14(() => {
+    const webview = webviewRef.current;
+    if (!webview) {
+      return;
+    }
+    webview.style.pointerEvents = inputLocked ? "none" : "auto";
+  }, [inputLocked]);
+  useEffect14(() => {
+    const webview = webviewRef.current;
+    if (!webview) {
+      return;
+    }
+    webview.style.display = showFailureOverlay ? "none" : "flex";
+  }, [showFailureOverlay]);
+  return /* @__PURE__ */ jsxs16(
     "div",
     {
       "data-browser-page-pane-id": browserTab.id,
@@ -5250,47 +6187,94 @@ function BrowserPagePane({
       ),
       inert: !isActive,
       "aria-hidden": !isActive,
-      children: /* @__PURE__ */ jsx18(
-        BrowserPageChromeHeader,
-        {
-          chromeHeaderRef,
-          browserTab,
-          webviewRef,
-          addressBarInputRef,
-          dismissAddressBarSuggestionsRef,
-          reload,
-          addressBarValue,
-          setAddressBarValue,
-          submitAddressBar,
-          navigateToUrl,
-          currentUrl: liveBrowserUrl
-        }
-      )
+      children: [
+        /* @__PURE__ */ jsx22(
+          BrowserPageContextMenu,
+          {
+            browserPageId: browserTab.id,
+            scopeId,
+            canGoBack: browserTab.canGoBack,
+            canGoForward: browserTab.canGoForward,
+            webviewRef,
+            onReload: () => reload.reloadWebviewOrRecoverGuest(false)
+          }
+        ),
+        /* @__PURE__ */ jsx22(
+          BrowserPageChromeHeader,
+          {
+            chromeHeaderRef,
+            browserTab,
+            webviewRef,
+            addressBarInputRef,
+            dismissAddressBarSuggestionsRef,
+            reload,
+            addressBarValue,
+            setAddressBarValue,
+            submitAddressBar,
+            navigateToUrl,
+            currentUrl: liveBrowserUrl
+          }
+        ),
+        resourceNotice ? /* @__PURE__ */ jsxs16("div", { className: "pointer-events-auto flex items-center justify-between gap-2 border-b border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground", children: [
+          /* @__PURE__ */ jsx22("span", { children: resourceNotice }),
+          /* @__PURE__ */ jsx22(
+            "button",
+            {
+              type: "button",
+              onClick: () => setResourceNotice(null),
+              className: "shrink-0 text-muted-foreground/60 hover:text-foreground",
+              "aria-label": translate("auto.components.browser.pane.BrowserPane.2fdca7df09", "Dismiss"),
+              children: "\u2715"
+            }
+          )
+        ] }) : null,
+        pageViewport?.container ? createPortal2(
+          /* @__PURE__ */ jsx22(
+            BrowserPageViewportOverlays,
+            {
+              browserZoomIndicatorState,
+              browserZoomPercent: zoom.browserZoomPercent,
+              findOpen,
+              setFindOpen,
+              webviewRef,
+              showFailureOverlay,
+              browserTab,
+              failureExternalUrl,
+              failedNavigationUrl,
+              onUpdatePageStateRef,
+              retryGuestRecoveryRef,
+              navigateToUrl,
+              setResourceNotice
+            }
+          ),
+          pageViewport.container
+        ) : null
+      ]
     }
   );
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/DeferredBrowserContent.tsx
-import { useLayoutEffect as useLayoutEffect6, useState as useState6 } from "react";
-import { Fragment as Fragment2, jsx as jsx19 } from "react/jsx-runtime";
+import { useLayoutEffect as useLayoutEffect7, useState as useState10 } from "react";
+import { Fragment as Fragment4, jsx as jsx23 } from "react/jsx-runtime";
 function DeferredBrowserContent({
   mountEligible,
   retainMounted = true,
   children
 }) {
-  const [hasCommittedMount, setHasCommittedMount] = useState6(false);
-  useLayoutEffect6(() => {
+  const [hasCommittedMount, setHasCommittedMount] = useState10(false);
+  useLayoutEffect7(() => {
     if (!retainMounted) {
       setHasCommittedMount(false);
     } else if (mountEligible && !hasCommittedMount) {
       setHasCommittedMount(true);
     }
   }, [hasCommittedMount, mountEligible, retainMounted]);
-  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx19(Fragment2, { children }) : null;
+  return mountEligible || retainMounted && hasCommittedMount ? /* @__PURE__ */ jsx23(Fragment4, { children }) : null;
 }
 
 // src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
-import { jsx as jsx20, jsxs as jsxs11 } from "react/jsx-runtime";
+import { jsx as jsx24, jsxs as jsxs17 } from "react/jsx-runtime";
 function BrowserScopePane({
   scopeId,
   isActive
@@ -5304,8 +6288,8 @@ function BrowserScopePane({
   const activeBrowserPage = browserPages.find((page) => page.id === activePageId) ?? browserPages[0] ?? null;
   const browserPageIds = useMemo5(() => browserPages.map((page) => page.id), [browserPages]);
   const hasAdmittedPage = useAnyBrowserPageMountAdmission(browserPageIds);
-  return /* @__PURE__ */ jsxs11("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
-    browserPages.length >= 2 ? /* @__PURE__ */ jsx20(
+  return /* @__PURE__ */ jsxs17("div", { className: "relative flex h-full min-h-0 flex-1 flex-col", children: [
+    browserPages.length >= 2 ? /* @__PURE__ */ jsx24(
       BrowserPageStrip,
       {
         pages: browserPages,
@@ -5314,14 +6298,14 @@ function BrowserScopePane({
         onClose: closeBrowserPage
       }
     ) : null,
-    /* @__PURE__ */ jsx20("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx20(
+    /* @__PURE__ */ jsx24("div", { className: "relative flex min-h-0 flex-1", children: browserPages.map((page) => /* @__PURE__ */ jsx24(
       DeferredBrowserContent,
       {
         retainMounted: isActive,
         mountEligible: isBrowserPagePanePaintable({
           isActive: isActive && page.id === activeBrowserPage?.id || hasAdmittedPage && isBrowserPageMountAdmitted(page.id)
         }),
-        children: /* @__PURE__ */ jsx20(
+        children: /* @__PURE__ */ jsx24(
           BrowserPagePane,
           {
             browserTab: page,
@@ -5344,12 +6328,12 @@ function BrowserScopePane({
 var browser_workspace_pane_default = BrowserScopePane;
 
 // src/renderer/components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx
-import { Fragment as Fragment3, jsx as jsx21, jsxs as jsxs12 } from "react/jsx-runtime";
+import { Fragment as Fragment5, jsx as jsx25, jsxs as jsxs18 } from "react/jsx-runtime";
 var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
   scopeId
 }) {
   const isActive = useBrowserStore((state) => state.paneMountByScope[scopeId]?.active === true);
-  const setSlotViewportRef = useCallback10(
+  const setSlotViewportRef = useCallback13(
     (node) => {
       registerBrowserOverlaySlotViewport(scopeId, node);
     },
@@ -5369,7 +6353,7 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
     }),
     [anchorName, isActive]
   );
-  return /* @__PURE__ */ jsxs12(
+  return /* @__PURE__ */ jsxs18(
     "div",
     {
       style,
@@ -5378,21 +6362,21 @@ var BrowserOverlaySlot = memo(function BrowserOverlaySlot2({
       "data-orca-browser-anchor": anchorName,
       "data-browser-overlay-tab-id": scopeId,
       children: [
-        /* @__PURE__ */ jsx21("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
-        /* @__PURE__ */ jsx21(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx21(browser_workspace_pane_default, { scopeId, isActive }) })
+        /* @__PURE__ */ jsx25("div", { ref: setSlotViewportRef, className: "absolute inset-0 flex min-h-0 flex-col" }),
+        /* @__PURE__ */ jsx25(DeferredBrowserContent, { mountEligible: isActive, children: /* @__PURE__ */ jsx25(browser_workspace_pane_default, { scopeId, isActive }) })
       ]
     }
   );
 });
 var BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer2() {
   const scopeIds = useBrowserStore(useShallow((state) => Object.keys(state.pagesByScope)));
-  return /* @__PURE__ */ jsx21(Fragment3, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx21(BrowserOverlaySlot, { scopeId }, scopeId)) });
+  return /* @__PURE__ */ jsx25(Fragment5, { children: scopeIds.map((scopeId) => /* @__PURE__ */ jsx25(BrowserOverlaySlot, { scopeId }, scopeId)) });
 });
 
 // src/renderer/ipc/browser-state-ipc-bridge.ts
-import { useEffect as useEffect10 } from "react";
+import { useEffect as useEffect15 } from "react";
 function useBrowserStateIpcBridge() {
-  useEffect10(() => {
+  useEffect15(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -5405,7 +6389,7 @@ function useBrowserStateIpcBridge() {
       useBrowserStore.getState().createBrowserPage(scopeId, url, { activate: activate ?? true });
     });
   }, []);
-  useEffect10(() => {
+  useEffect15(() => {
     const api = window.browserAPI;
     if (!api) {
       return;
@@ -5432,19 +6416,19 @@ function useBrowserStateIpcBridge() {
 }
 
 // src/renderer/BrowserPluginProvider.tsx
-import { jsx as jsx22, jsxs as jsxs13 } from "react/jsx-runtime";
+import { jsx as jsx26, jsxs as jsxs19 } from "react/jsx-runtime";
 function BrowserPluginProvider(props) {
   const { host, children } = props;
   setBrowserRendererHost(host);
-  useEffect11(() => {
+  useEffect16(() => {
     setBrowserRendererHost(host);
     return () => clearBrowserRendererHost(host);
   }, [host]);
   useBrowserStateIpcBridge();
   const hasBrowserApi = typeof window !== "undefined" && window.browserAPI !== void 0;
-  return /* @__PURE__ */ jsxs13(BrowserRendererHostContext.Provider, { value: host, children: [
+  return /* @__PURE__ */ jsxs19(BrowserRendererHostContext.Provider, { value: host, children: [
     children,
-    hasBrowserApi ? /* @__PURE__ */ jsx22(BrowserPaneOverlayLayer, {}) : null
+    hasBrowserApi ? /* @__PURE__ */ jsx26(BrowserPaneOverlayLayer, {}) : null
   ] });
 }
 export {

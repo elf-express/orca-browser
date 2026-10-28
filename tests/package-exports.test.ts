@@ -21,8 +21,15 @@ function collectTargets(value: unknown): string[] {
 const requireFromRoot = createRequire(resolve(root, 'package.json'))
 const specifier = (subpath: string): string => `${pkg.name}${subpath.slice(1)}`
 
-const importResolvable = ['./main', './preload', './shared', './package.json', './renderer']
-const requireResolvable = ['./main', './preload', './shared', './package.json']
+const importResolvable = [
+  './main',
+  './preload',
+  './shared',
+  './package.json',
+  './renderer',
+  './i18n-keys.json'
+]
+const requireResolvable = ['./main', './preload', './shared', './package.json', './i18n-keys.json']
 
 describe('package exports', () => {
   it.each(collectTargets(pkg.exports))('target %s exists', (file) => {

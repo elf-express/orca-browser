@@ -160,19 +160,45 @@ export function useBrowserPageWebviewShortcuts({
         applyActivePageZoom(direction)
       }
     }
+    // Renderer path: a zoom chord pressed while the browser chrome holds focus never reaches the guest.
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      const action = matchBrowserShortcutEvent(e)
+      const direction =
+        action === 'zoom.in'
+          ? 'in'
+          : action === 'zoom.out'
+            ? 'out'
+            : action === 'zoom.reset'
+              ? 'reset'
+              : null
+      if (
+        direction === null ||
+        chromeShortcutScope === 'inactive' ||
+        !browserChromeShortcutOwnsEvent(chromeShortcutScope, e, workspaceId)
+      ) {
+        return
+      }
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      applyActivePageZoom(direction)
+    }
     const removeGuestListener = window.browserAPI!.onZoomPage(handleZoom)
     const removeLocalListener = addBrowserPageZoomEventListener(handleZoom)
+    window.addEventListener('keydown', handleKeyDown, true)
     return () => {
       removeGuestListener()
       removeLocalListener()
+      window.removeEventListener('keydown', handleKeyDown, true)
     }
   }, [
     browserTabId,
+    chromeShortcutScope,
     isActive,
     isActiveRef,
     paneZoomLevelRef,
     setBrowserDefaultZoomLevel,
     showBrowserZoomFeedback,
-    webviewRef
+    webviewRef,
+    workspaceId
   ])
 }
