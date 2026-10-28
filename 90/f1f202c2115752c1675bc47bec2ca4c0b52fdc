@@ -1,0 +1,23 @@
+dist/main/index.cjs
+  s_aa47a447e01641::t_cfec0b8f9aae58 3696-3697,3699-3701
+src/main/browser-profiles-installer.test.ts
+  s_aa47a447e01641::t_193ca5240afd4b 1,221-241
+src/main/browser/browser-session-registry.ts
+  s_aa47a447e01641::t_60496c18b0ec09 51-52,54-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90f1f202c2115752c1675bc47bec2ca4c0b52fdc",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
