@@ -1,0 +1,23 @@
+dist/renderer/index.js
+  s_d602252d21b080::t_ae29909f060300 6323
+src/renderer/BrowserPane.keep-alive.test.tsx
+  s_d602252d21b080::t_b33c64d5d11ab0 159-217
+src/renderer/components/browser-pane/assemble-chrome/browser-workspace-pane.tsx
+  s_d602252d21b080::t_a3fc03d5743826 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88e74040639d030b0ae6a118e5e4de7d128cac9b",
+  "prompts": {},
+  "sessions": {
+    "s_d602252d21b080": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a5d0a92-488a-4fc5-b0c6-1ee5e213322c",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
