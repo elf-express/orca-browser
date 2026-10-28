@@ -1,0 +1,109 @@
+dist/main/index.cjs
+  s_aa47a447e01641::t_174ec73c7d4b00 231-300,595-1725,1727-1731,1733-1736,1739-1748,1750-1789,1791-1868,1872-1938,2725-2878,2965,3581,3803,3821-3823,3825-3845,3847-3873,3889-3905,4196-4211,4227-4236,4442-4443,4446-4452,4468-4621,4623,4652,5106,5242,5245,5254,5257,5270,5276,5444,5672,5709,5733,5772,5824-5826,5832,5844,6128,6277,6444,6516,6807,6815,6938,7064,7118,7122,7394,8054,8381-8388,8394,8403,8409,8418,8427,8453,8462-8463,8469-8471,8477,8529,8545,8554-8555
+dist/main/index.d.cts
+  s_aa47a447e01641::t_640aebdc6584b7 9-149,366-375
+dist/preload/index.cjs
+  s_aa47a447e01641::t_14af0464caa35a 122-137
+dist/renderer/index.d.ts
+  s_aa47a447e01641::t_c50c9429b16b83 26-166,383-392
+dist/shared/index.cjs
+  s_aa47a447e01641::t_60e4bde11694f6 26,121-130,732
+dist/shared/index.d.cts
+  s_aa47a447e01641::t_353ca0be34c977 31-217,489-498,568-569,654
+dist/shared/index.d.ts
+  s_aa47a447e01641::t_1177b001e3811e 31-217,489-498,568-569,654
+dist/shared/index.js
+  s_aa47a447e01641::t_ba056f839b19ee 46-55,656
+src/main/browser-grab-installer.test.ts
+  s_aa47a447e01641::t_d4405dad870b53 1-60
+src/main/browser-grab-installer.ts
+  s_aa47a447e01641::t_24bc515ae177e1 1-15
+src/main/browser/browser-grab-payload.test.ts
+  s_aa47a447e01641::t_587cf7094e03b9 1-151
+src/main/browser/browser-grab-payload.ts
+  s_aa47a447e01641::t_71548d1c3b1b0a 1-221
+src/main/browser/browser-grab-screenshot.ts
+  s_aa47a447e01641::t_7f176d766a516d 1-106
+src/main/browser/browser-grab-session-controller.ts
+  s_aa47a447e01641::t_1716bed54d9270 1-234
+src/main/browser/browser-guest-grab-shortcuts.chord.test.ts
+  s_aa47a447e01641::t_cd68339b073d3f 1-40
+src/main/browser/browser-guest-grab-shortcuts.ts
+  s_aa47a447e01641::t_50baf971713d5d 1-99
+src/main/browser/browser-manager-bindings.ts
+  s_aa47a447e01641::t_e2d787156e20ed 2,20-39
+src/main/browser/browser-manager-grab-capture.test.ts
+  s_aa47a447e01641::t_d5add237b1b182 1-171
+src/main/browser/browser-manager-grab-mode.test.ts
+  s_aa47a447e01641::t_cbc641c92cdb39 1-112
+src/main/browser/browser-manager-grab-selection.test.ts
+  s_aa47a447e01641::t_1d22867ce3b67c 1-590
+src/main/browser/browser-manager-grab-shortcuts.test.ts
+  s_aa47a447e01641::t_42d2666eb977ee 1-145
+src/main/browser/browser-manager-grab-test-harness.ts
+  s_aa47a447e01641::t_034d7d38b7d2bd 1-80
+src/main/browser/browser-manager-grab.ts
+  s_aa47a447e01641::t_7bf16b8a352648 2-4,6-11,15-16,39-70,72-82,85-113
+src/main/browser/browser-manager-guest-lifecycle.test.ts
+  s_aa47a447e01641::t_accfb37c57a154 520
+src/main/browser/browser-manager-registration.ts
+  s_aa47a447e01641::t_93cfa2ec1da1b5 116-117
+src/main/browser/browser-manager-state.ts
+  s_aa47a447e01641::t_966fc85e5919d6 5,92
+src/main/browser/browser-manager-types.ts
+  s_aa47a447e01641::t_57b19f89ea07b4 12-17,102-105
+src/main/browser/grab-guest-content-script.ts
+  s_aa47a447e01641::t_2fc19c6940496a 1-164
+src/main/browser/grab-guest-element-context-script.ts
+  s_aa47a447e01641::t_a2ca316a16255e 1-228
+src/main/browser/grab-guest-foundation-script.ts
+  s_aa47a447e01641::t_fdf5f5e41c4c76 1-152
+src/main/browser/grab-guest-overlay-follow.test.ts
+  s_aa47a447e01641::t_ffcb786fdce2b6 1-236
+src/main/browser/grab-guest-overlay-script.ts
+  s_aa47a447e01641::t_5c8978b84eeb82 1-162
+src/main/browser/grab-guest-react-script.ts
+  s_aa47a447e01641::t_0869d65e0541f7 1-152
+src/main/browser/grab-guest-script.test.ts
+  s_aa47a447e01641::t_cd8de9198a99bd 1-372
+src/main/browser/grab-guest-script.ts
+  s_aa47a447e01641::t_c2b7291c6d75b1 1-45
+src/main/browser/grab-guest-selection-scripts.ts
+  s_aa47a447e01641::t_f2de017cac3105 1-130
+src/main/ipc/browser-grab-ipc.ts
+  s_aa47a447e01641::t_686ad8478e026a 1-179
+src/main/plugin-installers.ts
+  s_aa47a447e01641::t_a57b46def66b1a 2,13-14
+src/preload/api/browser-bridge-page-interaction-and-sessions.ts
+  s_aa47a447e01641::t_76b795cf95b1db 3,32-55
+src/preload/browser-api.grab.test.ts
+  s_aa47a447e01641::t_33048ec3d6929c 1-82
+src/preload/browser-api.test.ts
+  s_aa47a447e01641::t_354a9ee6eb056a 48-55
+src/renderer/BrowserPane.keep-alive.test.tsx
+  s_aa47a447e01641::t_758b021ffc3685 44-54
+src/shared/browser-annotation-viewport-bridge.ts
+  s_aa47a447e01641::t_b2eda209b474ac 1-305
+src/shared/browser-annotation-viewport-report.ts
+  s_aa47a447e01641::t_288e2ac571807a 1-54
+src/shared/browser-api-types.ts
+  s_aa47a447e01641::t_44ac1fbce652e8 2-13,106-118
+src/shared/browser-ipc-channels.ts
+  s_aa47a447e01641::t_11a1ab8e2e9f6f 27-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae81cf1200361e590d8b5e750c00788dc94fa485",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "unknown"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
