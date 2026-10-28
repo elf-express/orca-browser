@@ -1756,6 +1756,11 @@ var BROWSER_SHORTCUT_BINDINGS = {
     darwin: [{ mod: true, key: "f" }],
     other: [{ mod: true, key: "f" }]
   },
+  // Fixed chord, not user-rebindable.
+  "browser.annotateElement": {
+    darwin: [{ mod: true, shift: true, key: "c" }],
+    other: [{ alt: true, shift: true, key: "n" }]
+  },
   "zoom.in": {
     darwin: [
       { mod: true, code: "Equal" },

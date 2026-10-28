@@ -230,7 +230,9 @@ function resolveRendererWebContents(rendererWebContentsIdByTabId, browserTabId) 
 
 // src/main/browser/browser-guest-grab-shortcuts.ts
 function matchesGrabElementChord(input, platform) {
-  if (!(input.key.toLowerCase() === "c" || input.code === "KeyC")) {
+  const key = input.key.toLowerCase();
+  const isLatinLetter = key.length === 1 && key >= "a" && key <= "z";
+  if (isLatinLetter ? key !== "c" : input.code !== "KeyC") {
     return false;
   }
   if (input.alt || input.shift) {
@@ -490,6 +492,11 @@ var BROWSER_SHORTCUT_BINDINGS = {
     darwin: [{ mod: true, key: "f" }],
     other: [{ mod: true, key: "f" }]
   },
+  // Fixed chord, not user-rebindable.
+  "browser.annotateElement": {
+    darwin: [{ mod: true, shift: true, key: "c" }],
+    other: [{ alt: true, shift: true, key: "n" }]
+  },
   "zoom.in": {
     darwin: [
       { mod: true, code: "Equal" },
@@ -570,6 +577,8 @@ function forwardGuestShortcutInput(ctx, event, input) {
   } else if (action === "browser.find") {
     const target = { browserPageId: browserTabId };
     renderer.send("browser:findInPage", target);
+  } else if (action === "browser.annotateElement") {
+    renderer.send("browser:grabModeToggle", browserTabId, "annotate");
   } else if (action === "browser.back") {
     renderer.send("browser:historyNavigate", { browserPageId: browserTabId, direction: "back" });
   } else if (action === "browser.forward") {
@@ -4186,6 +4195,9 @@ function registerBrowserHostHandlers() {
 }
 
 // src/main/ipc/browser.ts
+var import_electron14 = require("electron");
+
+// src/main/ipc/browser-grab-ipc.ts
 var import_electron13 = require("electron");
 
 // src/main/ipc/browser-tab-registration-wait.ts
@@ -4246,6 +4258,149 @@ function resolveTabRegistrationWaiters(browserPageId, scopeId) {
   resolvePendingRegistrations(pendingAnyResolves);
 }
 
+// src/main/ipc/browser-grab-ipc.ts
+var grabModeIntentByPageId = /* @__PURE__ */ new Map();
+var grabModeOperationByPageId = /* @__PURE__ */ new Map();
+var GRAB_REGISTRATION_WAIT_MS = 1e3;
+function queueGrabModeOperation(browserPageId, operation) {
+  const previous = grabModeOperationByPageId.get(browserPageId) ?? Promise.resolve();
+  const result = previous.then(operation);
+  const completion = result.then(
+    () => {
+    },
+    () => {
+    }
+  );
+  grabModeOperationByPageId.set(browserPageId, completion);
+  return result.finally(() => {
+    if (grabModeOperationByPageId.get(browserPageId) === completion) {
+      grabModeOperationByPageId.delete(browserPageId);
+    }
+  });
+}
+function resetGrabModeState() {
+  grabModeIntentByPageId.clear();
+  grabModeOperationByPageId.clear();
+}
+function disposeGrabModeStateForPage(browserPageId) {
+  grabModeIntentByPageId.delete(browserPageId);
+  grabModeOperationByPageId.delete(browserPageId);
+}
+function registerBrowserGrabHandlers() {
+  import_electron13.ipcMain.removeHandler("browser:setGrabMode");
+  import_electron13.ipcMain.removeHandler("browser:awaitGrabSelection");
+  import_electron13.ipcMain.removeHandler("browser:cancelGrab");
+  import_electron13.ipcMain.removeHandler("browser:captureSelectionScreenshot");
+  import_electron13.ipcMain.removeHandler("browser:extractHoverPayload");
+  import_electron13.ipcMain.handle(
+    "browser:setGrabMode",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { ok: false, reason: "not-authorized" };
+      }
+      const intent = {
+        generation: (grabModeIntentByPageId.get(args.browserPageId)?.generation ?? 0) + 1,
+        enabled: args.enabled
+      };
+      grabModeIntentByPageId.set(args.browserPageId, intent);
+      const isCurrentIntent = () => grabModeIntentByPageId.get(args.browserPageId) === intent;
+      let guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest && args.enabled) {
+        await waitForNextTabRegistration(args.browserPageId, GRAB_REGISTRATION_WAIT_MS).catch(
+          () => {
+          }
+        );
+        if (!isCurrentIntent()) {
+          return { ok: true };
+        }
+        guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      }
+      if (!guest) {
+        if (!args.enabled) {
+          return { ok: true };
+        }
+        return { ok: false, reason: "not-ready" };
+      }
+      return queueGrabModeOperation(args.browserPageId, async () => {
+        if (!isCurrentIntent()) {
+          return { ok: true };
+        }
+        guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+        if (!guest) {
+          return args.enabled ? { ok: false, reason: "not-ready" } : { ok: true };
+        }
+        const success = await browserManager.setGrabMode(args.browserPageId, args.enabled, guest);
+        if (!isCurrentIntent()) {
+          return { ok: true };
+        }
+        return success ? { ok: true } : { ok: false, reason: "injection-failed" };
+      });
+    }
+  );
+  import_electron13.ipcMain.handle(
+    "browser:awaitGrabSelection",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { opId: args.opId, kind: "error", reason: "Not authorized" };
+      }
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest) {
+        return { opId: args.opId, kind: "error", reason: "Guest not ready" };
+      }
+      return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest);
+    }
+  );
+  import_electron13.ipcMain.handle("browser:cancelGrab", (event, args) => {
+    if (!isTrustedBrowserRenderer(event.sender)) {
+      return false;
+    }
+    const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+    if (!guest) {
+      return false;
+    }
+    browserManager.cancelGrabOp(args.browserPageId, "user");
+    return true;
+  });
+  import_electron13.ipcMain.handle(
+    "browser:captureSelectionScreenshot",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { ok: false, reason: "Not authorized" };
+      }
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest) {
+        return { ok: false, reason: "Guest not ready" };
+      }
+      const screenshot = await browserManager.captureSelectionScreenshot(
+        args.browserPageId,
+        args.rect,
+        guest
+      );
+      if (!screenshot) {
+        return { ok: false, reason: "Screenshot capture failed" };
+      }
+      return { ok: true, screenshot };
+    }
+  );
+  import_electron13.ipcMain.handle(
+    "browser:extractHoverPayload",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return { ok: false, reason: "Not authorized" };
+      }
+      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!guest) {
+        return { ok: false, reason: "Guest not ready" };
+      }
+      const payload = await browserManager.extractHoverPayload(args.browserPageId, guest);
+      if (!payload) {
+        return { ok: false, reason: "No element hovered" };
+      }
+      return { ok: true, payload };
+    }
+  );
+}
+
 // src/main/ipc/browser.ts
 var BROWSER_HANDLER_CHANNELS = [
   "browser:registerGuest",
@@ -4256,7 +4411,7 @@ var BROWSER_HANDLER_CHANNELS = [
 ];
 function registerBrowserHandlers() {
   for (const channel of BROWSER_HANDLER_CHANNELS) {
-    import_electron13.ipcMain.removeHandler(channel);
+    import_electron14.ipcMain.removeHandler(channel);
   }
   const registerGuest = (event, args, repairPolicies) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4266,7 +4421,7 @@ function registerBrowserHandlers() {
       return false;
     }
     if (repairPolicies) {
-      const guest = import_electron13.webContents.fromId(args.webContentsId);
+      const guest = import_electron14.webContents.fromId(args.webContentsId);
       if (!guest || guest.isDestroyed() || guest.getType() !== "webview" || guest.hostWebContents?.id !== event.sender.id) {
         return false;
       }
@@ -4282,15 +4437,15 @@ function registerBrowserHandlers() {
     resolveTabRegistrationWaiters(args.browserPageId, args.scopeId);
     return true;
   };
-  import_electron13.ipcMain.handle(
+  import_electron14.ipcMain.handle(
     "browser:registerGuest",
     (event, args) => registerGuest(event, args, false)
   );
-  import_electron13.ipcMain.handle(
+  import_electron14.ipcMain.handle(
     "browser:repairGuestRegistration",
     (event, args) => registerGuest(event, args, true)
   );
-  import_electron13.ipcMain.handle(
+  import_electron14.ipcMain.handle(
     "browser:isGuestRegistered",
     (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender) || typeof args?.browserPageId !== "string" || typeof args.webContentsId !== "number") {
@@ -4299,7 +4454,7 @@ function registerBrowserHandlers() {
       return browserManager.getGuestWebContentsId(args.browserPageId) === args.webContentsId && isLiveBrowserWebContentsId(args.webContentsId);
     }
   );
-  import_electron13.ipcMain.handle("browser:unregisterGuest", (event, args) => {
+  import_electron14.ipcMain.handle("browser:unregisterGuest", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
@@ -4307,9 +4462,10 @@ function registerBrowserHandlers() {
       return false;
     }
     browserManager.unregisterGuest(args.browserPageId);
+    disposeGrabModeStateForPage(args.browserPageId);
     return true;
   });
-  import_electron13.ipcMain.handle("browser:activeTabChanged", (event, _args) => {
+  import_electron14.ipcMain.handle("browser:activeTabChanged", (event, _args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
@@ -4317,13 +4473,13 @@ function registerBrowserHandlers() {
   });
   return () => {
     for (const channel of BROWSER_HANDLER_CHANNELS) {
-      import_electron13.ipcMain.removeHandler(channel);
+      import_electron14.ipcMain.removeHandler(channel);
     }
   };
 }
 
 // src/main/window/main-window-webview-security.ts
-var import_electron14 = require("electron");
+var import_electron15 = require("electron");
 
 // src/shared/browser-guest-web-preferences.ts
 var ORCA_BROWSER_GUEST_WEB_PREFERENCES = {
@@ -4407,12 +4563,12 @@ function installWebviewSecurity(getMainWindow) {
   const onWebContentsCreated = (_event, contents) => {
     guard(contents);
   };
-  for (const contents of import_electron14.webContents.getAllWebContents()) {
+  for (const contents of import_electron15.webContents.getAllWebContents()) {
     guard(contents);
   }
-  import_electron14.app.on("web-contents-created", onWebContentsCreated);
+  import_electron15.app.on("web-contents-created", onWebContentsCreated);
   return () => {
-    import_electron14.app.off("web-contents-created", onWebContentsCreated);
+    import_electron15.app.off("web-contents-created", onWebContentsCreated);
     for (const dispose of disposers.values()) {
       dispose();
     }
@@ -4464,146 +4620,6 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:settings:get",
   "browser:settings:set"
 ];
-
-// src/main/ipc/browser-grab-ipc.ts
-var import_electron15 = require("electron");
-var grabModeIntentByPageId = /* @__PURE__ */ new Map();
-var grabModeOperationByPageId = /* @__PURE__ */ new Map();
-var GRAB_REGISTRATION_WAIT_MS = 1e3;
-function queueGrabModeOperation(browserPageId, operation) {
-  const previous = grabModeOperationByPageId.get(browserPageId) ?? Promise.resolve();
-  const result = previous.then(operation);
-  const completion = result.then(
-    () => {
-    },
-    () => {
-    }
-  );
-  grabModeOperationByPageId.set(browserPageId, completion);
-  return result.finally(() => {
-    if (grabModeOperationByPageId.get(browserPageId) === completion) {
-      grabModeOperationByPageId.delete(browserPageId);
-    }
-  });
-}
-function resetGrabModeState() {
-  grabModeIntentByPageId.clear();
-  grabModeOperationByPageId.clear();
-}
-function registerBrowserGrabHandlers() {
-  import_electron15.ipcMain.removeHandler("browser:setGrabMode");
-  import_electron15.ipcMain.removeHandler("browser:awaitGrabSelection");
-  import_electron15.ipcMain.removeHandler("browser:cancelGrab");
-  import_electron15.ipcMain.removeHandler("browser:captureSelectionScreenshot");
-  import_electron15.ipcMain.removeHandler("browser:extractHoverPayload");
-  import_electron15.ipcMain.handle(
-    "browser:setGrabMode",
-    async (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender)) {
-        return { ok: false, reason: "not-authorized" };
-      }
-      const intent = {
-        generation: (grabModeIntentByPageId.get(args.browserPageId)?.generation ?? 0) + 1,
-        enabled: args.enabled
-      };
-      grabModeIntentByPageId.set(args.browserPageId, intent);
-      const isCurrentIntent = () => grabModeIntentByPageId.get(args.browserPageId) === intent;
-      let guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-      if (!guest && args.enabled) {
-        await waitForNextTabRegistration(args.browserPageId, GRAB_REGISTRATION_WAIT_MS).catch(
-          () => {
-          }
-        );
-        if (!isCurrentIntent()) {
-          return { ok: true };
-        }
-        guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-      }
-      if (!guest) {
-        if (!args.enabled) {
-          return { ok: true };
-        }
-        return { ok: false, reason: "not-ready" };
-      }
-      return queueGrabModeOperation(args.browserPageId, async () => {
-        if (!isCurrentIntent()) {
-          return { ok: true };
-        }
-        guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-        if (!guest) {
-          return args.enabled ? { ok: false, reason: "not-ready" } : { ok: true };
-        }
-        const success = await browserManager.setGrabMode(args.browserPageId, args.enabled, guest);
-        if (!isCurrentIntent()) {
-          return { ok: true };
-        }
-        return success ? { ok: true } : { ok: false, reason: "injection-failed" };
-      });
-    }
-  );
-  import_electron15.ipcMain.handle(
-    "browser:awaitGrabSelection",
-    async (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender)) {
-        return { opId: args.opId, kind: "error", reason: "Not authorized" };
-      }
-      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-      if (!guest) {
-        return { opId: args.opId, kind: "error", reason: "Guest not ready" };
-      }
-      return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest);
-    }
-  );
-  import_electron15.ipcMain.handle("browser:cancelGrab", (event, args) => {
-    if (!isTrustedBrowserRenderer(event.sender)) {
-      return false;
-    }
-    const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-    if (!guest) {
-      return false;
-    }
-    browserManager.cancelGrabOp(args.browserPageId, "user");
-    return true;
-  });
-  import_electron15.ipcMain.handle(
-    "browser:captureSelectionScreenshot",
-    async (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender)) {
-        return { ok: false, reason: "Not authorized" };
-      }
-      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-      if (!guest) {
-        return { ok: false, reason: "Guest not ready" };
-      }
-      const screenshot = await browserManager.captureSelectionScreenshot(
-        args.browserPageId,
-        args.rect,
-        guest
-      );
-      if (!screenshot) {
-        return { ok: false, reason: "Screenshot capture failed" };
-      }
-      return { ok: true, screenshot };
-    }
-  );
-  import_electron15.ipcMain.handle(
-    "browser:extractHoverPayload",
-    async (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender)) {
-        return { ok: false, reason: "Not authorized" };
-      }
-      const guest = browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-      if (!guest) {
-        return { ok: false, reason: "Guest not ready" };
-      }
-      const payload = await browserManager.extractHoverPayload(args.browserPageId, guest);
-      if (!payload) {
-        return { ok: false, reason: "No element hovered" };
-      }
-      return { ok: true, payload };
-    }
-  );
-}
 
 // src/main/browser-grab-installer.ts
 var installBrowserGrab = () => {

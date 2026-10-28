@@ -1,6 +1,7 @@
 import { ipcMain, webContents } from 'electron'
 import type { BrowserGuestArgs } from '../../shared/browser-api-types'
 import { browserManager } from '../browser/browser-manager'
+import { disposeGrabModeStateForPage } from './browser-grab-ipc'
 import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 import {
   isLiveBrowserWebContentsId,
@@ -94,6 +95,8 @@ export function registerBrowserHandlers(): () => void {
       return false
     }
     browserManager.unregisterGuest(args.browserPageId)
+    // Why: a page that is gone must not keep a grab-mode intent or a queued operation chain.
+    disposeGrabModeStateForPage(args.browserPageId)
     return true
   })
 

@@ -570,7 +570,7 @@ declare const BROWSER_GRAB_INVOKE_CHANNELS: readonly ["browser:setGrabMode", "br
 declare const BROWSER_PROFILE_INVOKE_CHANNELS: readonly ["browser:session:listProfiles", "browser:session:createProfile", "browser:session:deleteProfile", "browser:session:importCookies", "browser:session:resolvePartition", "browser:session:clearDefaultCookies", "browser:session:detectBrowsers", "browser:session:importFromBrowser", "browser:identity:get", "browser:identity:set", "browser:settings:get", "browser:settings:set"];
 declare const BROWSER_SEND_CHANNELS: readonly ["browser:reportViewportScrollState"];
 
-type BrowserShortcutAction = 'browser.back' | 'browser.forward' | 'browser.reload' | 'browser.hardReload' | 'browser.focusAddressBar' | 'browser.find' | 'zoom.in' | 'zoom.out' | 'zoom.reset';
+type BrowserShortcutAction = 'browser.back' | 'browser.forward' | 'browser.reload' | 'browser.hardReload' | 'browser.focusAddressBar' | 'browser.find' | 'browser.annotateElement' | 'zoom.in' | 'zoom.out' | 'zoom.reset';
 type BrowserShortcutInput = {
     key: string;
     code?: string;

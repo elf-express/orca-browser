@@ -5,8 +5,11 @@ export function matchesGrabElementChord(
   input: Pick<Electron.Input, 'key' | 'code' | 'meta' | 'control' | 'alt' | 'shift'>,
   platform: NodeJS.Platform
 ): boolean {
-  // Why: code covers non-Latin layouts where input.key is not the Latin 'c'.
-  if (!(input.key.toLowerCase() === 'c' || input.code === 'KeyC')) {
+  const key = input.key.toLowerCase()
+  // Why: a Latin letter is decided by the typed key (Dvorak Ctrl+J sits at the physical C
+  // position and must not match); the physical code is only a fallback for non-Latin layouts.
+  const isLatinLetter = key.length === 1 && key >= 'a' && key <= 'z'
+  if (isLatinLetter ? key !== 'c' : input.code !== 'KeyC') {
     return false
   }
   if (input.alt || input.shift) {

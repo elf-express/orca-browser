@@ -32,6 +32,12 @@ describe('matchesGrabElementChord', () => {
     ).toBe(true)
   })
 
+  it('does not match a Latin key typed at the physical C position (Dvorak Ctrl+J)', () => {
+    expect(
+      matchesGrabElementChord({ ...base, key: 'j', code: 'KeyC', control: true }, 'win32')
+    ).toBe(false)
+  })
+
   it('rejects other keys', () => {
     expect(
       matchesGrabElementChord({ ...base, key: 'v', code: 'KeyV', control: true }, 'win32')

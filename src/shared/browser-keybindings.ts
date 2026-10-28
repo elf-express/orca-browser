@@ -5,6 +5,7 @@ export type BrowserShortcutAction =
   | 'browser.hardReload'
   | 'browser.focusAddressBar'
   | 'browser.find'
+  | 'browser.annotateElement'
   | 'zoom.in'
   | 'zoom.out'
   | 'zoom.reset'
@@ -58,6 +59,11 @@ const BROWSER_SHORTCUT_BINDINGS: Record<
   'browser.find': {
     darwin: [{ mod: true, key: 'f' }],
     other: [{ mod: true, key: 'f' }]
+  },
+  // Fixed chord, not user-rebindable.
+  'browser.annotateElement': {
+    darwin: [{ mod: true, shift: true, key: 'c' }],
+    other: [{ alt: true, shift: true, key: 'n' }]
   },
   'zoom.in': {
     darwin: [

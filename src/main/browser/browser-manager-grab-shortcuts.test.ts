@@ -24,7 +24,11 @@ vi.mock('electron', () => ({
 }))
 
 import { browserManager } from './browser-manager'
-import { resetGrabTestEnvironment } from './browser-manager-grab-test-harness'
+import {
+  GRAB_GUEST_WEB_CONTENTS_ID,
+  GRAB_RENDERER_WEB_CONTENTS_ID,
+  resetGrabTestEnvironment
+} from './browser-manager-grab-test-harness'
 
 const { guestExecuteJavaScriptMock, guestOnMock, rendererSendMock } = grabMocks
 
@@ -140,6 +144,37 @@ describe('browserManager grab operations', () => {
         browserPageId: 'tab-1',
         key: 's'
       })
+    })
+  })
+
+  describe('guest app shortcut forwarding', () => {
+    // Default annotate chord: Cmd+Shift+C on macOS, Alt+Shift+N elsewhere.
+    const annotateChord =
+      process.platform === 'darwin'
+        ? { meta: true, control: false, alt: false, shift: true, code: 'KeyC', key: 'C' }
+        : { meta: false, control: false, alt: true, shift: true, code: 'KeyN', key: 'N' }
+
+    it('forwards the annotate chord once, skipping the copy-only page probe', () => {
+      guestOnMock.mockClear()
+      // The previous test's pending grab op injects its teardown during reset; drop that call.
+      guestExecuteJavaScriptMock.mockClear()
+      browserManager.registerGuest({
+        browserPageId: 'tab-1',
+        scopeId: 'scope-1',
+        webContentsId: GRAB_GUEST_WEB_CONTENTS_ID,
+        rendererWebContentsId: GRAB_RENDERER_WEB_CONTENTS_ID
+      })
+
+      const preventDefault = vi.fn()
+      for (const [eventName, handler] of guestOnMock.mock.calls) {
+        if (eventName === 'before-input-event') {
+          handler({ preventDefault }, { type: 'keyDown', ...annotateChord })
+        }
+      }
+
+      expect(guestExecuteJavaScriptMock).not.toHaveBeenCalled()
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+      expect(rendererSendMock.mock.calls).toEqual([['browser:grabModeToggle', 'tab-1', 'annotate']])
     })
   })
 })
