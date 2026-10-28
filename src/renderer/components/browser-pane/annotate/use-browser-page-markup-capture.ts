@@ -9,6 +9,7 @@ import {
 } from './browser-agent-send'
 import { deliverMarkupToClipboard } from './markup-clipboard-delivery'
 import {
+  MarkupDeliveryHandledError,
   useMarkupMode,
   type MarkupCaptureContext,
   type MarkupModeController
@@ -42,12 +43,13 @@ export function useBrowserPageMarkupCapture(
         })
       )
     } catch (error) {
+      // Report here, then signal "handled" so useMarkupMode keeps the drawing instead of resetting.
       if (!isSendToAgentCanceled(error)) {
         toast.error(
           translate('auto.components.browser.pane.sendToAgent.failed', 'Could not send to agent')
         )
       }
-      return
+      throw new MarkupDeliveryHandledError()
     }
     toast.success(
       translate('auto.components.browser.pane.sendToAgent.markupSent', 'Markup sent to agent')

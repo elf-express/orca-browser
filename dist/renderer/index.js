@@ -10076,6 +10076,12 @@ async function composeMarkupDataUrl(input) {
 }
 
 // src/renderer/components/browser-pane/annotate/useMarkupMode.ts
+var MarkupDeliveryHandledError = class extends Error {
+  constructor() {
+    super("Markup delivery was not completed");
+    this.name = "MarkupDeliveryHandledError";
+  }
+};
 function useMarkupMode({
   getCaptureContext,
   onDeliver
@@ -10160,14 +10166,16 @@ function useMarkupMode({
           return;
         }
         reset();
-      } catch {
+      } catch (error) {
         if (captureTokenRef.current !== token) {
           return;
         }
-        reportError(
-          "auto.components.browser-pane.markup.errorAttach",
-          "Could not attach the markup screenshot."
-        );
+        if (!(error instanceof MarkupDeliveryHandledError)) {
+          reportError(
+            "auto.components.browser-pane.markup.errorAttach",
+            "Could not attach the markup screenshot."
+          );
+        }
         setState("drawing");
       }
     },
@@ -10212,7 +10220,7 @@ function useBrowserPageMarkupCapture(webviewRef, page) {
           translate("auto.components.browser.pane.sendToAgent.failed", "Could not send to agent")
         );
       }
-      return;
+      throw new MarkupDeliveryHandledError();
     }
     toast10.success(
       translate("auto.components.browser.pane.sendToAgent.markupSent", "Markup sent to agent")

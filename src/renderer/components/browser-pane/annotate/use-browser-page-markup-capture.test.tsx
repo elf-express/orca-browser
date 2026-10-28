@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserRendererHostContext, type BrowserRendererHost } from '../../../host-context'
 import type { MarkupComposeResult } from './markup-screenshot-compose'
+import { MarkupDeliveryHandledError } from './useMarkupMode'
 import { useBrowserPageMarkupCapture } from './use-browser-page-markup-capture'
 
 const mocks = vi.hoisted(() => ({
@@ -17,7 +18,8 @@ vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.to
 vi.mock('../../../lib/browser-clipboard', () => ({
   writeClipboardImage: mocks.writeClipboardImage
 }))
-vi.mock('./useMarkupMode', () => ({
+vi.mock('./useMarkupMode', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./useMarkupMode')>()),
   useMarkupMode: (options: { onDeliver: (result: MarkupComposeResult) => Promise<void> }) => {
     mocks.onDeliver = options.onDeliver
     return { isActive: false }
@@ -85,7 +87,7 @@ describe('useBrowserPageMarkupCapture delivery', () => {
   it('shows an error when onSendToAgent rejects', async () => {
     onSendToAgent = vi.fn().mockRejectedValue(new Error('x'))
 
-    await mount()(RESULT)
+    await expect(mount()(RESULT)).rejects.toBeInstanceOf(MarkupDeliveryHandledError)
 
     expect(mocks.toastError).toHaveBeenCalledWith('Could not send to agent')
     expect(mocks.toastSuccess).not.toHaveBeenCalled()
@@ -96,7 +98,7 @@ describe('useBrowserPageMarkupCapture delivery', () => {
     abort.name = 'AbortError'
     onSendToAgent = vi.fn().mockRejectedValue(abort)
 
-    await mount()(RESULT)
+    await expect(mount()(RESULT)).rejects.toBeInstanceOf(MarkupDeliveryHandledError)
 
     expect(mocks.toastError).not.toHaveBeenCalled()
     expect(mocks.toastSuccess).not.toHaveBeenCalled()

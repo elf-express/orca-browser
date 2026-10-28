@@ -13,6 +13,17 @@ import {
 import { composeMarkupDataUrl, type MarkupComposeResult } from './markup-screenshot-compose'
 import type { MarkupShape } from './markup-drawing-model'
 
+/**
+ * Thrown by an onDeliver that already told the user why delivery failed (or was canceled).
+ * complete() then keeps the drawing without adding its generic error toast.
+ */
+export class MarkupDeliveryHandledError extends Error {
+  constructor() {
+    super('Markup delivery was not completed')
+    this.name = 'MarkupDeliveryHandledError'
+  }
+}
+
 export type MarkupModeState = 'idle' | 'capturing' | 'drawing' | 'composing'
 
 // Where to capture the base image from, plus the on-screen geometry used to
@@ -145,16 +156,18 @@ export function useMarkupMode({
           return
         }
         reset()
-      } catch {
+      } catch (error) {
         if (captureTokenRef.current !== token) {
           return
         }
         // Why: the frozen backdrop is still valid, so return to drawing (not a
         // dead-end error state) — the user can retry Copy or Cancel out.
-        reportError(
-          'auto.components.browser-pane.markup.errorAttach',
-          'Could not attach the markup screenshot.'
-        )
+        if (!(error instanceof MarkupDeliveryHandledError)) {
+          reportError(
+            'auto.components.browser-pane.markup.errorAttach',
+            'Could not attach the markup screenshot.'
+          )
+        }
         setState('drawing')
       }
     },
