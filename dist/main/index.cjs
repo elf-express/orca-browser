@@ -3911,6 +3911,10 @@ var BrowserManagerQueries = class extends BrowserManagerRegistration {
     const webContentsId = this.webContentsIdByTabId.get(browserPageId);
     return webContentsId === void 0 ? null : this.loadErrorsByGuestId.get(webContentsId) ?? null;
   }
+  // The package does not track certificate errors, so no page ever has a failure.
+  getBrowserPageCertificateFailure(_browserPageId) {
+    return null;
+  }
   // Why: centralize Kagi session-token redaction so every load-error path (did-fail-load, cert failure) strips it.
   buildLoadError(code, description, rawUrl) {
     return {

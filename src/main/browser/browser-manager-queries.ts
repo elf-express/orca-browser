@@ -1,4 +1,7 @@
-import type { BrowserLoadError } from '../../shared/browser-workspace-types'
+import type {
+  BrowserCertificateFailure,
+  BrowserLoadError
+} from '../../shared/browser-workspace-types'
 import { redactKagiSessionToken } from '../../shared/browser-url'
 import { safeOrigin } from './browser-manager-types'
 import { BrowserManagerRegistration } from './browser-manager-registration'
@@ -40,6 +43,11 @@ export abstract class BrowserManagerQueries extends BrowserManagerRegistration {
     return webContentsId === undefined
       ? null
       : (this.loadErrorsByGuestId.get(webContentsId) ?? null)
+  }
+
+  // The package does not track certificate errors, so no page ever has a failure.
+  getBrowserPageCertificateFailure(_browserPageId: string): BrowserCertificateFailure | null {
+    return null
   }
 
   // Why: centralize Kagi session-token redaction so every load-error path (did-fail-load, cert failure) strips it.

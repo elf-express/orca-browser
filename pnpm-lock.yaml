@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      agent-browser:
+        specifier: ~0.27.0
+        version: 0.27.3
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1644,6 +1647,11 @@ packages:
   acorn@8.19.0:
     resolution: {integrity: sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==}
     engines: {node: '>=0.4.0'}
+    hasBin: true
+
+  agent-browser@0.27.3:
+    resolution: {integrity: sha512-isQ1xWoYOnfR8BigYRlYmkFOrqw71tKEmUEMmFJGStQFOyCrLSsKoOAZEu8TjPZdmjD1nPQ/hLLYlxTwdHnA0Q==}
+    engines: {node: '>=24.0.0', pnpm: '>=11.0.0'}
     hasBin: true
 
   ansi-regex@5.0.1:
@@ -3754,6 +3762,8 @@ snapshots:
       tinyrainbow: 3.2.0
 
   acorn@8.19.0: {}
+
+  agent-browser@0.27.3: {}
 
   ansi-regex@5.0.1: {}
 

@@ -15,6 +15,8 @@ export default defineConfig([
     entry: { 'main/index': 'src/main/index.ts' },
     format: ['cjs'],
     external: ['electron', 'ws', 'agent-browser', '@modelcontextprotocol/sdk'],
+    // CJS output needs an import.meta.url replacement for createRequire.
+    shims: true,
     dts: true,
     outDir: 'dist',
     target: 'node22',

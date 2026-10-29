@@ -7,6 +7,8 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          // The ported raw-process retention test forces GC to prove completed helpers are released.
+          execArgv: ['--expose-gc'],
           include: ['src/{main,preload,shared}/**/*.test.ts', 'scripts/**/*.test.ts']
         }
       },

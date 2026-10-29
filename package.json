@@ -48,6 +48,7 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:dist && pnpm check:dist"
   },
   "dependencies": {
+    "agent-browser": "~0.27.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -92,6 +93,7 @@
   "packageManager": "pnpm@10.28.2",
   "pnpm": {
     "ignoredBuiltDependencies": [
+      "agent-browser",
       "esbuild"
     ]
   }
