@@ -1,0 +1,33 @@
+src/main/mcp/browser-mcp-runtime.test.ts
+  s_aa47a447e01641::t_6ff916ac727f5b 1,50-67,175-200
+src/main/mcp/browser-mcp-runtime.ts
+  s_aa47a447e01641::t_5b5c33518364bd 18-41,48,92
+src/main/mcp/browser-mcp-tools.test.ts
+  s_aa47a447e01641::t_230b07c84ce34c 280-298
+src/main/mcp/browser-mcp-tools.ts
+  s_aa47a447e01641::t_5c5976039f15a2 74-75,77-78
+src/main/mcp/mcp-http-server.test.ts
+  s_aa47a447e01641::t_08382252039412 1,154-209
+src/main/mcp/mcp-http-server.ts
+  s_aa47a447e01641::t_54b5c576967cb3 130-135,148-156
+src/main/mcp/mcp-token-store.test.ts
+  s_aa47a447e01641::t_d37d0dfe2bc2a0 64-72
+src/main/mcp/mcp-token-store.ts
+  s_aa47a447e01641::t_e806aa54d10a7d 17-34,43,46,51-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09428f49cebff66d7ff95c013d6d02478a09f1de",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
