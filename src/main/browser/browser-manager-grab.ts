@@ -1,8 +1,19 @@
 import { webContents } from 'electron'
+import { buildGuestOverlayScript } from './grab-guest-script'
+import { clampGrabPayload } from './browser-grab-payload'
+import { captureSelectionScreenshot as captureGrabSelectionScreenshot } from './browser-grab-screenshot'
 import type { BrowserGrabCancelReason } from '../../shared/browser-grab-types'
+import type {
+  BrowserGrabResult,
+  BrowserGrabRect,
+  BrowserGrabPayload,
+  BrowserGrabScreenshot
+} from './browser-manager-types'
 import { BrowserManagerViewport } from './browser-manager-viewport'
 
 export abstract class BrowserManagerGrab extends BrowserManagerViewport {
+  // --- Browser Context Grab — main-owned operations ---
+
   /** Validate that the sender owns browserTabId; returns the guest WebContents or null. */
   getAuthorizedGuest(
     browserTabId: string,
@@ -25,12 +36,79 @@ export abstract class BrowserManagerGrab extends BrowserManagerViewport {
     return guest
   }
 
-  // Grab is not part of this phase; these keep the base-class contract with no behavior.
-  protected setupGrabShortcut(_browserTabId: string, _guest: Electron.WebContents): void {}
-
-  hasActiveGrabOp(_browserTabId: string): boolean {
-    return false
+  /** Returns true if a grab operation is currently active for this tab. */
+  hasActiveGrabOp(browserTabId: string): boolean {
+    return this.grabSessionController.hasActiveGrabOp(browserTabId)
   }
 
-  protected cancelGrabOp(_browserTabId: string, _reason: BrowserGrabCancelReason): void {}
+  /** Enable/disable grab mode for a tab: on enable inject the overlay runtime, on disable cancel any active grab op. */
+  async setGrabMode(
+    browserTabId: string,
+    enabled: boolean,
+    guest: Electron.WebContents
+  ): Promise<boolean> {
+    if (!enabled) {
+      const hadActiveGrabOp = this.hasActiveGrabOp(browserTabId)
+      this.cancelGrabOp(browserTabId, 'user')
+      if (hadActiveGrabOp) {
+        return true
+      }
+      try {
+        await guest.executeJavaScript(buildGuestOverlayScript('teardown'))
+        return true
+      } catch {
+        return false
+      }
+    }
+    // Why: inject the overlay runtime eagerly on arm so the hover UI appears instantly; re-injection is idempotent/safe.
+    try {
+      await guest.executeJavaScript(buildGuestOverlayScript('arm'))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Await a single grab selection on the given tab; resolves once on click, cancel, or error.
+   *
+   * Why in-guest: before-input-event fires only for keyboard (not mouse) on guests, so the overlay hit-catcher consumes the click.
+   */
+  awaitGrabSelection(
+    browserTabId: string,
+    opId: string,
+    guest: Electron.WebContents
+  ): Promise<BrowserGrabResult> {
+    return this.grabSessionController.awaitGrabSelection(browserTabId, opId, guest)
+  }
+
+  /** Cancel an active grab operation for the given tab. */
+  cancelGrabOp(browserTabId: string, reason: BrowserGrabCancelReason): void {
+    this.grabSessionController.cancelGrabOp(browserTabId, reason)
+  }
+
+  /** Capture a screenshot of the guest surface, optionally cropped to the given CSS-pixel rect. */
+  async captureSelectionScreenshot(
+    _browserTabId: string,
+    rect: BrowserGrabRect,
+    guest: Electron.WebContents
+  ): Promise<BrowserGrabScreenshot | null> {
+    return captureGrabSelectionScreenshot(rect, guest)
+  }
+
+  /** Extract the hovered element's payload without disrupting the active grab overlay/awaitClick listener. */
+  async extractHoverPayload(
+    _browserTabId: string,
+    guest: Electron.WebContents
+  ): Promise<BrowserGrabPayload | null> {
+    try {
+      const rawPayload = await guest.executeJavaScript(buildGuestOverlayScript('extractHover'))
+      if (!rawPayload || typeof rawPayload !== 'object') {
+        return null
+      }
+      return clampGrabPayload(rawPayload)
+    } catch {
+      return null
+    }
+  }
 }

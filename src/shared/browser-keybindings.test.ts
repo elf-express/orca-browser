@@ -40,3 +40,18 @@ describe('formatBrowserShortcutLabel', () => {
     expect(formatBrowserShortcutLabel(action, platform)).toBe(expected)
   })
 })
+
+describe('browser.annotateElement', () => {
+  it('matches Cmd+Shift+C on macOS only', () => {
+    const chord = { key: 'C', code: 'KeyC', meta: true, shift: true }
+    expect(matchBrowserShortcut(chord, 'darwin')).toBe('browser.annotateElement')
+    expect(matchBrowserShortcut({ ...chord, meta: false, control: true }, 'darwin')).toBeNull()
+  })
+
+  it('matches Alt+Shift+N elsewhere', () => {
+    const chord = { key: 'N', code: 'KeyN', alt: true, shift: true }
+    expect(matchBrowserShortcut(chord, 'win32')).toBe('browser.annotateElement')
+    expect(matchBrowserShortcut(chord, 'linux')).toBe('browser.annotateElement')
+    expect(matchBrowserShortcut({ ...chord, shift: false }, 'win32')).toBeNull()
+  })
+})

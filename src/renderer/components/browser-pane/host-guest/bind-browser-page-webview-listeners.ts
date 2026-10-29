@@ -54,13 +54,17 @@ export function bindBrowserPageWebviewListeners({
     setBrowserZoomPercent,
     focusAddressBarNow,
     syncNavigationState,
+    syncBrowserAnnotationViewportBridge,
     faviconUrlRef,
     addressBarInputRef,
     lastKnownWebviewUrlRef,
     trackNextLoadingEventRef,
+    invalidateBrowserAnnotationDocumentRef,
     onSetUrlRef,
+    setBrowserOverlayViewport,
     setAddressBarValue,
     addBrowserHistoryEntryRef,
+    annotationViewportBridgeTokenRef,
     initialBrowserUrlRef,
     validateVisibleGuestRegistrationRef,
     retryGuestRecoveryRef,
@@ -87,7 +91,8 @@ export function bindBrowserPageWebviewListeners({
       setGuestRecoveryGeneration,
       setBrowserZoomPercent,
       focusAddressBarNow,
-      syncNavigationState
+      syncNavigationState,
+      syncBrowserAnnotationViewportBridge
     })
 
   const { handleDidStartLoading, handleDidStopLoading, handleFailLoad } =
@@ -103,8 +108,10 @@ export function bindBrowserPageWebviewListeners({
       trackNextLoadingEventRef,
       keepAddressBarFocusRef,
       recoveryNavigationValidationRef,
+      invalidateBrowserAnnotationDocumentRef,
       onUpdatePageStateRef,
       onSetUrlRef,
+      setBrowserOverlayViewport,
       setAddressBarValue,
       focusAddressBarNow
     })
@@ -115,7 +122,8 @@ export function bindBrowserPageWebviewListeners({
     handleFullDidNavigate,
     handleDidNavigateInPage,
     handleTitleUpdate,
-    handleFaviconUpdate
+    handleFaviconUpdate,
+    handleAnnotationViewportMessage
   } = createBrowserPageWebviewNavigationHandlers({
     webview,
     browserTabId,
@@ -123,12 +131,15 @@ export function bindBrowserPageWebviewListeners({
     recoveryNavigationValidationRef,
     activeLoadFailureRef,
     lastKnownWebviewUrlRef,
+    invalidateBrowserAnnotationDocumentRef,
     addressBarInputRef,
     onSetUrlRef,
     onUpdatePageStateRef,
     addBrowserHistoryEntryRef,
     faviconUrlRef,
-    setAddressBarValue
+    setAddressBarValue,
+    annotationViewportBridgeTokenRef,
+    setBrowserOverlayViewport
   })
 
   const unsubscribeSystemResumed = subscribeBrowserSystemResume(guestRecovery.validateAfterResume)
@@ -155,6 +166,7 @@ export function bindBrowserPageWebviewListeners({
   webview.addEventListener('page-title-updated', handleTitleUpdate)
   webview.addEventListener('page-favicon-updated', handleFaviconUpdate)
   webview.addEventListener('did-fail-load', handleFailLoad)
+  webview.addEventListener('console-message', handleAnnotationViewportMessage)
 
   if (needsInitialNavigation) {
     // Why: set src only after listeners attach so a fast localhost failure isn't missed; only non-blank tabs show the loading indicator.
@@ -186,6 +198,7 @@ export function bindBrowserPageWebviewListeners({
     webview.removeEventListener('page-title-updated', handleTitleUpdate)
     webview.removeEventListener('page-favicon-updated', handleFaviconUpdate)
     webview.removeEventListener('did-fail-load', handleFailLoad)
+    webview.removeEventListener('console-message', handleAnnotationViewportMessage)
     container.removeEventListener('dragover', onContainerDragOver)
     container.removeEventListener('drop', onContainerDrop)
     unsubscribeSystemResumed()

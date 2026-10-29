@@ -7,6 +7,7 @@ import type {
   BrowserLoadError,
   BrowserViewportPresetId
 } from '../../../../shared/browser-workspace-types'
+import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
 import { ensureBrowserPageWebview } from './browser-page-webview'
 import { applyBrowserPageViewportLayout, ensureBrowserPageViewport } from './browser-page-viewport'
 import { seedLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
@@ -45,15 +46,19 @@ export type AttachBrowserPageWebviewArgs = {
   setBrowserZoomPercent: Dispatch<SetStateAction<number>>
   focusAddressBarNow: () => boolean
   syncNavigationState: (webview: Electron.WebviewTag) => void
+  syncBrowserAnnotationViewportBridge: () => void
   faviconUrlRef: MutableRefObject<string | null>
   addressBarInputRef: RefObject<HTMLInputElement | null>
   lastKnownWebviewUrlRef: MutableRefObject<string | null>
   trackNextLoadingEventRef: MutableRefObject<boolean>
+  invalidateBrowserAnnotationDocumentRef: MutableRefObject<() => void>
   onSetUrlRef: MutableRefObject<BrowserPageUrlSetter>
+  setBrowserOverlayViewport: Dispatch<SetStateAction<BrowserOverlayViewport>>
   setAddressBarValue: Dispatch<SetStateAction<string>>
   addBrowserHistoryEntryRef: MutableRefObject<
     (url: string, title: string, faviconUrl?: string | null) => void
   >
+  annotationViewportBridgeTokenRef: MutableRefObject<string>
   initialBrowserUrlRef: MutableRefObject<string>
   validateVisibleGuestRegistrationRef: MutableRefObject<() => void>
   retryGuestRecoveryRef: MutableRefObject<() => void>
@@ -101,6 +106,7 @@ export function attachBrowserPageWebview(
   if (!container || !webviewContainer) {
     return
   }
+  args.invalidateBrowserAnnotationDocumentRef.current()
   const webview = ensuredWebview.webview
   const needsInitialNavigation = ensuredWebview.created
   seedLiveBrowserUrl(browserTabId, redactKagiSessionToken(browserTabUrlRef.current))

@@ -2,6 +2,7 @@ import {
   createPageInitiatedTabBudget,
   type PageInitiatedTabBudget
 } from './browser-page-initiated-tab-budget'
+import { BrowserGrabSessionController } from './browser-grab-session-controller'
 import type { BrowserGrabCancelReason } from '../../shared/browser-grab-types'
 import type { BrowserLoadError } from '../../shared/browser-workspace-types'
 import type {
@@ -88,6 +89,7 @@ export abstract class BrowserManagerState extends BrowserManagerViewportScrollSt
   protected readonly pendingNavigationByGuestId = new Map<number, PendingMainFrameNavigation>()
   protected readonly contextMenuCleanupByTabId = new Map<string, () => void>()
   protected readonly grabShortcutCleanupByTabId = new Map<string, () => void>()
+  protected readonly grabSessionController = new BrowserGrabSessionController()
   protected readonly shortcutForwardingCleanupByTabId = new Map<string, () => void>()
   protected readonly mouseWheelZoomCleanupByTabId = new Map<string, () => void>()
   protected readonly annotationViewportBridgeOpsByTabId = new Map<string, Promise<unknown>>()

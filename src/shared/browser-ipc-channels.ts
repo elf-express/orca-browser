@@ -7,7 +7,8 @@ export const BROWSER_INVOKE_CHANNELS = [
   'browser:openDevTools',
   'browser:openExternal',
   'browser:writeClipboardText',
-  'browser:setViewportOverride'
+  'browser:setViewportOverride',
+  'browser:setAnnotationViewportBridge'
 ] as const
 
 export const BROWSER_EVENT_CHANNELS = [
@@ -24,7 +25,17 @@ export const BROWSER_EVENT_CHANNELS = [
   'browser:historyNavigate',
   'browser:zoomPage',
   'browser:scrollPage',
-  'browser:systemResumed'
+  'browser:systemResumed',
+  'browser:grabModeToggle',
+  'browser:grabActionShortcut'
+] as const
+
+export const BROWSER_GRAB_INVOKE_CHANNELS = [
+  'browser:setGrabMode',
+  'browser:awaitGrabSelection',
+  'browser:cancelGrab',
+  'browser:captureSelectionScreenshot',
+  'browser:extractHoverPayload'
 ] as const
 
 export const BROWSER_PROFILE_INVOKE_CHANNELS = [
@@ -40,6 +51,12 @@ export const BROWSER_PROFILE_INVOKE_CHANNELS = [
   'browser:identity:set',
   'browser:settings:get',
   'browser:settings:set'
+] as const
+
+export const BROWSER_MCP_INVOKE_CHANNELS = [
+  'browser:mcpGetEndpoint',
+  'browser:mcpGetStatus',
+  'browser:mcpRotateToken'
 ] as const
 
 // Fire-and-forget renderer-to-main messages (ipcRenderer.send), not invoke handlers.

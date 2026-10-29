@@ -2,11 +2,17 @@ import { ipcMain } from 'electron'
 import { browserManager } from '../browser/browser-manager'
 import type { BrowserViewportOverride } from '../../shared/browser-workspace-types'
 import { isTrustedBrowserRenderer } from './browser-renderer-trust'
+import {
+  isValidBrowserAnnotationViewportBridgeMarkers,
+  isValidBrowserAnnotationViewportBridgeToken,
+  type BrowserSetAnnotationViewportBridgeArgs
+} from '../../shared/browser-annotation-viewport-bridge'
 
 export function registerBrowserGuestViewHandlers(): () => void {
   ipcMain.removeHandler('browser:openDevTools')
   ipcMain.removeHandler('browser:setViewportOverride')
   ipcMain.removeAllListeners?.('browser:reportViewportScrollState')
+  ipcMain.removeHandler('browser:setAnnotationViewportBridge')
 
   ipcMain.handle('browser:openDevTools', (event, args: { browserPageId: string }) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
@@ -86,9 +92,49 @@ export function registerBrowserGuestViewHandlers(): () => void {
     }
   )
 
+  ipcMain.handle(
+    'browser:setAnnotationViewportBridge',
+    (event, args: BrowserSetAnnotationViewportBridgeArgs): Promise<boolean> | boolean => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return false
+      }
+      if (
+        typeof args?.browserPageId !== 'string' ||
+        typeof args.enabled !== 'boolean' ||
+        typeof args.emitViewport !== 'boolean' ||
+        !isValidBrowserAnnotationViewportBridgeMarkers(args.markers) ||
+        (args.selectionId !== undefined &&
+          (typeof args.selectionId !== 'string' || args.selectionId.length > 80)) ||
+        !isValidBrowserAnnotationViewportBridgeToken(args.token)
+      ) {
+        return false
+      }
+      // Why resolve here: routing through the authority also pins the request to the renderer that owns the target.
+      const resolveGuest = (): Electron.WebContents | null =>
+        browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id)
+      if (!resolveGuest()) {
+        return false
+      }
+      // Why hand over the resolver rather than that guest: the op is serialized per tab, and the
+      // one it finally runs against must be the one on screen then, not the one this request saw.
+      return browserManager.setAnnotationViewportBridge(
+        args.browserPageId,
+        {
+          enabled: args.enabled,
+          emitViewport: args.emitViewport,
+          markers: args.markers,
+          selectionId: args.selectionId,
+          token: args.token
+        },
+        resolveGuest
+      )
+    }
+  )
+
   return () => {
     ipcMain.removeAllListeners?.('browser:reportViewportScrollState')
     ipcMain.removeHandler('browser:openDevTools')
     ipcMain.removeHandler('browser:setViewportOverride')
+    ipcMain.removeHandler('browser:setAnnotationViewportBridge')
   }
 }

@@ -24,6 +24,7 @@ function createBrowserApiStub(): BrowserApi {
     notifyActiveTabChanged: vi.fn(async () => true),
     openDevTools: vi.fn(async () => true),
     setViewportOverride: vi.fn(async () => true),
+    setAnnotationViewportBridge: vi.fn(async () => true),
     reportViewportScrollState: vi.fn(),
     openExternal: vi.fn(async () => true),
     writeClipboardText: vi.fn(async () => {}),
@@ -41,6 +42,17 @@ function createBrowserApiStub(): BrowserApi {
     onZoomPage: unsubscribe,
     onScrollPage: unsubscribe,
     onSystemResumed: unsubscribe,
+    setGrabMode: vi.fn(async () => ({ ok: true as const })),
+    awaitGrabSelection: vi.fn(async () => ({
+      opId: 'op',
+      kind: 'cancelled' as const,
+      reason: 'user' as const
+    })),
+    cancelGrab: vi.fn(async () => true),
+    captureSelectionScreenshot: vi.fn(async () => ({ ok: false as const, reason: 'unsupported' })),
+    extractHoverPayload: vi.fn(async () => ({ ok: false as const, reason: 'unsupported' })),
+    onGrabModeToggle: unsubscribe,
+    onGrabActionShortcut: unsubscribe,
     session: {
       listProfiles: vi.fn(async () => []),
       createProfile: vi.fn(async () => null),
@@ -58,6 +70,11 @@ function createBrowserApiStub(): BrowserApi {
       clearDefaultCookies: vi.fn(async () => false)
     },
     identity: { get: vi.fn(async () => null), set: vi.fn(async () => null) },
+    mcp: {
+      getEndpoint: vi.fn(async () => null),
+      getStatus: vi.fn(async () => ({ state: 'starting' as const, port: 0 })),
+      rotateToken: vi.fn(async () => '')
+    },
     settings: {
       get: vi.fn(async (): Promise<BrowserPluginSettings> => ({
         ...DEFAULT_BROWSER_PLUGIN_SETTINGS

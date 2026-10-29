@@ -31,8 +31,10 @@ function createLoadingHandlers(currentUrl: string) {
     trackNextLoadingEventRef: ref(true),
     keepAddressBarFocusRef: ref(false),
     recoveryNavigationValidationRef: ref(null),
+    invalidateBrowserAnnotationDocumentRef: ref(vi.fn()),
     onUpdatePageStateRef: ref(vi.fn()),
     onSetUrlRef: ref(vi.fn()),
+    setBrowserOverlayViewport: vi.fn(),
     setAddressBarValue: vi.fn(),
     focusAddressBarNow: () => false
   })

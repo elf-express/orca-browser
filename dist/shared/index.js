@@ -1,3 +1,38 @@
+// src/shared/agent-payload.ts
+var BROWSER_AGENT_IMAGE_NAMES = {
+  grab: "browser-grab.png",
+  markup: "browser-markup.png"
+};
+var SAFE_AGENT_URL_PROTOCOLS = /* @__PURE__ */ new Set(["http:", "https:", "file:"]);
+var PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+function sanitizeAgentPageUrl(rawUrl) {
+  if (!rawUrl) {
+    return "";
+  }
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol === "about:") {
+      return url.toString() === "about:blank" ? "about:blank" : "";
+    }
+    if (!SAFE_AGENT_URL_PROTOCOLS.has(url.protocol)) {
+      return "";
+    }
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+function pngDataUrlToAgentImage(name, dataUrl) {
+  if (!dataUrl || !dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
+    return null;
+  }
+  return { name, mimeType: "image/png", dataBase64: dataUrl.slice(PNG_DATA_URL_PREFIX.length) };
+}
+
 // src/shared/constants.ts
 var DEFAULT_MCP_PORT = 47821;
 var BROWSER_API_GLOBAL_KEY = "browserAPI";
@@ -27,7 +62,8 @@ var BROWSER_INVOKE_CHANNELS = [
   "browser:openDevTools",
   "browser:openExternal",
   "browser:writeClipboardText",
-  "browser:setViewportOverride"
+  "browser:setViewportOverride",
+  "browser:setAnnotationViewportBridge"
 ];
 var BROWSER_EVENT_CHANNELS = [
   "browser:guest-load-failed",
@@ -43,7 +79,16 @@ var BROWSER_EVENT_CHANNELS = [
   "browser:historyNavigate",
   "browser:zoomPage",
   "browser:scrollPage",
-  "browser:systemResumed"
+  "browser:systemResumed",
+  "browser:grabModeToggle",
+  "browser:grabActionShortcut"
+];
+var BROWSER_GRAB_INVOKE_CHANNELS = [
+  "browser:setGrabMode",
+  "browser:awaitGrabSelection",
+  "browser:cancelGrab",
+  "browser:captureSelectionScreenshot",
+  "browser:extractHoverPayload"
 ];
 var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:session:listProfiles",
@@ -58,6 +103,11 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:identity:set",
   "browser:settings:get",
   "browser:settings:set"
+];
+var BROWSER_MCP_INVOKE_CHANNELS = [
+  "browser:mcpGetEndpoint",
+  "browser:mcpGetStatus",
+  "browser:mcpRotateToken"
 ];
 var BROWSER_SEND_CHANNELS = ["browser:reportViewportScrollState"];
 
@@ -86,6 +136,11 @@ var BROWSER_SHORTCUT_BINDINGS = {
   "browser.find": {
     darwin: [{ mod: true, key: "f" }],
     other: [{ mod: true, key: "f" }]
+  },
+  // Fixed chord, not user-rebindable.
+  "browser.annotateElement": {
+    darwin: [{ mod: true, shift: true, key: "c" }],
+    other: [{ alt: true, shift: true, key: "n" }]
   },
   "zoom.in": {
     darwin: [
@@ -641,10 +696,13 @@ function browserViewportPresetToOverride(preset) {
   };
 }
 export {
+  BROWSER_AGENT_IMAGE_NAMES,
   BROWSER_API_GLOBAL_KEY,
   BROWSER_EVENT_CHANNELS,
   BROWSER_FAMILY_LABELS,
+  BROWSER_GRAB_INVOKE_CHANNELS,
   BROWSER_INVOKE_CHANNELS,
+  BROWSER_MCP_INVOKE_CHANNELS,
   BROWSER_PAGE_ZOOM_LEVELS,
   BROWSER_PAGE_ZOOM_MAX,
   BROWSER_PAGE_ZOOM_MIN,
@@ -686,8 +744,10 @@ export {
   normalizeBrowserPluginSettings,
   normalizeExternalBrowserUrl,
   normalizeKagiSessionLink,
+  pngDataUrlToAgentImage,
   redactKagiSessionToken,
   resolveRemoteFailureExternalUrl,
+  sanitizeAgentPageUrl,
   toHttpsRecoveryUrl,
   toSecureCertificateEndpoint
 };

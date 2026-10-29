@@ -4,6 +4,17 @@ export type BrowserLoadError = {
   validatedUrl: string
 }
 
+export type BrowserCertificateFailure = {
+  challengeId: string
+  browserPageId: string
+  errorCode: number | null
+  error: string
+  origin: string
+  displayHost: string
+  canProceed: boolean
+  observedAt: number
+}
+
 export type BrowserPage = {
   id: string
   scopeId: string

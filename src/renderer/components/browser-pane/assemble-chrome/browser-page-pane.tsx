@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { DragEvent } from 'react'
+import type { DragEvent, KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../../lib/utils'
 import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
 import { normalizeExternalBrowserUrl } from '../../../../shared/browser-url'
 import { getLiveBrowserUrl } from '../describe-page/live-browser-url-registry'
 import { resolveBrowserAddressBarSubmission } from '../navigate/browser-address-bar-navigation'
+import { browserChromeShortcutOwnsEvent } from '../describe-page/browser-overlay-shortcut-target'
 import { navigateBrowserPageToUrl } from '../navigate/navigate-browser-page-url'
 import { useBrowserPageReloadActions } from '../navigate/use-browser-page-reload-actions'
 import { useBrowserPageWebviewUrlSync } from '../navigate/use-browser-page-webview-url-sync'
@@ -29,6 +30,13 @@ import { useBrowserPageWebviewPartition } from '../host-guest/use-browser-page-w
 import { toDisplayUrl } from '../describe-page/browser-page-url-display'
 import { useBrowserPageZoomFeedback } from '../host-guest/use-browser-page-zoom-feedback'
 import { useBrowserPageResourceNotices } from '../navigate/use-browser-page-resource-notices'
+import { useBrowserPageAnnotationSend } from '../annotate/use-browser-page-annotation-send'
+import { useBrowserPageGrabAnnotations } from '../annotate/use-browser-page-grab-annotations'
+import { useGrabMode } from '../annotate/useGrabMode'
+import { useBrowserPageMarkupCapture } from '../annotate/use-browser-page-markup-capture'
+import type { BrowserOverlayViewport } from '../describe-page/browser-annotation-geometry'
+import { getRendererPlatform } from '../../../lib/platform'
+import { isAnnotateChord, isGrabChord } from '../annotate/browser-annotate-chord'
 import { BrowserPageContextMenu } from './browser-page-context-menu'
 import { BrowserPageViewportOverlays } from './browser-page-viewport-overlays'
 import { useBrowserPageFindShortcuts } from './use-browser-page-find-shortcuts'
@@ -67,6 +75,11 @@ export function BrowserPagePane({
   // Creating the viewport during render makes it exist before the lifecycle effect attaches the guest.
   const pageViewport = ensureBrowserPageViewport(browserTab.id, workspaceId)
   const pageViewportScroller = pageViewport?.scroller ?? null
+  const pageViewportContainer = pageViewport?.container ?? null
+  const containerRef = useRef<HTMLDivElement | null>(pageViewportContainer)
+  useLayoutEffect(() => {
+    containerRef.current = pageViewportContainer
+  }, [pageViewportContainer])
   useLayoutEffect(() => {
     const preset = getBrowserViewportPreset(browserTab.viewportPresetId ?? null)
     setBrowserPageViewportPresetSize(
@@ -116,6 +129,11 @@ export function BrowserPagePane({
   const handleInternalFileDropRef = useRef<(event: DragEvent<HTMLDivElement>) => void>(() => {})
 
   const [findOpen, setFindOpen] = useState(false)
+  const [browserOverlayViewport, setBrowserOverlayViewport] = useState<BrowserOverlayViewport>({
+    scrollX: 0,
+    scrollY: 0,
+    version: 0
+  })
   const zoom = useBrowserPageZoomFeedback(browserTab.id)
   const { resourceNotice, setResourceNotice } = useBrowserPageResourceNotices(browserTab.id)
 
@@ -144,6 +162,65 @@ export function BrowserPagePane({
     addressBarInputRef,
     guestFocus
   })
+
+  const annotationSend = useBrowserPageAnnotationSend({ browserTabId: browserTab.id, scopeId })
+  const grab = useGrabMode(browserTab.id)
+  const markup = useBrowserPageMarkupCapture(webviewRef, {
+    url: browserTab.url,
+    title: browserTab.title
+  })
+  const grabAnnotations = useBrowserPageGrabAnnotations({
+    browserTabId: browserTab.id,
+    isActive,
+    grab,
+    containerRef,
+    trackingContainer: pageViewportContainer,
+    trackingScroller: pageViewportScroller,
+    webviewRef,
+    setBrowserOverlayViewport,
+    browserAnnotationsLength: annotationSend.browserAnnotations.length,
+    setBrowserAnnotationTrayOpen: annotationSend.setBrowserAnnotationTrayOpen,
+    currentUrl: getLiveBrowserUrl(browserTab.id) ?? browserTab.url
+  })
+  const startGrabIntentRef = useRef(grabAnnotations.startGrabIntent)
+  useLayoutEffect(() => {
+    startGrabIntentRef.current = grabAnnotations.startGrabIntent
+  }, [grabAnnotations.startGrabIntent])
+  // While the markup overlay is open the picker must not start behind it.
+  const markupIsActive = markup.isActive
+  const grabIsInteractive = grab.state !== 'idle' && grab.state !== 'error'
+
+  // A focused guest keeps its key events; main forwards the grab and annotate chords with their intent.
+  useEffect(() => {
+    return window.browserAPI!.onGrabModeToggle((pageId, intent) => {
+      if (pageId === browserTab.id && !markupIsActive) {
+        startGrabIntentRef.current(intent)
+      }
+    })
+  }, [browserTab.id, markupIsActive])
+  // Grab and Annotate chords while the pane itself holds focus; the listener lives on the pane element so
+  // it never sees keys typed elsewhere in the host window.
+  const handlePaneKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (
+      !isActive ||
+      chromeShortcutScope === 'inactive' ||
+      markupIsActive ||
+      !browserChromeShortcutOwnsEvent(chromeShortcutScope, event.nativeEvent, workspaceId)
+    ) {
+      return
+    }
+    const platform = getRendererPlatform()
+    const intent = isAnnotateChord(event, platform)
+      ? 'annotate'
+      : isGrabChord(event, platform)
+        ? 'copy'
+        : null
+    if (intent === null) {
+      return
+    }
+    event.preventDefault()
+    startGrabIntentRef.current(intent)
+  }
 
   const navigateToUrl = useCallback(
     (url: string): void => {
@@ -198,12 +275,15 @@ export function BrowserPagePane({
     onUpdatePageState,
     onSetUrl,
     setAddressBarValue,
+    cancelPendingBrowserCapture: grabAnnotations.cancelPendingBrowserCapture,
+    setBrowserOverlayViewport,
     setFindOpen,
     focusAddressBarNow,
     focusWebviewNow,
     paneZoomLevelRef: zoom.paneZoomLevelRef,
     viewportPresetId: browserTab.viewportPresetId ?? null,
     setBrowserZoomPercent: zoom.setBrowserZoomPercent,
+    pendingAnnotationPayload: grabAnnotations.pendingAnnotationPayload,
     inputLocked,
     faviconUrl: browserTab.faviconUrl,
     webviewRef,
@@ -257,7 +337,9 @@ export function BrowserPagePane({
     paneZoomLevelRef: zoom.paneZoomLevelRef,
     setBrowserDefaultZoomLevel: zoom.setBrowserDefaultZoomLevel,
     showBrowserZoomFeedback: zoom.showBrowserZoomFeedback,
-    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest
+    reloadWebviewOrRecoverGuest: reload.reloadWebviewOrRecoverGuest,
+    grabIsInteractive,
+    handleGrabActionShortcut: grabAnnotations.handleGrabActionShortcut
   })
 
   // The live URL is cached by the navigation handlers before their store writes re-render the pane.
@@ -305,6 +387,7 @@ export function BrowserPagePane({
       // Hidden panes stay paintable but must not stay keyboard-focusable.
       inert={!isActive}
       aria-hidden={!isActive}
+      onKeyDown={handlePaneKeyDown}
     >
       {/* IPC-driven context menu in a Portal so position:fixed escapes ancestor transform/backdrop-filter containing blocks. */}
       <BrowserPageContextMenu
@@ -328,6 +411,13 @@ export function BrowserPagePane({
         submitAddressBar={submitAddressBar}
         navigateToUrl={navigateToUrl}
         currentUrl={liveBrowserUrl}
+        grab={grab}
+        grabAnnotations={grabAnnotations}
+        annotationSend={annotationSend}
+        isBlankTab={isBlankTab}
+        markupIsActive={markup.isActive}
+        markupStart={markup.start}
+        markupCancel={markup.cancel}
         resourceNotice={resourceNotice}
         setResourceNotice={setResourceNotice}
       />
@@ -347,6 +437,14 @@ export function BrowserPagePane({
               retryGuestRecoveryRef={retryGuestRecoveryRef}
               navigateToUrl={navigateToUrl}
               setResourceNotice={setResourceNotice}
+              containerRef={containerRef}
+              browserOverlayViewport={browserOverlayViewport}
+              scopeId={scopeId}
+              grab={grab}
+              markup={markup}
+              annotationSend={annotationSend}
+              grabAnnotations={grabAnnotations}
+              markupPortalContainer={pageViewport?.content ?? null}
             />,
             pageViewport.container
           )

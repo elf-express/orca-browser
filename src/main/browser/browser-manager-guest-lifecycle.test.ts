@@ -517,7 +517,7 @@ describe('browserManager', () => {
     expect(guestOffMock).toHaveBeenCalledWith('context-menu', expect.any(Function))
     expect(
       guestOffMock.mock.calls.filter(([eventName]) => eventName === 'before-input-event')
-    ).toHaveLength(1)
+    ).toHaveLength(2)
   })
 
   // Why: a plain browsing tab must never attach a debugger (Cloudflare treats CDP as a bot signal);

@@ -42,10 +42,19 @@ const API_METHODS = [
   'onScrollPage',
   'reportViewportScrollState',
   'onSystemResumed',
+  'mcp',
   'session',
   'identity',
   'settings',
-  'setViewportOverride'
+  'setViewportOverride',
+  'setAnnotationViewportBridge',
+  'setGrabMode',
+  'awaitGrabSelection',
+  'cancelGrab',
+  'captureSelectionScreenshot',
+  'extractHoverPayload',
+  'onGrabModeToggle',
+  'onGrabActionShortcut'
 ]
 
 beforeEach(() => {

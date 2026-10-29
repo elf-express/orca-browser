@@ -1,6 +1,8 @@
 import { ipcMain, webContents } from 'electron'
 import type { BrowserGuestArgs } from '../../shared/browser-api-types'
+import type { AgentBrowserBridge } from '../browser/agent-browser-bridge'
 import { browserManager } from '../browser/browser-manager'
+import { disposeGrabModeStateForPage } from './browser-grab-ipc'
 import { isTrustedBrowserRenderer } from './browser-renderer-trust'
 import {
   isLiveBrowserWebContentsId,
@@ -8,6 +10,12 @@ import {
 } from './browser-tab-registration-wait'
 
 export type { BrowserGuestArgs }
+
+let agentBrowserBridgeRef: AgentBrowserBridge | null = null
+
+export function setAgentBrowserBridgeRef(bridge: AgentBrowserBridge | null): void {
+  agentBrowserBridgeRef = bridge
+}
 
 const BROWSER_HANDLER_CHANNELS = [
   'browser:registerGuest',
@@ -50,12 +58,17 @@ export function registerBrowserHandlers(): () => void {
       }
       browserManager.attachGuestPolicies(guest)
     }
+    // Why: a changed webContents id for a known page means a process swap; the bridge must drop the stale proxy.
+    const previousWcId = browserManager.getGuestWebContentsId(args.browserPageId)
     const registered = browserManager.registerGuest({
       ...args,
       rendererWebContentsId: event.sender.id
     })
     if (!registered) {
       return false
+    }
+    if (agentBrowserBridgeRef && previousWcId !== null && previousWcId !== args.webContentsId) {
+      agentBrowserBridgeRef.onProcessSwap(args.browserPageId, args.webContentsId, previousWcId)
     }
     resolveTabRegistrationWaiters(args.browserPageId, args.scopeId)
     return true
@@ -93,16 +106,31 @@ export function registerBrowserHandlers(): () => void {
     if (typeof args?.browserPageId !== 'string') {
       return false
     }
+    // Why: the bridge must see the page's webContents id before unregisterGuest clears the mapping.
+    const wcId = browserManager.getGuestWebContentsId(args.browserPageId)
+    if (wcId !== null && agentBrowserBridgeRef) {
+      agentBrowserBridgeRef.onTabClosed(wcId)
+    }
     browserManager.unregisterGuest(args.browserPageId)
+    // Why: a page that is gone must not keep a grab-mode intent or a queued operation chain.
+    disposeGrabModeStateForPage(args.browserPageId)
     return true
   })
 
-  // No agent bridge exists yet, so there is no active tab to keep in sync.
-  ipcMain.handle('browser:activeTabChanged', (event, _args: { browserPageId: string }) => {
+  // Keeps the bridge's active tab in sync with the renderer so the agent follows the user's tab.
+  ipcMain.handle('browser:activeTabChanged', (event, args: { browserPageId: string }) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false
     }
-    return false
+    if (!agentBrowserBridgeRef) {
+      return false
+    }
+    const wcId = browserManager.getGuestWebContentsId(args.browserPageId)
+    if (wcId !== null) {
+      // Scope-aware so later scope-bound commands do not resolve to a page of another scope.
+      agentBrowserBridgeRef.onTabChanged(wcId, browserManager.getScopeIdForTab(args.browserPageId))
+    }
+    return true
   })
 
   return () => {

@@ -16,6 +16,7 @@ import {
 } from '../components/browser-pane/host-guest/browser-page-mount-admission'
 import { translate } from '../i18n'
 import { destroyPersistentWebview } from '../components/browser-pane/host-guest/webview-registry'
+import { useBrowserAnnotationStore } from './browser-annotation-store'
 
 export const BROWSER_HISTORY_STORAGE_KEY = 'orca-browser:history:v1'
 
@@ -158,6 +159,7 @@ export const useBrowserStore = create<BrowserStoreState>()(
               pendingAddressBarFocusByPageId: pendingFocus
             }
           })
+          useBrowserAnnotationStore.getState().disposeBrowserPageAnnotations(pageId)
         },
 
         setActiveBrowserPage: (scopeId, pageId) => {

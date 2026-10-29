@@ -45,6 +45,9 @@ export function forwardGuestShortcutInput(
   } else if (action === 'browser.find') {
     const target: BrowserFindTarget = { browserPageId: browserTabId }
     renderer.send('browser:findInPage', target)
+  } else if (action === 'browser.annotateElement') {
+    // Why: a focused guest never surfaces the annotate chord to the renderer, so forward it as a picker toggle.
+    renderer.send('browser:grabModeToggle', browserTabId, 'annotate')
   } else if (action === 'browser.back') {
     // Why: macOS Logitech side-button remaps arrive as history keystrokes, not mouse events; forward so the renderer can goBack().
     renderer.send('browser:historyNavigate', { browserPageId: browserTabId, direction: 'back' })

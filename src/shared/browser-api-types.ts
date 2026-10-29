@@ -1,4 +1,17 @@
+import type { BrowserSetAnnotationViewportBridgeArgs } from './browser-annotation-viewport-bridge'
 import type { BrowserFindSource } from './browser-find-source'
+import type {
+  BrowserAwaitGrabSelectionArgs,
+  BrowserCancelGrabArgs,
+  BrowserCaptureSelectionScreenshotArgs,
+  BrowserCaptureSelectionScreenshotResult,
+  BrowserExtractHoverArgs,
+  BrowserExtractHoverResult,
+  BrowserGrabResult,
+  BrowserSetGrabModeArgs,
+  BrowserSetGrabModeResult,
+  GrabIntent
+} from './browser-grab-types'
 import type {
   BrowserContextMenuDismissedEvent,
   BrowserContextMenuRequestedEvent,
@@ -53,6 +66,12 @@ export type BrowserOpenLinkInTabEvent = {
 /** Every `on*` subscription returns the function that cancels it. */
 export type BrowserUnsubscribe = () => void
 
+export interface BrowserMcpApi {
+  getEndpoint(): Promise<BrowserMcpEndpoint | null>
+  getStatus(): Promise<BrowserMcpStatus>
+  rotateToken(): Promise<string>
+}
+
 export interface BrowserApi {
   readonly apiVersion: 1
   registerGuest(args: BrowserGuestArgs): Promise<boolean>
@@ -65,6 +84,7 @@ export interface BrowserApi {
     browserPageId: string
     override: BrowserViewportOverride | null
   }): Promise<boolean>
+  setAnnotationViewportBridge(args: BrowserSetAnnotationViewportBridgeArgs): Promise<boolean>
   reportViewportScrollState(args: {
     browserPageId: string
     state: BrowserViewportScrollState
@@ -91,6 +111,19 @@ export interface BrowserApi {
     callback: (event: { browserPageId: string; deltaX: number; deltaY: number }) => void
   ): BrowserUnsubscribe
   onSystemResumed(callback: () => void): BrowserUnsubscribe
+  setGrabMode(args: BrowserSetGrabModeArgs): Promise<BrowserSetGrabModeResult>
+  awaitGrabSelection(args: BrowserAwaitGrabSelectionArgs): Promise<BrowserGrabResult>
+  cancelGrab(args: BrowserCancelGrabArgs): Promise<boolean>
+  captureSelectionScreenshot(
+    args: BrowserCaptureSelectionScreenshotArgs
+  ): Promise<BrowserCaptureSelectionScreenshotResult>
+  extractHoverPayload(args: BrowserExtractHoverArgs): Promise<BrowserExtractHoverResult>
+  onGrabModeToggle(
+    callback: (browserPageId: string, intent: GrabIntent) => void
+  ): BrowserUnsubscribe
+  onGrabActionShortcut(
+    callback: (data: { browserPageId: string; key: 'c' | 's' }) => void
+  ): BrowserUnsubscribe
   session: {
     listProfiles(): Promise<BrowserSessionProfile[]>
     createProfile(args: {
@@ -112,10 +145,19 @@ export interface BrowserApi {
     get(): Promise<BrowserIdentityModeStatus | null>
     set(mode: BrowserUserAgentMode): Promise<BrowserIdentityModeSetResult | null>
   }
+  mcp: BrowserMcpApi
   settings: {
     get(): Promise<BrowserPluginSettings>
     set(patch: Partial<BrowserPluginSettings>): Promise<BrowserPluginSettings | null>
   }
+}
+
+export type BrowserMcpEndpoint = { url: string; token: string }
+
+export type BrowserMcpStatus = {
+  state: 'starting' | 'listening' | 'port_in_use' | 'error'
+  port: number
+  message?: string
 }
 
 declare global {

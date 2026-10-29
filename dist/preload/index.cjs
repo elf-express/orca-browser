@@ -23,7 +23,7 @@ __export(preload_exports, {
   exposeBrowserApi: () => exposeBrowserApi
 });
 module.exports = __toCommonJS(preload_exports);
-var import_electron6 = require("electron");
+var import_electron7 = require("electron");
 
 // src/shared/constants.ts
 var BROWSER_API_GLOBAL_KEY = "browserAPI";
@@ -47,7 +47,7 @@ function asBrowserFindTarget(value) {
 }
 
 // src/preload/browser-api.ts
-var import_electron5 = require("electron");
+var import_electron6 = require("electron");
 
 // src/preload/api/browser-bridge-guest-registration-and-downloads.ts
 var import_electron = require("electron");
@@ -59,6 +59,7 @@ var browserGuestRegistrationApi = {
   openDevTools: (args) => import_electron.ipcRenderer.invoke("browser:openDevTools", args),
   reportViewportScrollState: (args) => import_electron.ipcRenderer.send("browser:reportViewportScrollState", args),
   setViewportOverride: (args) => import_electron.ipcRenderer.invoke("browser:setViewportOverride", args),
+  setAnnotationViewportBridge: (args) => import_electron.ipcRenderer.invoke("browser:setAnnotationViewportBridge", args),
   onGuestLoadFailed: (callback) => {
     const listener = (_event, data) => callback(data);
     import_electron.ipcRenderer.on("browser:guest-load-failed", listener);
@@ -76,89 +77,112 @@ var browserGuestRegistrationApi = {
   }
 };
 
-// src/preload/api/browser-session-api.ts
+// src/preload/api/browser-mcp.ts
 var import_electron2 = require("electron");
+var browserMcpApi = {
+  getEndpoint: () => import_electron2.ipcRenderer.invoke("browser:mcpGetEndpoint"),
+  getStatus: () => import_electron2.ipcRenderer.invoke("browser:mcpGetStatus"),
+  rotateToken: () => import_electron2.ipcRenderer.invoke("browser:mcpRotateToken")
+};
+
+// src/preload/api/browser-session-api.ts
+var import_electron3 = require("electron");
 var browserSessionApi = {
   session: {
-    listProfiles: () => import_electron2.ipcRenderer.invoke("browser:session:listProfiles"),
-    createProfile: (args) => import_electron2.ipcRenderer.invoke("browser:session:createProfile", args),
-    deleteProfile: (args) => import_electron2.ipcRenderer.invoke("browser:session:deleteProfile", args),
-    importCookies: (args) => import_electron2.ipcRenderer.invoke("browser:session:importCookies", args),
-    importFromBrowser: (args) => import_electron2.ipcRenderer.invoke("browser:session:importFromBrowser", args),
-    detectBrowsers: () => import_electron2.ipcRenderer.invoke("browser:session:detectBrowsers"),
-    resolvePartition: (args) => import_electron2.ipcRenderer.invoke("browser:session:resolvePartition", args),
-    clearDefaultCookies: () => import_electron2.ipcRenderer.invoke("browser:session:clearDefaultCookies")
+    listProfiles: () => import_electron3.ipcRenderer.invoke("browser:session:listProfiles"),
+    createProfile: (args) => import_electron3.ipcRenderer.invoke("browser:session:createProfile", args),
+    deleteProfile: (args) => import_electron3.ipcRenderer.invoke("browser:session:deleteProfile", args),
+    importCookies: (args) => import_electron3.ipcRenderer.invoke("browser:session:importCookies", args),
+    importFromBrowser: (args) => import_electron3.ipcRenderer.invoke("browser:session:importFromBrowser", args),
+    detectBrowsers: () => import_electron3.ipcRenderer.invoke("browser:session:detectBrowsers"),
+    resolvePartition: (args) => import_electron3.ipcRenderer.invoke("browser:session:resolvePartition", args),
+    clearDefaultCookies: () => import_electron3.ipcRenderer.invoke("browser:session:clearDefaultCookies")
   },
   identity: {
-    get: () => import_electron2.ipcRenderer.invoke("browser:identity:get"),
-    set: (mode) => import_electron2.ipcRenderer.invoke("browser:identity:set", mode)
+    get: () => import_electron3.ipcRenderer.invoke("browser:identity:get"),
+    set: (mode) => import_electron3.ipcRenderer.invoke("browser:identity:set", mode)
   },
   settings: {
-    get: () => import_electron2.ipcRenderer.invoke("browser:settings:get"),
-    set: (patch) => import_electron2.ipcRenderer.invoke("browser:settings:set", patch)
+    get: () => import_electron3.ipcRenderer.invoke("browser:settings:get"),
+    set: (patch) => import_electron3.ipcRenderer.invoke("browser:settings:set", patch)
   }
 };
 
 // src/preload/api/browser-bridge-page-interaction-and-sessions.ts
-var import_electron3 = require("electron");
+var import_electron4 = require("electron");
 var browserPageInteractionApi = {
   onContextMenuRequested: (callback) => {
     const listener = (_event, data) => callback(data);
-    import_electron3.ipcRenderer.on("browser:context-menu-requested", listener);
-    return () => import_electron3.ipcRenderer.removeListener("browser:context-menu-requested", listener);
+    import_electron4.ipcRenderer.on("browser:context-menu-requested", listener);
+    return () => import_electron4.ipcRenderer.removeListener("browser:context-menu-requested", listener);
   },
   onContextMenuDismissed: (callback) => {
     const listener = (_event, data) => callback(data);
-    import_electron3.ipcRenderer.on("browser:context-menu-dismissed", listener);
-    return () => import_electron3.ipcRenderer.removeListener("browser:context-menu-dismissed", listener);
+    import_electron4.ipcRenderer.on("browser:context-menu-dismissed", listener);
+    return () => import_electron4.ipcRenderer.removeListener("browser:context-menu-dismissed", listener);
   },
   onOpenLinkInOrcaTab: (callback) => {
     const listener = (_event, data) => callback(data);
-    import_electron3.ipcRenderer.on("browser:open-link-in-orca-tab", listener);
-    return () => import_electron3.ipcRenderer.removeListener("browser:open-link-in-orca-tab", listener);
+    import_electron4.ipcRenderer.on("browser:open-link-in-orca-tab", listener);
+    return () => import_electron4.ipcRenderer.removeListener("browser:open-link-in-orca-tab", listener);
   },
-  notifyActiveTabChanged: (args) => import_electron3.ipcRenderer.invoke("browser:activeTabChanged", args),
-  openExternal: (args) => import_electron3.ipcRenderer.invoke("browser:openExternal", args),
-  writeClipboardText: (text) => import_electron3.ipcRenderer.invoke("browser:writeClipboardText", text)
+  notifyActiveTabChanged: (args) => import_electron4.ipcRenderer.invoke("browser:activeTabChanged", args),
+  openExternal: (args) => import_electron4.ipcRenderer.invoke("browser:openExternal", args),
+  writeClipboardText: (text) => import_electron4.ipcRenderer.invoke("browser:writeClipboardText", text),
+  setGrabMode: (args) => import_electron4.ipcRenderer.invoke("browser:setGrabMode", args),
+  awaitGrabSelection: (args) => import_electron4.ipcRenderer.invoke("browser:awaitGrabSelection", args),
+  cancelGrab: (args) => import_electron4.ipcRenderer.invoke("browser:cancelGrab", args),
+  captureSelectionScreenshot: (args) => import_electron4.ipcRenderer.invoke("browser:captureSelectionScreenshot", args),
+  extractHoverPayload: (args) => import_electron4.ipcRenderer.invoke("browser:extractHoverPayload", args),
+  onGrabModeToggle: (callback) => {
+    const listener = (_event, browserPageId, intent) => callback(browserPageId, intent);
+    import_electron4.ipcRenderer.on("browser:grabModeToggle", listener);
+    return () => import_electron4.ipcRenderer.removeListener("browser:grabModeToggle", listener);
+  },
+  onGrabActionShortcut: (callback) => {
+    const listener = (_event, data) => callback(data);
+    import_electron4.ipcRenderer.on("browser:grabActionShortcut", listener);
+    return () => import_electron4.ipcRenderer.removeListener("browser:grabActionShortcut", listener);
+  }
 };
 
 // src/preload/api/ui-bridge-tab-and-browser-commands.ts
-var import_electron4 = require("electron");
+var import_electron5 = require("electron");
 var browserUiCommandApi = {
   onFocusAddressBar: (callback) => {
     const listener = (_event, target) => callback(target);
-    import_electron4.ipcRenderer.on("browser:focusAddressBar", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:focusAddressBar", listener);
+    import_electron5.ipcRenderer.on("browser:focusAddressBar", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:focusAddressBar", listener);
   },
   onReloadPage: (callback) => {
     const listener = (_event, target) => callback(target);
-    import_electron4.ipcRenderer.on("browser:reloadPage", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:reloadPage", listener);
+    import_electron5.ipcRenderer.on("browser:reloadPage", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:reloadPage", listener);
   },
   onHardReloadPage: (callback) => {
     const listener = (_event, target) => callback(target);
-    import_electron4.ipcRenderer.on("browser:hardReloadPage", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:hardReloadPage", listener);
+    import_electron5.ipcRenderer.on("browser:hardReloadPage", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:hardReloadPage", listener);
   },
   onHistoryNavigate: (callback) => {
     const listener = (_event, command) => callback(command);
-    import_electron4.ipcRenderer.on("browser:historyNavigate", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:historyNavigate", listener);
+    import_electron5.ipcRenderer.on("browser:historyNavigate", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:historyNavigate", listener);
   },
   onZoomPage: (callback) => {
     const listener = (_event, command) => callback(command);
-    import_electron4.ipcRenderer.on("browser:zoomPage", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:zoomPage", listener);
+    import_electron5.ipcRenderer.on("browser:zoomPage", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:zoomPage", listener);
   },
   onScrollPage: (callback) => {
     const listener = (_event, payload) => callback(payload);
-    import_electron4.ipcRenderer.on("browser:scrollPage", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:scrollPage", listener);
+    import_electron5.ipcRenderer.on("browser:scrollPage", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:scrollPage", listener);
   },
   onSystemResumed: (callback) => {
     const listener = () => callback();
-    import_electron4.ipcRenderer.on("browser:systemResumed", listener);
-    return () => import_electron4.ipcRenderer.removeListener("browser:systemResumed", listener);
+    import_electron5.ipcRenderer.on("browser:systemResumed", listener);
+    return () => import_electron5.ipcRenderer.removeListener("browser:systemResumed", listener);
   }
 };
 
@@ -211,7 +235,7 @@ function createBrowserFindSubscriptions() {
 
 // src/preload/browser-api.ts
 var browserFindSubscriptions = createBrowserFindSubscriptions();
-import_electron5.ipcRenderer.on(
+import_electron6.ipcRenderer.on(
   "browser:findInPage",
   (_event, target) => browserFindSubscriptions.dispatch(target)
 );
@@ -222,6 +246,7 @@ function createBrowserApi() {
     ...browserPageInteractionApi,
     ...browserUiCommandApi,
     ...browserSessionApi,
+    mcp: browserMcpApi,
     onFindInPage: browserFindSubscriptions.subscribe
   };
 }
@@ -229,7 +254,7 @@ function createBrowserApi() {
 // src/preload/index.ts
 function exposeBrowserApi() {
   if (process.contextIsolated) {
-    import_electron6.contextBridge.exposeInMainWorld(BROWSER_API_GLOBAL_KEY, createBrowserApi());
+    import_electron7.contextBridge.exposeInMainWorld(BROWSER_API_GLOBAL_KEY, createBrowserApi());
   } else {
     ;
     globalThis[BROWSER_API_GLOBAL_KEY] = createBrowserApi();
