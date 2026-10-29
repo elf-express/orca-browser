@@ -182,7 +182,7 @@ resolve: {
 ### Token
 
 - token 是 64 個十六進位字元，存在 `<userDataDir>/orca-browser/mcp-token`（檔案權限 0600）。檔案不存在、空檔或內容不合法時，下次啟動會重新產生。
-- 輪替：main 用 `rotateMcpToken()`，renderer 用 `window.browserAPI.mcp.rotateToken()`。兩者都回傳新 token，舊 token 立刻 401。MCP 沒在運行時 reject（還沒啟動過，或 `dispose()` 之後）。
+- 輪替：main 用 `rotateMcpToken()`，renderer 用 `window.browserAPI.mcp.rotateToken()`。兩者都回傳新 token，舊 token 立刻 401。只有在還沒啟動過，或 `dispose()` 之後才 reject；埠被占用時仍會更新 token 檔並回傳新 token。
 - `@elf-express/orca-browser/shared` 匯出型別與常數，包括 `BrowserMcpEndpoint`、`BrowserMcpStatus` 與預設埠 `DEFAULT_MCP_PORT`。
 - 讀取目前的端點與 token：main 用 `getMcpEndpoint()`，renderer 用 `window.browserAPI.mcp.getEndpoint()`，回 `{ url, token }`；還沒開始監聽時回 `null`。
 

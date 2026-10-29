@@ -46,6 +46,7 @@ vi.mock('../browser/agent-browser-bridge-process', async (importActual) => {
 })
 
 import { agentBrowserNativeName } from '../browser/agent-browser-bridge-process'
+import { BROWSER_MCP_INVOKE_CHANNELS } from '../../shared/browser-ipc-channels'
 import { installBrowserGrab } from '../browser-grab-installer'
 import * as mainEntry from '../index'
 import { pluginInstallers } from '../plugin-installers'
@@ -198,12 +199,17 @@ describe('installBrowserAgentAutomation', () => {
   it('disposes the automation and rethrows when handler registration fails', async () => {
     fakeBinary()
     const { ipcMain } = await import('electron')
+    vi.mocked(ipcMain.removeHandler).mockClear()
     vi.mocked(ipcMain.handle).mockImplementationOnce(() => {
       throw new Error('handler boom')
     })
 
     expect(() => installBrowserAgentAutomation({ host: host(), mcpPort: 0 } as never)).toThrow(
       'handler boom'
+    )
+    // Registration unregisters once up front; the failure path must unregister again.
+    expect(vi.mocked(ipcMain.removeHandler).mock.calls.length).toBeGreaterThanOrEqual(
+      BROWSER_MCP_INVOKE_CHANNELS.length * 2
     )
     await vi.waitFor(() => expect(mocks.destroyAll).toHaveBeenCalledTimes(1))
     expect(mocks.setRef.mock.calls.at(-1)).toEqual([null])

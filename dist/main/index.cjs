@@ -9557,7 +9557,12 @@ var installBrowserAgentAutomation = (options) => {
   try {
     registerBrowserMcpHandlers();
   } catch (error) {
-    void automation.dispose();
+    unregisterBrowserMcpHandlers();
+    void automation.dispose().catch(
+      (disposeError) => options.host.logger.warn("orca-browser MCP cleanup after a failed install failed", {
+        error: String(disposeError)
+      })
+    );
     throw error;
   }
   return async () => {

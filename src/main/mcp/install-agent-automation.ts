@@ -77,7 +77,12 @@ export const installBrowserAgentAutomation: BrowserPluginInstaller = (options) =
     registerBrowserMcpHandlers()
   } catch (error) {
     // Do not leak the runtime and bridge when installation fails half way.
-    void automation.dispose()
+    unregisterBrowserMcpHandlers()
+    void automation.dispose().catch((disposeError) =>
+      options.host.logger.warn('orca-browser MCP cleanup after a failed install failed', {
+        error: String(disposeError)
+      })
+    )
     throw error
   }
 
