@@ -61,6 +61,7 @@ vi.mock('./cdp-bridge', () => ({
 
 import { AgentBrowserBridge } from './agent-browser-bridge'
 import {
+  cdpEndpointPassedTo,
   createFakeAgentBrowserChild,
   createSucceedWith,
   mockBrowserManager,
@@ -174,12 +175,13 @@ describe('AgentBrowserBridge', () => {
       await expect(bridge.snapshot()).rejects.toThrow('timed out')
     }
 
-    // Session is destroyed — next command should re-create it (new --cdp flag)
+    // Session is destroyed — next command should re-create it (new CDP endpoint)
     succeedWith({ snapshot: 'fresh' })
     await bridge.snapshot()
 
     const lastArgs = execFileMock.mock.calls.at(-1)![1] as string[]
-    expect(lastArgs).toContain('--cdp')
+    expect(lastArgs).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, lastArgs)).toBe('ws://127.0.0.1:9222')
   })
 
   it('bounds owner cleanup independently from command execution timeouts', async () => {
@@ -341,7 +343,7 @@ describe('AgentBrowserBridge', () => {
 
   // ── Process swap ──
 
-  it('destroys session on process swap and re-inits with --cdp', async () => {
+  it('destroys session on process swap and re-inits with the CDP endpoint', async () => {
     const tabs = new Map([['tab-1', 100]])
     const mgr = mockBrowserManager(tabs)
     const b = new AgentBrowserBridge(mgr)
@@ -350,11 +352,14 @@ describe('AgentBrowserBridge', () => {
     succeedWith({ snapshot: 'tree' })
     await b.snapshot()
 
-    // Why: calls[0] is the stale-session 'close'; find the snapshot call with --cdp
+    // Why: calls[0] is the stale-session 'close'; find the snapshot call carrying the CDP endpoint
     const firstSnapshotCall = execFileMock.mock.calls.find((c: unknown[]) =>
       (c[1] as string[]).includes('snapshot')
     )
-    expect(firstSnapshotCall![1]).toContain('--cdp')
+    expect(firstSnapshotCall![1]).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, firstSnapshotCall![1] as string[])).toBe(
+      'ws://127.0.0.1:9222'
+    )
 
     // Simulate process swap: update tab mapping + notify bridge
     tabs.set('tab-1', 200)
@@ -363,7 +368,7 @@ describe('AgentBrowserBridge', () => {
     succeedWith(null) // for the 'close' command in destroySession
     await b.onProcessSwap('tab-1', 200)
 
-    // Next command should re-init with --cdp since session was destroyed
+    // Next command should re-init with the CDP endpoint since session was destroyed
     succeedWith({ snapshot: 'new tree' })
     await b.snapshot()
 
@@ -372,8 +377,9 @@ describe('AgentBrowserBridge', () => {
     )
     expect(snapshotCalls.length).toBeGreaterThanOrEqual(2)
     const lastSnapshotArgs = snapshotCalls.at(-1)![1] as string[]
-    // After process swap + session destroy, the new session must re-init with --cdp
-    expect(lastSnapshotArgs).toContain('--cdp')
+    // After process swap + session destroy, the new session must re-init with the CDP endpoint
+    expect(lastSnapshotArgs).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, lastSnapshotArgs)).toBe('ws://127.0.0.1:9222')
   })
 
   it('rejects commands queued behind a running command when the page swaps guests', async () => {
@@ -433,7 +439,8 @@ describe('AgentBrowserBridge', () => {
     )
     expect(routeCalls).toHaveLength(2)
     expect(routeCalls.at(-1)).toContain('https://old.example/**')
-    expect(routeCalls.at(-1)).toContain('--cdp')
+    expect(routeCalls.at(-1)).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, routeCalls.at(-1)!)).toBe('ws://127.0.0.1:9222')
   })
 
   it('does not replay stale intercept routes after process swap when the first command disables routing', async () => {
@@ -469,7 +476,8 @@ describe('AgentBrowserBridge', () => {
       (args) => args.includes('network') && args.includes('unroute')
     )
     expect(unrouteCall).toBeDefined()
-    expect(unrouteCall).toContain('--cdp')
+    expect(unrouteCall).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, unrouteCall!)).toBe('ws://127.0.0.1:9222')
   })
 
   it('does not replay stale intercept routes after process swap when the first command enables a new route', async () => {
@@ -502,7 +510,8 @@ describe('AgentBrowserBridge', () => {
     expect(routeCalls).toHaveLength(1)
     expect(routeCalls[0]).toContain('https://new.example/**')
     expect(routeCalls[0]).not.toContain('https://old.example/**')
-    expect(routeCalls[0]).toContain('--cdp')
+    expect(routeCalls[0]).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, routeCalls[0]!)).toBe('ws://127.0.0.1:9222')
   })
 
   it('clears pending intercept restore state when a swapped tab closes before reuse', async () => {

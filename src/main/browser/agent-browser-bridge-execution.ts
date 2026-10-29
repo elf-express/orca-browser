@@ -13,6 +13,7 @@ import { translateResult } from './agent-browser-bridge-result'
 import { AgentBrowserBridgeTabs } from './agent-browser-bridge-tabs'
 import { ORCA_TAB_SESSION_PREFIX } from './agent-browser-orphan-sweep'
 import { canSkipAgentBrowserSessionReset } from './agent-browser-session-reset'
+import { redactCdpPathSecrets, withAgentBrowserCdpEndpoint } from './agent-browser-cdp-endpoint'
 import {
   STALE_SESSION_CLOSE_TIMEOUT_MS,
   type AgentBrowserExecOptions,
@@ -43,7 +44,7 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
   /**
    * Notice that the daemon retired itself between two commands.
    *
-   * A replacement daemon still serves the page (every call reasserts `--cdp`)
+   * A replacement daemon still serves the page (every call reasserts the CDP endpoint)
    * but carries none of the session's network routes, so without this the
    * interception the caller configured is silently gone (#16367).
    */
@@ -92,7 +93,8 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
 
     const needsInit = !session.initialized
     // Why: a restarted named daemon auto-launches Chrome unless every invocation reasserts Orca's CDP owner.
-    args.push('--cdp', String(session.proxy.getPort()))
+    // AGENT_BROWSER_CDP carries the secret-bearing proxy endpoint outside argv.
+    const cdpExecOptions = withAgentBrowserCdpEndpoint(execOptions, session.cdpEndpoint)
 
     // Why: exec passthrough can produce a large argv; spreading into push risks V8 argument limits.
     for (const commandArg of commandArgs) {
@@ -100,7 +102,7 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
     }
     args.push('--json')
 
-    const stdout = await this.runAgentBrowserRaw(sessionName, args, execOptions)
+    const stdout = await this.runAgentBrowserRaw(sessionName, args, cdpExecOptions)
     const translated = translateResult(stdout)
 
     if (!translated.ok) {
@@ -124,16 +126,11 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
         this.pendingInterceptRestore.delete(sessionName)
         try {
           const urlPattern = pendingPatterns[0] ?? '**/*'
-          await this.runAgentBrowserRaw(sessionName, [
-            '--session',
+          await this.runAgentBrowserRaw(
             sessionName,
-            '--cdp',
-            String(session.proxy.getPort()),
-            'network',
-            'route',
-            urlPattern,
-            '--json'
-          ])
+            ['--session', sessionName, 'network', 'route', urlPattern, '--json'],
+            withAgentBrowserCdpEndpoint(undefined, session.cdpEndpoint)
+          )
           session.activeInterceptPatterns = pendingPatterns
         } catch {
           // Why: intercept restore is best-effort — don't fail the user's command if the new page can't support it.
@@ -251,6 +248,7 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
     fallbackCode: string,
     webContentsId?: number
   ): BrowserError {
+    message = redactCdpPathSecrets(message)
     // Why: CDP "connection refused" can also mean a real proxy failure — only map to closed-page when the target is confirmed gone.
     if (
       fallbackCode === 'browser_error' &&

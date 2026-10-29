@@ -392,13 +392,15 @@ describe('AgentBrowserBridge', () => {
       let helperSessionIsStale = false
 
       execFileMock.mockImplementation(
-        (_bin: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        (_bin: string, args: string[], opts: unknown, cb: ExecFileCallback) => {
           if (args.includes('close')) {
             cb(null, JSON.stringify({ success: true, data: null }), '')
           } else if (args.includes('snapshot')) {
             cb(null, JSON.stringify({ success: true, data: { snapshot: 'ready' } }), '')
           } else {
-            if (helperSessionIsStale && !args.includes('--cdp')) {
+            const cdpEndpoint = (opts as { env?: NodeJS.ProcessEnv } | undefined)?.env
+              ?.AGENT_BROWSER_CDP
+            if (helperSessionIsStale && !cdpEndpoint) {
               wrongOwnerCalls.push(args)
             }
             cb(

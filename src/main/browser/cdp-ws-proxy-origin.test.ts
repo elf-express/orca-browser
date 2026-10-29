@@ -7,6 +7,7 @@ import {
   createMockWebContents,
   getSendCommandMethods,
   sendAndReceive,
+  pathSecretOf,
   type MockWebContents
 } from './cdp-ws-proxy-test-harness'
 
@@ -84,11 +85,19 @@ describe('CdpWsProxy loopback request guard', () => {
     await expect(
       httpStatus(proxy.getPort(), '/json/version', `evil.example:${proxy.getPort()}`)
     ).resolves.toBe(403)
+    await expect(
+      httpStatus(
+        proxy.getPort(),
+        `/${pathSecretOf(endpoint)}/json/version`,
+        `evil.example:${proxy.getPort()}`
+      )
+    ).resolves.toBe(403)
   })
 
   it('still answers discovery requests addressed to loopback', async () => {
     const port = proxy.getPort()
-    await expect(httpStatus(port, '/json/version', `127.0.0.1:${port}`)).resolves.toBe(200)
-    await expect(httpStatus(port, '/json/version', `localhost:${port}`)).resolves.toBe(200)
+    const path = `/${pathSecretOf(endpoint)}/json/version`
+    await expect(httpStatus(port, path, `127.0.0.1:${port}`)).resolves.toBe(200)
+    await expect(httpStatus(port, path, `localhost:${port}`)).resolves.toBe(200)
   })
 })

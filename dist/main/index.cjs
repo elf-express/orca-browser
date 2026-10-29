@@ -1777,18 +1777,18 @@ var CdpSyntheticSessionRegistry = class {
 
 // src/main/browser/cdp-target-discovery.ts
 var CdpTargetDiscovery = class {
-  constructor(webContents10, responder, sessions, getPort) {
+  constructor(webContents10, responder, sessions, getWebSocketDebuggerUrl) {
     this.webContents = webContents10;
     this.responder = responder;
     this.sessions = sessions;
-    this.getPort = getPort;
+    this.getWebSocketDebuggerUrl = getWebSocketDebuggerUrl;
   }
   webContents;
   responder;
   sessions;
-  getPort;
-  handleHttpRequest(req, res) {
-    const url = req.url ?? "";
+  getWebSocketDebuggerUrl;
+  /** `url` is the request path with the proxy's path secret already removed. */
+  handleHttpRequest(req, res, url = req.url ?? "") {
     if (url === "/json/version" || url === "/json/version/") {
       res.writeHead(200, { "Content-Type": "application/json" });
       const chromeVersion = process.versions.chrome ?? "134.0.0.0";
@@ -1796,7 +1796,7 @@ var CdpTargetDiscovery = class {
         JSON.stringify({
           Browser: `Chrome/${chromeVersion}`,
           "Protocol-Version": "1.3",
-          webSocketDebuggerUrl: `ws://127.0.0.1:${this.getPort()}`
+          webSocketDebuggerUrl: this.getWebSocketDebuggerUrl()
         })
       );
       return;
@@ -1808,7 +1808,7 @@ var CdpTargetDiscovery = class {
           {
             ...this.buildTargetInfo(),
             id: "orca-proxy-target",
-            webSocketDebuggerUrl: `ws://127.0.0.1:${this.getPort()}`
+            webSocketDebuggerUrl: this.getWebSocketDebuggerUrl()
           }
         ])
       );
@@ -2353,6 +2353,27 @@ function isTrustedCdpLoopbackRequest(req, port) {
   return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
 }
 
+// src/main/browser/cdp-path-secret.ts
+var import_node_crypto2 = require("node:crypto");
+function createCdpPathSecret() {
+  return (0, import_node_crypto2.randomBytes)(32).toString("hex");
+}
+function stripCdpPathSecret(url, secret) {
+  if (!secret || !url?.startsWith("/")) {
+    return null;
+  }
+  const segmentEnd = url.indexOf("/", 1);
+  if (segmentEnd === -1) {
+    return null;
+  }
+  const candidate = Buffer.from(url.slice(1, segmentEnd));
+  const expected = Buffer.from(secret);
+  if (candidate.length !== expected.length || !(0, import_node_crypto2.timingSafeEqual)(candidate, expected)) {
+    return null;
+  }
+  return url.slice(segmentEnd);
+}
+
 // src/main/browser/cdp-ws-proxy.ts
 var CdpWsProxy = class {
   constructor(webContents10, holdPaint) {
@@ -2361,7 +2382,7 @@ var CdpWsProxy = class {
       webContents10,
       this.responder,
       this.sessions,
-      () => this.port
+      () => this.webSocketUrl()
     );
     this.debuggerChannel = new CdpDebuggerChannel(
       webContents10,
@@ -2385,6 +2406,8 @@ var CdpWsProxy = class {
   client = null;
   detachClientListeners = null;
   port = 0;
+  // Required first path segment for discovery and the websocket upgrade; regenerated on every start.
+  pathSecret = "";
   responder = new CdpClientResponseWriter(() => this.client);
   sessions = new CdpSyntheticSessionRegistry();
   discovery;
@@ -2394,6 +2417,7 @@ var CdpWsProxy = class {
   pageCapture;
   async start() {
     await this.debuggerChannel.attachDebugger();
+    this.pathSecret = createCdpPathSecret();
     return new Promise((resolve, reject) => {
       this.httpServer = (0, import_node_http.createServer)((req, res) => {
         if (!isTrustedCdpLoopbackRequest(req, this.port)) {
@@ -2401,11 +2425,23 @@ var CdpWsProxy = class {
           res.end();
           return;
         }
-        this.discovery.handleHttpRequest(req, res);
+        const path = stripCdpPathSecret(req.url, this.pathSecret);
+        if (path === null) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        this.discovery.handleHttpRequest(req, res, path);
       });
       this.wss = new import_ws3.WebSocketServer({
         server: this.httpServer,
-        verifyClient: ({ req }, done) => done(isTrustedCdpLoopbackRequest(req, this.port), 403)
+        verifyClient: ({ req }, done) => {
+          if (!isTrustedCdpLoopbackRequest(req, this.port)) {
+            done(false, 403);
+            return;
+          }
+          done(stripCdpPathSecret(req.url, this.pathSecret) !== null, 404);
+        }
       });
       const failStart = (error) => {
         this.httpServer?.removeListener("error", onListenError);
@@ -2448,7 +2484,7 @@ var CdpWsProxy = class {
         const addr = this.httpServer.address();
         if (typeof addr === "object" && addr) {
           this.port = addr.port;
-          resolve(`ws://127.0.0.1:${this.port}`);
+          resolve(this.webSocketUrl());
         } else {
           failStart(new Error("Failed to bind proxy server"));
         }
@@ -2457,6 +2493,7 @@ var CdpWsProxy = class {
     });
   }
   async stop() {
+    this.pathSecret = "";
     this.debuggerChannel.detachDebugger();
     this.closeClient();
     if (this.wss) {
@@ -2470,6 +2507,9 @@ var CdpWsProxy = class {
   }
   getPort() {
     return this.port;
+  }
+  webSocketUrl() {
+    return `ws://127.0.0.1:${this.port}/${this.pathSecret}/`;
   }
   closeClient() {
     const client = this.client;
@@ -2606,7 +2646,7 @@ function translateResult(stdout) {
 var import_electron = require("electron");
 
 // src/main/browser/agent-browser-process-environment.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
 var AGENT_BROWSER_SOCKET_DIRECTORY_PREFIX = "orca-ab-";
@@ -2619,7 +2659,7 @@ function createAgentBrowserProcessEnvironment(options) {
   if (options.platform === "win32" || env.AGENT_BROWSER_SOCKET_DIR?.trim()) {
     return { env, ownsSocketDirectory: false };
   }
-  const profileKey = (0, import_node_crypto2.createHash)("sha256").update(options.userDataPath).digest("hex").slice(0, 16);
+  const profileKey = (0, import_node_crypto3.createHash)("sha256").update(options.userDataPath).digest("hex").slice(0, 16);
   const socketDirectory = import_node_path2.posix.join(
     "/tmp",
     `${AGENT_BROWSER_SOCKET_DIRECTORY_PREFIX}${profileKey}`
@@ -2892,6 +2932,18 @@ function canSkipAgentBrowserSessionReset(options) {
   }
 }
 
+// src/main/browser/agent-browser-cdp-endpoint.ts
+var LOOPBACK_CDP_PATH_SECRET = /(wss?:\/\/(?:127\.0\.0\.1|localhost):\d+\/)[\da-f]{64}(?=\/|\b)/gi;
+function withAgentBrowserCdpEndpoint(execOptions, cdpEndpoint) {
+  return {
+    ...execOptions,
+    envOverrides: { ...execOptions?.envOverrides, AGENT_BROWSER_CDP: cdpEndpoint }
+  };
+}
+function redactCdpPathSecrets(text) {
+  return text.replace(LOOPBACK_CDP_PATH_SECRET, "$1<redacted>");
+}
+
 // src/main/browser/agent-browser-bridge-execution.ts
 var AgentBrowserBridgeExecution = class extends AgentBrowserBridgeTabs {
   requireTargetWebContents(target) {
@@ -2904,7 +2956,7 @@ var AgentBrowserBridgeExecution = class extends AgentBrowserBridgeTabs {
   /**
    * Notice that the daemon retired itself between two commands.
    *
-   * A replacement daemon still serves the page (every call reasserts `--cdp`)
+   * A replacement daemon still serves the page (every call reasserts the CDP endpoint)
    * but carries none of the session's network routes, so without this the
    * interception the caller configured is silently gone (#16367).
    */
@@ -2936,12 +2988,12 @@ var AgentBrowserBridgeExecution = class extends AgentBrowserBridgeTabs {
     const args = ["--session", sessionName];
     const managesInterceptRoutes = commandArgs[0] === "network" && (commandArgs[1] === "route" || commandArgs[1] === "unroute");
     const needsInit = !session5.initialized;
-    args.push("--cdp", String(session5.proxy.getPort()));
+    const cdpExecOptions = withAgentBrowserCdpEndpoint(execOptions, session5.cdpEndpoint);
     for (const commandArg of commandArgs) {
       args.push(commandArg);
     }
     args.push("--json");
-    const stdout = await this.runAgentBrowserRaw(sessionName, args, execOptions);
+    const stdout = await this.runAgentBrowserRaw(sessionName, args, cdpExecOptions);
     const translated = translateResult(stdout);
     if (!translated.ok) {
       throw this.createCommandError(
@@ -2958,16 +3010,11 @@ var AgentBrowserBridgeExecution = class extends AgentBrowserBridgeTabs {
         this.pendingInterceptRestore.delete(sessionName);
         try {
           const urlPattern = pendingPatterns[0] ?? "**/*";
-          await this.runAgentBrowserRaw(sessionName, [
-            "--session",
+          await this.runAgentBrowserRaw(
             sessionName,
-            "--cdp",
-            String(session5.proxy.getPort()),
-            "network",
-            "route",
-            urlPattern,
-            "--json"
-          ]);
+            ["--session", sessionName, "network", "route", urlPattern, "--json"],
+            withAgentBrowserCdpEndpoint(void 0, session5.cdpEndpoint)
+          );
           session5.activeInterceptPatterns = pendingPatterns;
         } catch {
         }
@@ -3056,6 +3103,7 @@ var AgentBrowserBridgeExecution = class extends AgentBrowserBridgeTabs {
     });
   }
   createCommandError(sessionName, message, fallbackCode, webContentsId) {
+    message = redactCdpPathSecrets(message);
     if (fallbackCode === "browser_error" && isTabClosedTransportError(message) && this.isSessionTargetClosed(sessionName, webContentsId)) {
       return this.createPageUnavailableError(sessionName);
     }
@@ -6753,7 +6801,7 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
 var import_electron5 = require("electron");
 
 // src/main/browser/browser-identity-mode-store.ts
-var import_node_crypto3 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 var import_node_fs8 = require("node:fs");
 var import_node_path6 = require("node:path");
 
@@ -6917,7 +6965,7 @@ function writeRecord(userDataPath, record) {
 function backupUnhealthyRecord(userDataPath) {
   const filePath = browserIdentityModeRecordPath(userDataPath);
   const bytes = (0, import_node_fs8.readFileSync)(filePath);
-  const backupPath = `${filePath}.${Date.now()}.${(0, import_node_crypto3.randomUUID)().slice(0, 8)}.bak`;
+  const backupPath = `${filePath}.${Date.now()}.${(0, import_node_crypto4.randomUUID)().slice(0, 8)}.bak`;
   if ((0, import_node_fs8.existsSync)(backupPath)) {
     throw new Error(`Browser identity backup ${backupPath} already exists`);
   }
@@ -8882,7 +8930,7 @@ ${result.snapshot}`);
 }
 
 // src/main/mcp/mcp-http-server.ts
-var import_node_crypto4 = require("node:crypto");
+var import_node_crypto5 = require("node:crypto");
 var import_node_http2 = require("node:http");
 var import_streamableHttp = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 var MCP_HOST = "127.0.0.1";
@@ -8910,7 +8958,7 @@ function isAuthorized(header, expected) {
   }
   const provided = Buffer.from(match[1]);
   const wanted = Buffer.from(expected);
-  return provided.length === wanted.length && (0, import_node_crypto4.timingSafeEqual)(provided, wanted);
+  return provided.length === wanted.length && (0, import_node_crypto5.timingSafeEqual)(provided, wanted);
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -9044,7 +9092,7 @@ var BrowserMcpHttpServer = class {
 };
 
 // src/main/mcp/mcp-token-store.ts
-var import_node_crypto5 = require("node:crypto");
+var import_node_crypto6 = require("node:crypto");
 var import_promises = require("node:fs/promises");
 var import_node_path7 = require("node:path");
 var MCP_TOKEN_RELATIVE_PATH = "orca-browser/mcp-token";
@@ -9078,10 +9126,10 @@ async function loadOrCreate(userDataDir) {
   return writeNew(userDataDir);
 }
 async function writeNew(userDataDir) {
-  const token = (0, import_node_crypto5.randomBytes)(32).toString("hex");
+  const token = (0, import_node_crypto6.randomBytes)(32).toString("hex");
   const target = tokenPath(userDataDir);
   await (0, import_promises.mkdir)((0, import_node_path7.dirname)(target), { recursive: true, mode: 448 });
-  const temp = `${target}.${process.pid}.${(0, import_node_crypto5.randomBytes)(4).toString("hex")}.tmp`;
+  const temp = `${target}.${process.pid}.${(0, import_node_crypto6.randomBytes)(4).toString("hex")}.tmp`;
   await (0, import_promises.writeFile)(temp, token, { mode: 384 });
   await (0, import_promises.rename)(temp, target);
   return token;
@@ -9845,7 +9893,7 @@ var import_node_path22 = require("node:path");
 
 // src/main/browser/browser-session-registry.ts
 var import_electron22 = require("electron");
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 var import_node_path12 = require("node:path");
 
 // src/shared/orca-profiles.ts
@@ -10881,7 +10929,7 @@ var BrowserSessionRegistry = class {
     if (scope !== "isolated" && scope !== "imported") {
       return null;
     }
-    const id = (0, import_node_crypto6.randomUUID)();
+    const id = (0, import_node_crypto7.randomUUID)();
     const partition = getOrcaProfileBrowserSessionPartition(this.activeOrcaProfileId, id);
     const profile = {
       id,
@@ -12271,7 +12319,7 @@ var import_node_fs19 = require("node:fs");
 
 // src/main/browser/browser-cookie-chromium-prepare.ts
 var import_electron27 = require("electron");
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var import_node_fs18 = require("node:fs");
 var import_node_sqlite2 = require("node:sqlite");
 var import_node_path20 = require("node:path");
@@ -12369,7 +12417,7 @@ function createChromiumCookieSnapshot(sourcePath, options = {}) {
 }
 
 // src/main/browser/browser-cookie-key.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto8 = require("node:crypto");
 var import_node_fs17 = require("node:fs");
 var import_node_path19 = require("node:path");
 
@@ -12432,7 +12480,7 @@ function getMacEncryptionKey(keychainService, keychainAccount) {
     return {
       mode: "aes-128-cbc",
       keysByVersion: {
-        v10: (0, import_node_crypto7.pbkdf2Sync)(raw, PBKDF2_SALT, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH, "sha1")
+        v10: (0, import_node_crypto8.pbkdf2Sync)(raw, PBKDF2_SALT, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH, "sha1")
       }
     };
   } catch {
@@ -12440,7 +12488,7 @@ function getMacEncryptionKey(keychainService, keychainAccount) {
   }
 }
 function getLinuxEncryptionKey(keychainService, keychainAccount) {
-  const v10Key = (0, import_node_crypto7.pbkdf2Sync)("peanuts", PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
+  const v10Key = (0, import_node_crypto8.pbkdf2Sync)("peanuts", PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
   let keyringPassword = "";
   try {
     keyringPassword = runKeychainCommand(
@@ -12463,7 +12511,7 @@ function getLinuxEncryptionKey(keychainService, keychainAccount) {
       keyringUnavailable: true
     };
   }
-  const v11Key = (0, import_node_crypto7.pbkdf2Sync)(keyringPassword, PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
+  const v11Key = (0, import_node_crypto8.pbkdf2Sync)(keyringPassword, PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
   return { mode: "aes-128-cbc", keysByVersion: { v10: v10Key, v11: v11Key } };
 }
 function getWindowsEncryptionKey(browser) {
@@ -12546,7 +12594,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
   const partitionSegment = partitionName.replace(/[^a-zA-Z0-9_-]/g, "_");
   const stagingCookiesPath = (0, import_node_path20.join)(
     stagingDir,
-    `Cookies-${partitionSegment}-${Date.now()}-${(0, import_node_crypto8.randomUUID)()}`
+    `Cookies-${partitionSegment}-${Date.now()}-${(0, import_node_crypto9.randomUUID)()}`
   );
   let stagingAvailable = false;
   if (!supportsPendingBrowserCookieImportReplay(targetPartition)) {
@@ -12863,7 +12911,7 @@ function buildChromiumCookieInsertParams(targetColumns, sourceRow, decryptedValu
 }
 
 // src/main/browser/browser-cookie-decryption.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var CHROMIUM_COOKIE_HMAC_LEN = 32;
 function hasHmacPrefix(buf) {
   if (buf.length <= CHROMIUM_COOKIE_HMAC_LEN) {
@@ -12878,7 +12926,7 @@ function hasHmacPrefix(buf) {
   return nonPrintable >= 8;
 }
 function hasHostKeyHashPrefix(buf, hostKey) {
-  return buf.length >= CHROMIUM_COOKIE_HMAC_LEN && buf.subarray(0, CHROMIUM_COOKIE_HMAC_LEN).equals((0, import_node_crypto9.createHash)("sha256").update(hostKey).digest());
+  return buf.length >= CHROMIUM_COOKIE_HMAC_LEN && buf.subarray(0, CHROMIUM_COOKIE_HMAC_LEN).equals((0, import_node_crypto10.createHash)("sha256").update(hostKey).digest());
 }
 function stripHmac(buf, hostKey) {
   return hasHostKeyHashPrefix(buf, hostKey) || hasHmacPrefix(buf) ? buf.subarray(CHROMIUM_COOKIE_HMAC_LEN) : buf;
@@ -12933,7 +12981,7 @@ function decryptCookieValueRaw(encryptedBuffer, keyResult, hostKey) {
   }
   try {
     const iv = Buffer.alloc(16, " ");
-    const decipher = (0, import_node_crypto9.createDecipheriv)("aes-128-cbc", key, iv);
+    const decipher = (0, import_node_crypto10.createDecipheriv)("aes-128-cbc", key, iv);
     decipher.setAutoPadding(true);
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return stripHmac(decrypted, hostKey);
@@ -12949,7 +12997,7 @@ function decryptAes256Gcm(payload, key, hostKey) {
   const authTag = payload.subarray(-16);
   const ciphertext = payload.subarray(12, -16);
   try {
-    const decipher = (0, import_node_crypto9.createDecipheriv)("aes-256-gcm", key, nonce);
+    const decipher = (0, import_node_crypto10.createDecipheriv)("aes-256-gcm", key, nonce);
     decipher.setAuthTag(authTag);
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return stripHmac(decrypted, hostKey);

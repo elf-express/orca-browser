@@ -1,4 +1,5 @@
 import { vi, type Mock } from 'vitest'
+import { request as httpRequest } from 'node:http'
 import WebSocket from 'ws'
 
 type DebuggerListener = (...args: unknown[]) => void
@@ -118,4 +119,45 @@ export function getSendCommandCalls(mock: MockWebContents): SendCommandCall[] {
 
 export function getSendCommandMethods(mock: MockWebContents): string[] {
   return getSendCommandCalls(mock).map((call) => call[0])
+}
+
+/** Extracts the per-start path secret from a proxy endpoint such as `ws://127.0.0.1:1234/<secret>/`. */
+export function pathSecretOf(endpoint: string): string {
+  return new URL(endpoint).pathname.split('/')[1] ?? ''
+}
+
+/** Sends a plain loopback HTTP GET to the proxy and returns its status and body. */
+export function httpGet(
+  port: number,
+  path: string,
+  host = `127.0.0.1:${port}`
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, path, headers: { Host: host } }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk: string) => {
+        body += chunk
+      })
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+/** Attempts a websocket handshake and resolves with the HTTP status, or 101 when it was accepted. */
+export function upgradeStatus(url: string): Promise<number> {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(url)
+    ws.on('open', () => {
+      ws.close()
+      resolve(101)
+    })
+    ws.on('unexpected-response', (_req, res) => {
+      resolve(res.statusCode ?? 0)
+      ws.terminate()
+    })
+    ws.on('error', () => {})
+  })
 }

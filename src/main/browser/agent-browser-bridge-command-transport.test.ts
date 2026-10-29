@@ -24,17 +24,23 @@ vi.mock('electron', () => {
     webContents: { fromId: webContentsFromIdMock }
   }
 })
-const { CdpWsProxyMock } = vi.hoisted(() => {
+const { CdpWsProxyMock, PROXY_SECRET, PROXY_ENDPOINT } = vi.hoisted(() => {
   const instances: unknown[] = []
+  const secret = 'c0ffee'.repeat(10) + 'c0de'
+  const endpoint = `ws://127.0.0.1:9222/${secret}/`
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const MockClass = vi.fn().mockImplementation(function (this: any, _wc: unknown) {
     this._wc = _wc
-    this.start = vi.fn(async () => 'ws://127.0.0.1:9222')
+    this.start = vi.fn(async () => endpoint)
     this.stop = vi.fn(async () => {})
     this.getPort = vi.fn(() => 9222)
     instances.push(this)
   })
-  return { CdpWsProxyMock: Object.assign(MockClass, { instances }) }
+  return {
+    CdpWsProxyMock: Object.assign(MockClass, { instances }),
+    PROXY_SECRET: secret,
+    PROXY_ENDPOINT: endpoint
+  }
 })
 
 vi.mock('./cdp-ws-proxy', () => ({
@@ -53,6 +59,7 @@ vi.mock('./cdp-bridge', () => ({
 import { AgentBrowserBridge } from './agent-browser-bridge'
 import { AGENT_BROWSER_IDLE_TIMEOUT_MS } from './agent-browser-process-environment'
 import {
+  cdpEndpointPassedTo,
   createFakeAgentBrowserChild,
   createSucceedWith,
   mockBrowserManager,
@@ -105,7 +112,7 @@ describe('AgentBrowserBridge', () => {
 
   // ── Embedded CDP ownership ──
 
-  it('passes --cdp on every helper command family so a restarted daemon cannot launch Chrome', async () => {
+  it('passes the CDP endpoint on every helper command family so a restarted daemon cannot launch Chrome', async () => {
     succeedWith({ snapshot: '...' })
     await bridge.snapshot()
 
@@ -113,9 +120,8 @@ describe('AgentBrowserBridge', () => {
     const snapshotCall = execFileMock.mock.calls.find((c: unknown[]) =>
       (c[1] as string[]).includes('snapshot')
     )
-    expect(snapshotCall![1]).toContain('--cdp')
-    const cdpIdx = (snapshotCall![1] as string[]).indexOf('--cdp')
-    expect((snapshotCall![1] as string[])[cdpIdx + 1]).toBe('9222')
+    expect(snapshotCall![1]).not.toContain('--cdp')
+    expect(cdpEndpointPassedTo(execFileMock, snapshotCall![1] as string[])).toBe(PROXY_ENDPOINT)
 
     await bridge.click('@e1')
     await bridge.scroll('down')
@@ -129,8 +135,77 @@ describe('AgentBrowserBridge', () => {
       )
       expect(call).toBeDefined()
       const args = call![1] as string[]
-      expect(args).toContain('--cdp')
-      expect(args[args.indexOf('--cdp') + 1]).toBe('9222')
+      expect(args).not.toContain('--cdp')
+      expect(cdpEndpointPassedTo(execFileMock, args)).toBe(PROXY_ENDPOINT)
+    }
+  })
+
+  it('keeps the CDP path secret out of every agent-browser argv', async () => {
+    succeedWith({ snapshot: '...' })
+    await bridge.snapshot()
+    await bridge.click('@e1')
+    await bridge.exec('get title')
+    await bridge.interceptEnable(['https://example.com/**'])
+
+    expect(execFileMock.mock.calls.length).toBeGreaterThan(0)
+    for (const call of execFileMock.mock.calls) {
+      const args = call[1] as string[]
+      expect(args.join(' ')).not.toContain(PROXY_SECRET)
+      expect(args).not.toContain('--cdp')
+    }
+  })
+
+  it('does not let exec passthrough override the CDP endpoint with its own --cdp', async () => {
+    succeedWith({ ok: true })
+    await bridge.exec('--cdp 9333 get title')
+
+    const call = execFileMock.mock.calls.find((c: unknown[]) =>
+      (c[1] as string[]).includes('title')
+    )
+    expect(call![1]).not.toContain('--cdp')
+    expect(call![1]).not.toContain('9333')
+    expect(cdpEndpointPassedTo(execFileMock, call![1] as string[])).toBe(PROXY_ENDPOINT)
+  })
+
+  it('does not pass the CDP endpoint to session close commands', async () => {
+    succeedWith({ snapshot: '...' })
+    await bridge.snapshot()
+
+    const closeCall = execFileMock.mock.calls.find((c: unknown[]) =>
+      (c[1] as string[]).includes('close')
+    )
+    expect(closeCall).toBeDefined()
+    expect((closeCall![2] as { env?: NodeJS.ProcessEnv }).env?.AGENT_BROWSER_CDP).toBeUndefined()
+  })
+
+  it('redacts the CDP path secret from agent-browser error messages', async () => {
+    failWith(`CDP WebSocket connect failed at ${PROXY_ENDPOINT}: HTTP error: 404 Not Found`)
+
+    const error = await bridge.snapshot().catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).not.toContain(PROXY_SECRET)
+    expect((error as Error).message).toContain('ws://127.0.0.1:9222/')
+  })
+
+  it('never writes the CDP path secret to the console', async () => {
+    const methods = ['log', 'info', 'warn', 'error', 'debug'] as const
+    const spies = methods.map((method) => vi.spyOn(console, method).mockImplementation(() => {}))
+    try {
+      succeedWith({ snapshot: '...' })
+      await bridge.snapshot()
+      await bridge.exec('get title')
+      failWith(`CDP WebSocket connect failed at ${PROXY_ENDPOINT}`)
+      await bridge.snapshot().catch(() => {})
+
+      for (const spy of spies) {
+        for (const call of spy.mock.calls) {
+          expect(JSON.stringify(call)).not.toContain(PROXY_SECRET)
+        }
+      }
+    } finally {
+      for (const spy of spies) {
+        spy.mockRestore()
+      }
     }
   })
 

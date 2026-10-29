@@ -138,3 +138,12 @@ export function resetAgentBrowserBridgeMocks(mocks: AgentBrowserBridgeMocks): vo
   mocks.readFileSyncMock.mockReturnValue(Buffer.from(''))
   mocks.webContentsFromIdMock.mockReturnValue(mockWebContents(100))
 }
+
+/** Returns the CDP endpoint the bridge handed agent-browser through the environment for one execFile call. */
+export function cdpEndpointPassedTo(
+  execFileMock: Mock,
+  args: readonly string[]
+): string | undefined {
+  const call = execFileMock.mock.calls.find((candidate: unknown[]) => candidate[1] === args)
+  return (call?.[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env?.AGENT_BROWSER_CDP
+}

@@ -13,11 +13,11 @@ export class CdpTargetDiscovery {
     private readonly webContents: WebContents,
     private readonly responder: CdpClientResponseWriter,
     private readonly sessions: CdpSyntheticSessionRegistry,
-    private readonly getPort: () => number
+    private readonly getWebSocketDebuggerUrl: () => string
   ) {}
 
-  handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
-    const url = req.url ?? ''
+  /** `url` is the request path with the proxy's path secret already removed. */
+  handleHttpRequest(req: IncomingMessage, res: ServerResponse, url = req.url ?? ''): void {
     if (url === '/json/version' || url === '/json/version/') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       // Why: agent-browser reads this endpoint to identify the browser. Returning
@@ -30,7 +30,7 @@ export class CdpTargetDiscovery {
         JSON.stringify({
           Browser: `Chrome/${chromeVersion}`,
           'Protocol-Version': '1.3',
-          webSocketDebuggerUrl: `ws://127.0.0.1:${this.getPort()}`
+          webSocketDebuggerUrl: this.getWebSocketDebuggerUrl()
         })
       )
       return
@@ -42,7 +42,7 @@ export class CdpTargetDiscovery {
           {
             ...this.buildTargetInfo(),
             id: 'orca-proxy-target',
-            webSocketDebuggerUrl: `ws://127.0.0.1:${this.getPort()}`
+            webSocketDebuggerUrl: this.getWebSocketDebuggerUrl()
           }
         ])
       )

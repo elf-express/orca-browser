@@ -10,6 +10,7 @@ import { CdpDomFocusReplay } from './cdp-dom-focus-replay'
 import { CdpPageCaptureCommands } from './cdp-page-capture-commands'
 import type { CapturePaintHold } from './cdp-screenshot'
 import { isTrustedCdpLoopbackRequest } from './cdp-loopback-request-guard'
+import { createCdpPathSecret, stripCdpPathSecret } from './cdp-path-secret'
 
 export class CdpWsProxy {
   private httpServer: Server | null = null
@@ -17,6 +18,8 @@ export class CdpWsProxy {
   private client: WebSocket | null = null
   private detachClientListeners: (() => void) | null = null
   private port = 0
+  // Required first path segment for discovery and the websocket upgrade; regenerated on every start.
+  private pathSecret = ''
   private readonly responder = new CdpClientResponseWriter(() => this.client)
   private readonly sessions = new CdpSyntheticSessionRegistry()
   private readonly discovery: CdpTargetDiscovery
@@ -29,11 +32,8 @@ export class CdpWsProxy {
     private readonly webContents: WebContents,
     holdPaint: CapturePaintHold
   ) {
-    this.discovery = new CdpTargetDiscovery(
-      webContents,
-      this.responder,
-      this.sessions,
-      () => this.port
+    this.discovery = new CdpTargetDiscovery(webContents, this.responder, this.sessions, () =>
+      this.webSocketUrl()
     )
     this.debuggerChannel = new CdpDebuggerChannel(
       webContents,
@@ -54,6 +54,7 @@ export class CdpWsProxy {
 
   async start(): Promise<string> {
     await this.debuggerChannel.attachDebugger()
+    this.pathSecret = createCdpPathSecret()
     return new Promise<string>((resolve, reject) => {
       this.httpServer = createServer((req, res) => {
         if (!isTrustedCdpLoopbackRequest(req, this.port)) {
@@ -61,11 +62,23 @@ export class CdpWsProxy {
           res.end()
           return
         }
-        this.discovery.handleHttpRequest(req, res)
+        const path = stripCdpPathSecret(req.url, this.pathSecret)
+        if (path === null) {
+          res.writeHead(404)
+          res.end()
+          return
+        }
+        this.discovery.handleHttpRequest(req, res, path)
       })
       this.wss = new WebSocketServer({
         server: this.httpServer,
-        verifyClient: ({ req }, done) => done(isTrustedCdpLoopbackRequest(req, this.port), 403)
+        verifyClient: ({ req }, done) => {
+          if (!isTrustedCdpLoopbackRequest(req, this.port)) {
+            done(false, 403)
+            return
+          }
+          done(stripCdpPathSecret(req.url, this.pathSecret) !== null, 404)
+        }
       })
       const failStart = (error: Error): void => {
         this.httpServer?.removeListener('error', onListenError)
@@ -110,7 +123,7 @@ export class CdpWsProxy {
         const addr = this.httpServer!.address()
         if (typeof addr === 'object' && addr) {
           this.port = addr.port
-          resolve(`ws://127.0.0.1:${this.port}`)
+          resolve(this.webSocketUrl())
         } else {
           failStart(new Error('Failed to bind proxy server'))
         }
@@ -120,6 +133,7 @@ export class CdpWsProxy {
   }
 
   async stop(): Promise<void> {
+    this.pathSecret = ''
     this.debuggerChannel.detachDebugger()
     this.closeClient()
     if (this.wss) {
@@ -134,6 +148,10 @@ export class CdpWsProxy {
 
   getPort(): number {
     return this.port
+  }
+
+  private webSocketUrl(): string {
+    return `ws://127.0.0.1:${this.port}/${this.pathSecret}/`
   }
 
   private closeClient(): void {

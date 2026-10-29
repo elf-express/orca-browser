@@ -178,6 +178,7 @@ resolve: {
 - 換埠：`installBrowserPlugin({ host, mcp: { port: 48000 } })`。埠必須是 1024–65535 的整數，否則安裝時丟錯。
 - 帶 `Origin` 標頭的請求一律回 403，所以網頁裡的 script 打不到它；CLI 型 agent 不帶 `Origin`，不受影響。
 - 每個請求都要帶 `Authorization: Bearer <token>`，缺少或不符回 401。
+- 每個分頁另有一個只綁 127.0.0.1 的 CDP proxy 供 agent-browser 連線。它每次啟動都產生隨機路徑密鑰，discovery 與 WebSocket 都必須走 `/<密鑰>/` 開頭的路徑，否則回 404；密鑰經環境變數 `AGENT_BROWSER_CDP` 傳給 agent-browser，不出現在命令列參數。
 
 ### Token
 
