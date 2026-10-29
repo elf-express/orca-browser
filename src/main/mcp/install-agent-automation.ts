@@ -73,7 +73,13 @@ export const installBrowserAgentAutomation: BrowserPluginInstaller = (options) =
     browserManager,
     mcpPort: options.mcpPort
   })
-  registerBrowserMcpHandlers()
+  try {
+    registerBrowserMcpHandlers()
+  } catch (error) {
+    // Do not leak the runtime and bridge when installation fails half way.
+    void automation.dispose()
+    throw error
+  }
 
   return async () => {
     unregisterBrowserMcpHandlers()

@@ -8670,9 +8670,16 @@ function createBrowserMcpServer(deps) {
       description: describeTool("Navigate a tab of the embedded browser to a URL."),
       inputSchema: { url: import_zod.z.string().min(1), ...targetShape }
     },
-    guarded(
-      async ({ url, scopeId, browserPageId }) => jsonResult(await bridge.goto(url, scopeId, browserPageId))
-    )
+    guarded(async ({ url, scopeId, browserPageId }) => {
+      const normalized = normalizeBrowserNavigationUrl(url);
+      if (normalized === null) {
+        return errorResult("invalid_argument: unsupported URL");
+      }
+      if (isFileUrl(normalized)) {
+        return errorResult("invalid_argument: local files cannot be opened in the embedded browser");
+      }
+      return jsonResult(await bridge.goto(url, scopeId, browserPageId));
+    })
   );
   server.registerTool(
     "back",
@@ -9547,7 +9554,12 @@ var installBrowserAgentAutomation = (options) => {
     browserManager,
     mcpPort: options.mcpPort
   });
-  registerBrowserMcpHandlers();
+  try {
+    registerBrowserMcpHandlers();
+  } catch (error) {
+    void automation.dispose();
+    throw error;
+  }
   return async () => {
     unregisterBrowserMcpHandlers();
     await automation.dispose();

@@ -296,4 +296,34 @@ describe('browser MCP tools', () => {
     const result = await call(client, 'click', { element: '#a' })
     expect(result.content[0].text).toBe('browser_error: before\nafter')
   })
+
+  it.each([
+    'file:///C:/',
+    'C:\\Users\\x\\.ssh\\id_rsa',
+    '/etc/passwd',
+    '\\\\attacker.example\\share\\x.html'
+  ])('goto rejects local file target %s without calling the bridge', async (url) => {
+    const { client, bridge } = await connect()
+    const result = await call(client, 'goto', { url })
+    expect(bridge.goto).not.toHaveBeenCalled()
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toMatch(
+      /^invalid_argument: (local files cannot be opened in the embedded browser|unsupported URL)$/
+    )
+  })
+
+  it('goto reports local files with the dedicated message', async () => {
+    const { client } = await connect()
+    const result = await call(client, 'goto', { url: 'file:///C:/' })
+    expect(result.content[0].text).toBe(
+      'invalid_argument: local files cannot be opened in the embedded browser'
+    )
+  })
+
+  it('goto passes an https URL through unchanged', async () => {
+    const { client, bridge } = await connect()
+    bridge.goto.mockResolvedValue({ url: 'https://example.com/', title: 'Example' })
+    await call(client, 'goto', { url: 'https://example.com' })
+    expect(bridge.goto).toHaveBeenCalledWith('https://example.com', undefined, undefined)
+  })
 })

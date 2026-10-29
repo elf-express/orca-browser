@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { AgentBrowserBridge } from '../browser/agent-browser-bridge'
 import type { AgentBrowserBinaryResolution } from '../browser/agent-browser-bridge-process'
 import { BrowserError } from '../browser/browser-error'
+import { isFileUrl, normalizeBrowserNavigationUrl } from '../../shared/browser-url'
 
 export const BROWSER_MCP_TOOL_NAMES = [
   'goto',
@@ -128,9 +129,18 @@ export function createBrowserMcpServer(deps: BrowserMcpToolDeps): McpServer {
       description: describeTool('Navigate a tab of the embedded browser to a URL.'),
       inputSchema: { url: z.string().min(1), ...targetShape }
     },
-    guarded(async ({ url, scopeId, browserPageId }: { url: string } & Target) =>
-      jsonResult(await bridge.goto(url, scopeId, browserPageId))
-    )
+    guarded(async ({ url, scopeId, browserPageId }: { url: string } & Target) => {
+      // The bridge loads the URL straight into the page without the will-navigate guard, so local
+      // files (including UNC paths) must be refused here.
+      const normalized = normalizeBrowserNavigationUrl(url)
+      if (normalized === null) {
+        return errorResult('invalid_argument: unsupported URL')
+      }
+      if (isFileUrl(normalized)) {
+        return errorResult('invalid_argument: local files cannot be opened in the embedded browser')
+      }
+      return jsonResult(await bridge.goto(url, scopeId, browserPageId))
+    })
   )
 
   server.registerTool(

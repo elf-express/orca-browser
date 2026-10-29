@@ -195,6 +195,21 @@ describe('installAgentAutomation', () => {
 })
 
 describe('installBrowserAgentAutomation', () => {
+  it('disposes the automation and rethrows when handler registration fails', async () => {
+    fakeBinary()
+    const { ipcMain } = await import('electron')
+    vi.mocked(ipcMain.handle).mockImplementationOnce(() => {
+      throw new Error('handler boom')
+    })
+
+    expect(() => installBrowserAgentAutomation({ host: host(), mcpPort: 0 } as never)).toThrow(
+      'handler boom'
+    )
+    await vi.waitFor(() => expect(mocks.destroyAll).toHaveBeenCalledTimes(1))
+    expect(mocks.setRef.mock.calls.at(-1)).toEqual([null])
+    expect(getMcpEndpoint()).toBeNull()
+  })
+
   it('is registered as a plugin installer', () => {
     const grabIndex = pluginInstallers.indexOf(installBrowserGrab)
     const automationIndex = pluginInstallers.indexOf(installBrowserAgentAutomation)
