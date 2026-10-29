@@ -104,6 +104,11 @@ var BROWSER_PROFILE_INVOKE_CHANNELS = [
   "browser:settings:get",
   "browser:settings:set"
 ];
+var BROWSER_MCP_INVOKE_CHANNELS = [
+  "browser:mcpGetEndpoint",
+  "browser:mcpGetStatus",
+  "browser:mcpRotateToken"
+];
 var BROWSER_SEND_CHANNELS = ["browser:reportViewportScrollState"];
 
 // src/shared/browser-keybindings.ts
@@ -697,6 +702,7 @@ export {
   BROWSER_FAMILY_LABELS,
   BROWSER_GRAB_INVOKE_CHANNELS,
   BROWSER_INVOKE_CHANNELS,
+  BROWSER_MCP_INVOKE_CHANNELS,
   BROWSER_PAGE_ZOOM_LEVELS,
   BROWSER_PAGE_ZOOM_MAX,
   BROWSER_PAGE_ZOOM_MIN,

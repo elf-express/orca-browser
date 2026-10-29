@@ -332,6 +332,11 @@ type BrowserOpenLinkInTabEvent = {
 };
 /** Every `on*` subscription returns the function that cancels it. */
 type BrowserUnsubscribe = () => void;
+interface BrowserMcpApi {
+    getEndpoint(): Promise<BrowserMcpEndpoint | null>;
+    getStatus(): Promise<BrowserMcpStatus>;
+    rotateToken(): Promise<string>;
+}
 interface BrowserApi {
     readonly apiVersion: 1;
     registerGuest(args: BrowserGuestArgs): Promise<boolean>;
@@ -417,11 +422,21 @@ interface BrowserApi {
         get(): Promise<BrowserIdentityModeStatus | null>;
         set(mode: BrowserUserAgentMode): Promise<BrowserIdentityModeSetResult | null>;
     };
+    mcp: BrowserMcpApi;
     settings: {
         get(): Promise<BrowserPluginSettings>;
         set(patch: Partial<BrowserPluginSettings>): Promise<BrowserPluginSettings | null>;
     };
 }
+type BrowserMcpEndpoint = {
+    url: string;
+    token: string;
+};
+type BrowserMcpStatus = {
+    state: 'starting' | 'listening' | 'port_in_use' | 'error';
+    port: number;
+    message?: string;
+};
 declare global {
     interface Window {
         browserAPI?: BrowserApi;
@@ -451,6 +466,10 @@ type BrowserPluginHandle = {
     dispose(): Promise<void>;
 };
 
+declare function getMcpEndpoint(): BrowserMcpEndpoint | null;
+declare function getMcpStatus(): BrowserMcpStatus;
+declare function rotateMcpToken(): Promise<string>;
+
 declare function installBrowserPlugin(opts: BrowserPluginOptions): BrowserPluginHandle;
 
-export { type BrowserHost, type BrowserHostLogger, type BrowserPluginHandle, type BrowserPluginOptions, installBrowserPlugin };
+export { type BrowserHost, type BrowserHostLogger, type BrowserMcpEndpoint, type BrowserMcpStatus, type BrowserPluginHandle, type BrowserPluginOptions, getMcpEndpoint, getMcpStatus, installBrowserPlugin, rotateMcpToken };

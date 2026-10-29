@@ -9,6 +9,8 @@ export type {
   BrowserPluginHandle,
   BrowserPluginOptions
 } from '../shared'
+export { getMcpEndpoint, getMcpStatus, rotateMcpToken } from './mcp/browser-mcp-runtime'
+export type { BrowserMcpEndpoint, BrowserMcpStatus } from '../shared/browser-api-types'
 
 export function installBrowserPlugin(opts: BrowserPluginOptions): BrowserPluginHandle {
   if (isBrowserPluginInstalled()) {

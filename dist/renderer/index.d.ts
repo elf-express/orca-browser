@@ -349,6 +349,11 @@ type BrowserOpenLinkInTabEvent = {
 };
 /** Every `on*` subscription returns the function that cancels it. */
 type BrowserUnsubscribe = () => void;
+interface BrowserMcpApi {
+    getEndpoint(): Promise<BrowserMcpEndpoint | null>;
+    getStatus(): Promise<BrowserMcpStatus>;
+    rotateToken(): Promise<string>;
+}
 interface BrowserApi {
     readonly apiVersion: 1;
     registerGuest(args: BrowserGuestArgs): Promise<boolean>;
@@ -434,11 +439,21 @@ interface BrowserApi {
         get(): Promise<BrowserIdentityModeStatus | null>;
         set(mode: BrowserUserAgentMode): Promise<BrowserIdentityModeSetResult | null>;
     };
+    mcp: BrowserMcpApi;
     settings: {
         get(): Promise<BrowserPluginSettings>;
         set(patch: Partial<BrowserPluginSettings>): Promise<BrowserPluginSettings | null>;
     };
 }
+type BrowserMcpEndpoint = {
+    url: string;
+    token: string;
+};
+type BrowserMcpStatus = {
+    state: 'starting' | 'listening' | 'port_in_use' | 'error';
+    port: number;
+    message?: string;
+};
 declare global {
     interface Window {
         browserAPI?: BrowserApi;

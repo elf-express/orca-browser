@@ -53,5 +53,11 @@ export const BROWSER_PROFILE_INVOKE_CHANNELS = [
   'browser:settings:set'
 ] as const
 
+export const BROWSER_MCP_INVOKE_CHANNELS = [
+  'browser:mcpGetEndpoint',
+  'browser:mcpGetStatus',
+  'browser:mcpRotateToken'
+] as const
+
 // Fire-and-forget renderer-to-main messages (ipcRenderer.send), not invoke handlers.
 export const BROWSER_SEND_CHANNELS = ['browser:reportViewportScrollState'] as const

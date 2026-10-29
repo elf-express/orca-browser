@@ -42,6 +42,7 @@ const API_METHODS = [
   'onScrollPage',
   'reportViewportScrollState',
   'onSystemResumed',
+  'mcp',
   'session',
   'identity',
   'settings',

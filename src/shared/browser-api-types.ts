@@ -66,6 +66,12 @@ export type BrowserOpenLinkInTabEvent = {
 /** Every `on*` subscription returns the function that cancels it. */
 export type BrowserUnsubscribe = () => void
 
+export interface BrowserMcpApi {
+  getEndpoint(): Promise<BrowserMcpEndpoint | null>
+  getStatus(): Promise<BrowserMcpStatus>
+  rotateToken(): Promise<string>
+}
+
 export interface BrowserApi {
   readonly apiVersion: 1
   registerGuest(args: BrowserGuestArgs): Promise<boolean>
@@ -139,6 +145,7 @@ export interface BrowserApi {
     get(): Promise<BrowserIdentityModeStatus | null>
     set(mode: BrowserUserAgentMode): Promise<BrowserIdentityModeSetResult | null>
   }
+  mcp: BrowserMcpApi
   settings: {
     get(): Promise<BrowserPluginSettings>
     set(patch: Partial<BrowserPluginSettings>): Promise<BrowserPluginSettings | null>

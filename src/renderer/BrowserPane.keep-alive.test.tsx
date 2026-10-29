@@ -70,6 +70,11 @@ function createBrowserApiStub(): BrowserApi {
       clearDefaultCookies: vi.fn(async () => false)
     },
     identity: { get: vi.fn(async () => null), set: vi.fn(async () => null) },
+    mcp: {
+      getEndpoint: vi.fn(async () => null),
+      getStatus: vi.fn(async () => ({ state: 'starting' as const, port: 0 })),
+      rotateToken: vi.fn(async () => '')
+    },
     settings: {
       get: vi.fn(async (): Promise<BrowserPluginSettings> => ({
         ...DEFAULT_BROWSER_PLUGIN_SETTINGS

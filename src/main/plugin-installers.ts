@@ -1,3 +1,4 @@
+import { installBrowserAgentAutomation } from './mcp/install-agent-automation'
 import { installBrowserCore } from './browser-core-installer'
 import { installBrowserGrab } from './browser-grab-installer'
 import { installBrowserProfiles } from './browser-profiles-installer'
@@ -11,5 +12,6 @@ export type BrowserPluginInstaller = (
 export const pluginInstallers: BrowserPluginInstaller[] = [
   installBrowserCore,
   installBrowserProfiles,
-  installBrowserGrab
+  installBrowserGrab,
+  installBrowserAgentAutomation
 ]

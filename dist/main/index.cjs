@@ -20,9 +20,1135 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main/index.ts
 var main_exports = {};
 __export(main_exports, {
-  installBrowserPlugin: () => installBrowserPlugin
+  getMcpEndpoint: () => getMcpEndpoint,
+  getMcpStatus: () => getMcpStatus,
+  installBrowserPlugin: () => installBrowserPlugin,
+  rotateMcpToken: () => rotateMcpToken
 });
 module.exports = __toCommonJS(main_exports);
+
+// node_modules/.pnpm/tsup@8.5.1_postcss@8.5.32_typescript@5.9.3/node_modules/tsup/assets/cjs_shims.js
+var getImportMetaUrl = () => typeof document === "undefined" ? new URL(`file:${__filename}`).href : document.currentScript && document.currentScript.tagName.toUpperCase() === "SCRIPT" ? document.currentScript.src : new URL("main.js", document.baseURI).href;
+var importMetaUrl = /* @__PURE__ */ getImportMetaUrl();
+
+// src/main/mcp/install-agent-automation.ts
+var import_node_path8 = require("node:path");
+
+// src/main/browser/browser-error.ts
+var BrowserError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+  code;
+};
+
+// src/main/browser/agent-browser-bridge-process.ts
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+var import_node_module = require("node:module");
+
+// src/main/browser/run-process.ts
+var import_node_child_process = require("node:child_process");
+function runProcess(spec) {
+  return new Promise((resolve, reject) => {
+    (0, import_node_child_process.execFile)(
+      spec.program,
+      [...spec.args],
+      {
+        env: spec.env,
+        timeout: spec.timeoutMs,
+        maxBuffer: spec.maxOutputBytes,
+        windowsHide: true,
+        encoding: "utf8"
+      },
+      (error, stdout, stderr) => {
+        if (!error) {
+          resolve({ code: 0, signal: null, stdout, stderr, timedOut: false });
+          return;
+        }
+        const failure = error;
+        if (failure.killed && failure.signal) {
+          resolve({ code: null, signal: failure.signal, stdout, stderr, timedOut: true });
+          return;
+        }
+        if (typeof failure.code === "number") {
+          resolve({ code: failure.code, signal: null, stdout, stderr, timedOut: false });
+          return;
+        }
+        reject(error);
+      }
+    );
+  });
+}
+
+// src/main/browser/agent-browser-orphan-sweep.ts
+var ORCA_TAB_SESSION_PREFIX = "orca-tab-";
+var SWEEP_TIMEOUT_MS = 5e3;
+var SWEEP_MAX_OUTPUT_BYTES = 256 * 1024;
+function parseSessionNames(stdout) {
+  let envelope;
+  try {
+    envelope = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  const sessions = envelope?.data?.sessions;
+  if (!Array.isArray(sessions)) {
+    return [];
+  }
+  return sessions.filter((name) => typeof name === "string" && name.length > 0);
+}
+async function sweepOrphanedAgentBrowserSessions(options) {
+  if (!options.ownsSocketDirectory || process.env.ORCA_DISABLE_AGENT_BROWSER_SWEEP === "1") {
+    return [];
+  }
+  let listed;
+  try {
+    const result = await runProcess({
+      program: options.binaryPath,
+      args: ["session", "list", "--json"],
+      env: options.env,
+      timeoutMs: SWEEP_TIMEOUT_MS,
+      maxOutputBytes: SWEEP_MAX_OUTPUT_BYTES
+    });
+    listed = result.timedOut ? [] : parseSessionNames(result.stdout);
+  } catch {
+    return [];
+  }
+  const closed = [];
+  for (const sessionName of listed) {
+    if (!sessionName.startsWith(ORCA_TAB_SESSION_PREFIX) || options.isSessionLive?.(sessionName)) {
+      continue;
+    }
+    try {
+      await runProcess({
+        program: options.binaryPath,
+        args: ["--session", sessionName, "close"],
+        env: options.env,
+        timeoutMs: SWEEP_TIMEOUT_MS,
+        maxOutputBytes: SWEEP_MAX_OUTPUT_BYTES
+      });
+      closed.push(sessionName);
+    } catch {
+    }
+  }
+  return closed;
+}
+
+// src/main/browser/agent-browser-bridge-types.ts
+var EXEC_TIMEOUT_MS = 9e4;
+var CONSECUTIVE_TIMEOUT_LIMIT = 3;
+var WAIT_PROCESS_TIMEOUT_GRACE_MS = 1e3;
+var STALE_SESSION_CLOSE_TIMEOUT_MS = 3e3;
+var AGENT_BROWSER_EXIT_DRAIN_MS = 500;
+var AGENT_BROWSER_CLEANUP_TIMEOUT_MS = 5e3;
+var AGENT_BROWSER_CLEANUP_CONCURRENCY = 4;
+var EMBEDDED_NAVIGATION_TIMEOUT_MS = 3e4;
+var AGENT_BROWSER_TEXT_ARGUMENT_MAX_BYTES = 8 * 1024;
+var AGENT_BROWSER_CLIPBOARD_WRITE_MAX_BYTES = AGENT_BROWSER_TEXT_ARGUMENT_MAX_BYTES;
+
+// src/main/browser/agent-browser-bridge-process.ts
+function agentBrowserNativeName() {
+  const ext = process.platform === "win32" ? ".exe" : "";
+  return `agent-browser-${process.platform}-${process.arch}${ext}`;
+}
+function defaultAgentBrowserPackageBinDirs() {
+  const dirs = [];
+  const add = (resolveManifest) => {
+    try {
+      const dir = (0, import_node_path.join)((0, import_node_path.dirname)(resolveManifest()), "bin");
+      if (!dirs.includes(dir)) {
+        dirs.push(dir);
+      }
+    } catch {
+    }
+  };
+  const localRequire = (0, import_node_module.createRequire)(importMetaUrl);
+  add(() => localRequire.resolve("agent-browser/package.json"));
+  add(() => {
+    const pluginManifest = localRequire.resolve("@elf-express/orca-browser/package.json");
+    return (0, import_node_module.createRequire)(pluginManifest).resolve("agent-browser/package.json");
+  });
+  return dirs;
+}
+function resolveAgentBrowserBinary(options) {
+  const name = agentBrowserNativeName();
+  const bundled = (0, import_node_path.join)(options.resourcesPath, name);
+  const packageCandidates = (options.packageBinDirs ?? defaultAgentBrowserPackageBinDirs()).map(
+    (dir) => (0, import_node_path.join)(dir, name)
+  );
+  const expectedPaths = [.../* @__PURE__ */ new Set([bundled, ...packageCandidates])];
+  if ((0, import_node_fs.existsSync)(bundled)) {
+    return { found: true, path: bundled };
+  }
+  for (const candidate of packageCandidates) {
+    if (!(0, import_node_fs.existsSync)(candidate)) {
+      continue;
+    }
+    if (process.platform !== "win32") {
+      try {
+        (0, import_node_fs.accessSync)(candidate, import_node_fs.constants.X_OK);
+      } catch {
+        (0, import_node_fs.chmodSync)(candidate, 493);
+      }
+    }
+    return { found: true, path: candidate };
+  }
+  return { found: false, expectedPaths };
+}
+function parseShellArgs(input) {
+  const args = [];
+  let current3 = "";
+  let inDouble = false;
+  let inSingle = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === " " && !inDouble && !inSingle) {
+      if (current3) {
+        args.push(current3);
+        current3 = "";
+      }
+    } else {
+      current3 += ch;
+    }
+  }
+  if (current3) {
+    args.push(current3);
+  }
+  return args;
+}
+function stripAgentBrowserTargetArgs(args) {
+  const stripped = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--cdp" || arg === "--session") {
+      index++;
+      continue;
+    }
+    if (arg.startsWith("--cdp=") || arg.startsWith("--session=")) {
+      continue;
+    }
+    stripped.push(arg);
+  }
+  return stripped;
+}
+function classifyErrorCode(message) {
+  if (/unknown ref|ref not found|element not found: @e/i.test(message)) {
+    return "browser_stale_ref";
+  }
+  return "browser_error";
+}
+function isAbortedNavigationError(error) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const { code, errno } = error;
+  return code === "ERR_ABORTED" || errno === -3;
+}
+function isWebContentsLoading(wc) {
+  try {
+    return wc.isLoading();
+  } catch {
+    return false;
+  }
+}
+function waitForAbortedNavigationReplacement(wc, browserPageId, timeoutMs) {
+  if (!isWebContentsLoading(wc)) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeout = null;
+    const finish = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      wc.removeListener("did-stop-loading", onDidStopLoading);
+      wc.removeListener("destroyed", onDestroyed);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    const onDidStopLoading = () => finish();
+    const onDestroyed = () => finish();
+    wc.on("did-stop-loading", onDidStopLoading);
+    wc.on("destroyed", onDestroyed);
+    timeout = setTimeout(
+      () => finish(
+        new BrowserError(
+          "browser_error",
+          `Failed to navigate browser page ${browserPageId}: Browser navigation timed out after ${EMBEDDED_NAVIGATION_TIMEOUT_MS}ms`
+        )
+      ),
+      timeoutMs
+    );
+    timeout.unref?.();
+    if (!isWebContentsLoading(wc)) {
+      finish();
+    }
+  });
+}
+function isTabClosedTransportError(message) {
+  return /session destroyed while command|session destroyed while commands|connection refused|cdp discovery methods failed|websocket connect failed/i.test(
+    message
+  );
+}
+function pageUnavailableMessageForSession(sessionName) {
+  const prefix = ORCA_TAB_SESSION_PREFIX;
+  const browserPageId = sessionName.startsWith(prefix) ? sessionName.slice(prefix.length) : null;
+  return browserPageId ? `Browser page ${browserPageId} is no longer available` : "Browser tab is no longer available";
+}
+
+// src/main/browser/electron-debugger-lease.ts
+var debuggerLeases = /* @__PURE__ */ new WeakMap();
+function acquireElectronDebugger(webContents10) {
+  if (webContents10.isDestroyed()) {
+    throw new Error("Browser tab is no longer available");
+  }
+  const dbg = webContents10.debugger;
+  let state = debuggerLeases.get(webContents10);
+  if (!state) {
+    state = { attachedByLease: false, owners: /* @__PURE__ */ new Set() };
+    debuggerLeases.set(webContents10, state);
+  }
+  if (!dbg.isAttached()) {
+    dbg.attach("1.3");
+    state.attachedByLease = true;
+  }
+  const owner = /* @__PURE__ */ Symbol("electron-debugger-lease");
+  state.owners.add(owner);
+  let released = false;
+  return {
+    release: () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      state.owners.delete(owner);
+      if (state.owners.size > 0) {
+        return;
+      }
+      debuggerLeases.delete(webContents10);
+      if (!state.attachedByLease || !dbg.isAttached()) {
+        return;
+      }
+      try {
+        dbg.detach();
+      } catch {
+      }
+    }
+  };
+}
+
+// src/main/browser/cdp-keyboard-us-layout.ts
+var CDP_MODIFIER_BITS = {
+  alt: 1,
+  option: 1,
+  ctrl: 2,
+  control: 2,
+  cmd: 4,
+  command: 4,
+  meta: 4,
+  super: 4,
+  win: 4,
+  shift: 8
+};
+var CDP_NAMED_KEYS = {
+  enter: [13, "Enter", "Enter", "\r"],
+  return: [13, "Enter", "Enter", "\r"],
+  tab: [9, "Tab", "Tab", null],
+  backspace: [8, "Backspace", "Backspace", null],
+  delete: [46, "Delete", "Delete", null],
+  del: [46, "Delete", "Delete", null],
+  escape: [27, "Escape", "Escape", null],
+  esc: [27, "Escape", "Escape", null],
+  space: [32, " ", "Space", " "],
+  spacebar: [32, " ", "Space", " "],
+  arrowup: [38, "ArrowUp", "ArrowUp", null],
+  up: [38, "ArrowUp", "ArrowUp", null],
+  arrowdown: [40, "ArrowDown", "ArrowDown", null],
+  down: [40, "ArrowDown", "ArrowDown", null],
+  arrowleft: [37, "ArrowLeft", "ArrowLeft", null],
+  left: [37, "ArrowLeft", "ArrowLeft", null],
+  arrowright: [39, "ArrowRight", "ArrowRight", null],
+  right: [39, "ArrowRight", "ArrowRight", null],
+  home: [36, "Home", "Home", null],
+  end: [35, "End", "End", null],
+  pageup: [33, "PageUp", "PageUp", null],
+  pgup: [33, "PageUp", "PageUp", null],
+  pagedown: [34, "PageDown", "PageDown", null],
+  pgdn: [34, "PageDown", "PageDown", null],
+  pgdown: [34, "PageDown", "PageDown", null],
+  insert: [45, "Insert", "Insert", null],
+  ins: [45, "Insert", "Insert", null],
+  contextmenu: [93, "ContextMenu", "ContextMenu", null],
+  apps: [93, "ContextMenu", "ContextMenu", null],
+  capslock: [20, "CapsLock", "CapsLock", null],
+  numlock: [144, "NumLock", "NumLock", null],
+  scrolllock: [145, "ScrollLock", "ScrollLock", null],
+  pause: [19, "Pause", "Pause", null],
+  printscreen: [44, "PrintScreen", "PrintScreen", null],
+  shift: [16, "Shift", "ShiftLeft", null],
+  control: [17, "Control", "ControlLeft", null],
+  ctrl: [17, "Control", "ControlLeft", null],
+  alt: [18, "Alt", "AltLeft", null],
+  option: [18, "Alt", "AltLeft", null],
+  meta: [91, "Meta", "MetaLeft", null],
+  cmd: [91, "Meta", "MetaLeft", null],
+  command: [91, "Meta", "MetaLeft", null]
+};
+var US_SHIFTED_CHARS = {
+  "~": "`",
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  $: "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "+": "=",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/"
+};
+var US_SHIFT_OF = {};
+for (const shifted of Object.keys(US_SHIFTED_CHARS)) {
+  US_SHIFT_OF[US_SHIFTED_CHARS[shifted]] = shifted;
+}
+var US_PUNCTUATION_KEYS = {
+  " ": [32, "Space"],
+  ";": [186, "Semicolon"],
+  "=": [187, "Equal"],
+  ",": [188, "Comma"],
+  "-": [189, "Minus"],
+  ".": [190, "Period"],
+  "/": [191, "Slash"],
+  "`": [192, "Backquote"],
+  "[": [219, "BracketLeft"],
+  "\\": [220, "Backslash"],
+  "]": [221, "BracketRight"],
+  "'": [222, "Quote"]
+};
+function usKeyboardKeyForChar(ch) {
+  if (ch >= "a" && ch <= "z") {
+    return { keyCode: ch.charCodeAt(0) - 32, code: `Key${ch.toUpperCase()}`, shift: false };
+  }
+  if (ch >= "A" && ch <= "Z") {
+    return { keyCode: ch.charCodeAt(0), code: `Key${ch}`, shift: true };
+  }
+  if (ch >= "0" && ch <= "9") {
+    return { keyCode: ch.charCodeAt(0), code: `Digit${ch}`, shift: false };
+  }
+  if (Object.hasOwn(US_SHIFTED_CHARS, ch)) {
+    const base = usKeyboardKeyForChar(US_SHIFTED_CHARS[ch]);
+    return base === null ? null : { keyCode: base.keyCode, code: base.code, shift: true };
+  }
+  if (Object.hasOwn(US_PUNCTUATION_KEYS, ch)) {
+    return { keyCode: US_PUNCTUATION_KEYS[ch][0], code: US_PUNCTUATION_KEYS[ch][1], shift: false };
+  }
+  return null;
+}
+function imeFallbackKeyEvent(raw) {
+  if (raw.length !== 1) {
+    return null;
+  }
+  const codePoint = raw.charCodeAt(0);
+  if (codePoint < 160 || codePoint >= 55296 && codePoint <= 57343) {
+    return null;
+  }
+  return { keyCode: 229, key: raw, code: "", modifiers: 0, location: 0, selfModifier: 0, text: raw };
+}
+function parseCdpKeyEvent(raw) {
+  if (raw.length === 0) {
+    return null;
+  }
+  let rest = raw;
+  let modifiers = 0;
+  while (rest.length > 1) {
+    const plus = rest.indexOf("+");
+    if (plus <= 0) {
+      break;
+    }
+    const name = rest.slice(0, plus).toLowerCase();
+    if (!Object.hasOwn(CDP_MODIFIER_BITS, name)) {
+      break;
+    }
+    modifiers |= CDP_MODIFIER_BITS[name];
+    rest = rest.slice(plus + 1);
+  }
+  if (rest.length === 0) {
+    return null;
+  }
+  let keyCode;
+  let key;
+  let code;
+  let text;
+  let location = 0;
+  let selfModifier = 0;
+  if (rest.length === 1) {
+    const mapped = usKeyboardKeyForChar(rest);
+    if (mapped === null) {
+      return null;
+    }
+    keyCode = mapped.keyCode;
+    key = rest;
+    code = mapped.code;
+    text = rest;
+    const capitalShortcut = rest >= "A" && rest <= "Z" && (modifiers & ~8) !== 0;
+    if (capitalShortcut) {
+      key = rest.toLowerCase();
+      text = key;
+    } else if (mapped.shift) {
+      modifiers |= 8;
+    }
+  } else if (Object.hasOwn(CDP_NAMED_KEYS, rest.toLowerCase())) {
+    const name = rest.toLowerCase();
+    const named = CDP_NAMED_KEYS[name];
+    keyCode = named[0];
+    key = named[1];
+    code = named[2];
+    text = named[3];
+    selfModifier = CDP_MODIFIER_BITS[name] ?? 0;
+    if (selfModifier !== 0) {
+      modifiers |= selfModifier;
+      location = 1;
+    }
+  } else {
+    const functionKey = /^f([1-9]|1[0-9]|2[0-4])$/i.exec(rest);
+    if (functionKey === null) {
+      return null;
+    }
+    keyCode = 111 + Number(functionKey[1]);
+    key = `F${functionKey[1]}`;
+    code = key;
+    text = null;
+  }
+  if (text !== null && (modifiers & 8) !== 0) {
+    text = Object.hasOwn(US_SHIFT_OF, text) ? US_SHIFT_OF[text] : text.toUpperCase();
+    if (rest.length === 1) {
+      key = text;
+    }
+  }
+  if ((modifiers & ~8) !== 0) {
+    text = null;
+  }
+  return { keyCode, key, code, modifiers, location, selfModifier, text };
+}
+
+// src/main/browser/agent-browser-bridge-capture-commands.ts
+var import_node_fs4 = require("node:fs");
+
+// src/main/browser/cdp-screenshot.ts
+var SCREENSHOT_TIMEOUT_MS = 8e3;
+var FRAME_PROBE_OFFSETS_MS = [250, 750, 1750, 3750];
+var FRAME_PROBE_PARAMS = {
+  format: "jpeg",
+  quality: 1,
+  clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 }
+};
+var FALLBACK_CAPTURE_TIMEOUT_MS = 1e3;
+var SCREENSHOT_TIMEOUT_MESSAGE = "Screenshot timed out \u2014 the browser page did not draw a frame.";
+function applyFallbackClip(image, params) {
+  if (params?.captureBeyondViewport) {
+    return null;
+  }
+  const clip = params?.clip;
+  if (!clip || typeof clip !== "object") {
+    return image;
+  }
+  const clipRect = clip;
+  const x = typeof clipRect.x === "number" ? clipRect.x : Number.NaN;
+  const y = typeof clipRect.y === "number" ? clipRect.y : Number.NaN;
+  const width = typeof clipRect.width === "number" ? clipRect.width : Number.NaN;
+  const height = typeof clipRect.height === "number" ? clipRect.height : Number.NaN;
+  const scale = typeof clipRect.scale === "number" && Number.isFinite(clipRect.scale) && clipRect.scale > 0 ? clipRect.scale : 1;
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    return null;
+  }
+  const cropRect = {
+    x: Math.round(x * scale),
+    y: Math.round(y * scale),
+    width: Math.round(width * scale),
+    height: Math.round(height * scale)
+  };
+  const imageSize = image.getSize();
+  if (cropRect.x < 0 || cropRect.y < 0 || cropRect.width <= 0 || cropRect.height <= 0 || cropRect.x + cropRect.width > imageSize.width || cropRect.y + cropRect.height > imageSize.height) {
+    return null;
+  }
+  return image.crop(cropRect);
+}
+function encodeNativeImageScreenshot(image, params) {
+  if (image.isEmpty()) {
+    return null;
+  }
+  const clippedImage = applyFallbackClip(image, params);
+  if (!clippedImage || clippedImage.isEmpty()) {
+    return null;
+  }
+  const format = params?.format === "jpeg" ? "jpeg" : "png";
+  const quality = typeof params?.quality === "number" && Number.isFinite(params.quality) ? Math.max(0, Math.min(100, Math.round(params.quality))) : void 0;
+  const buffer = format === "jpeg" ? clippedImage.toJPEG(quality ?? 90) : clippedImage.toPNG();
+  return { data: buffer.toString("base64") };
+}
+function getLayoutClip(metrics) {
+  const size = metrics.cssContentSize ?? metrics.contentSize;
+  const width = size?.width;
+  const height = size?.height;
+  if (typeof width !== "number" || !Number.isFinite(width) || width <= 0 || typeof height !== "number" || !Number.isFinite(height) || height <= 0) {
+    return null;
+  }
+  return {
+    x: 0,
+    y: 0,
+    width: Math.ceil(width),
+    height: Math.ceil(height),
+    scale: 1
+  };
+}
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    })
+  ]).finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
+}
+function captureUntilDrawn(webContents10, params) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (settle) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(deadline);
+      probes.forEach(clearTimeout);
+      settle();
+    };
+    const send = (requestParams) => {
+      if (webContents10.isDestroyed()) {
+        finish(() => reject(new Error("WebContents destroyed")));
+        return null;
+      }
+      if (!webContents10.debugger.isAttached()) {
+        finish(() => reject(new Error("Debugger detached")));
+        return null;
+      }
+      try {
+        webContents10.invalidate();
+      } catch {
+      }
+      return webContents10.debugger.sendCommand("Page.captureScreenshot", requestParams);
+    };
+    const deadline = setTimeout(() => finish(() => resolve(null)), SCREENSHOT_TIMEOUT_MS);
+    const probes = FRAME_PROBE_OFFSETS_MS.map(
+      (offsetMs) => setTimeout(() => send(FRAME_PROBE_PARAMS)?.catch(() => {
+      }), offsetMs)
+    );
+    send(params)?.then(
+      (result) => finish(() => resolve(result?.data ? { data: result.data } : null)),
+      (error) => finish(() => reject(error instanceof Error ? error : new Error(String(error))))
+    );
+  });
+}
+async function captureFullPageScreenshot(webContents10, format, holdPaint) {
+  if (webContents10.isDestroyed()) {
+    throw new Error("WebContents destroyed");
+  }
+  if (!webContents10.debugger.isAttached()) {
+    throw new Error("Debugger not attached");
+  }
+  const release = holdPaint();
+  try {
+    const layoutMetrics = webContents10.debugger.sendCommand("Page.getLayoutMetrics", {});
+    const metrics = await withTimeout(
+      layoutMetrics,
+      SCREENSHOT_TIMEOUT_MS,
+      "Screenshot timed out \u2014 the browser page did not respond."
+    );
+    const clip = getLayoutClip(metrics);
+    if (!clip) {
+      throw new Error("Unable to determine full-page screenshot bounds");
+    }
+    const frame = await captureUntilDrawn(webContents10, {
+      format,
+      captureBeyondViewport: true,
+      clip
+    });
+    if (!frame) {
+      throw new Error(SCREENSHOT_TIMEOUT_MESSAGE);
+    }
+    return { data: frame.data, format };
+  } finally {
+    release();
+  }
+}
+async function captureScreenshot(webContents10, params, holdPaint) {
+  if (webContents10.isDestroyed()) {
+    throw new Error("WebContents destroyed");
+  }
+  if (!webContents10.debugger.isAttached()) {
+    throw new Error("Debugger not attached");
+  }
+  const screenshotParams = {};
+  if (params?.format) {
+    screenshotParams.format = params.format;
+  }
+  if (params?.quality) {
+    screenshotParams.quality = params.quality;
+  }
+  if (params?.clip) {
+    screenshotParams.clip = params.clip;
+  }
+  if (params?.captureBeyondViewport != null) {
+    screenshotParams.captureBeyondViewport = params.captureBeyondViewport;
+  }
+  if (params?.fromSurface != null) {
+    screenshotParams.fromSurface = params.fromSurface;
+  }
+  const release = holdPaint();
+  try {
+    const frame = await captureUntilDrawn(webContents10, screenshotParams);
+    if (frame) {
+      return frame;
+    }
+    const fallback = await withTimeout(
+      Promise.resolve().then(() => webContents10.capturePage()),
+      FALLBACK_CAPTURE_TIMEOUT_MS,
+      SCREENSHOT_TIMEOUT_MESSAGE
+    ).then((image) => encodeNativeImageScreenshot(image, params)).catch(() => null);
+    if (fallback) {
+      return fallback;
+    }
+    throw new Error(SCREENSHOT_TIMEOUT_MESSAGE);
+  } finally {
+    release();
+  }
+}
+
+// src/shared/event-loop-yield.ts
+var pendingRendererYields = /* @__PURE__ */ new Map();
+var nextRendererYieldId = 0;
+var rendererYieldChannel = null;
+function isVitestEnvironment() {
+  return typeof process !== "undefined" && process.env?.VITEST === "true";
+}
+function getRendererYieldChannel() {
+  if (!rendererYieldChannel) {
+    rendererYieldChannel = new globalThis.MessageChannel();
+    rendererYieldChannel.port1.onmessage = (event) => {
+      const yieldId = event.data;
+      const resolve = typeof yieldId === "number" ? pendingRendererYields.get(yieldId) : void 0;
+      if (!resolve) {
+        return;
+      }
+      pendingRendererYields.delete(yieldId);
+      resolve();
+    };
+  }
+  return rendererYieldChannel;
+}
+function yieldToEventLoop() {
+  return new Promise((resolve) => {
+    if (isVitestEnvironment()) {
+      globalThis.setTimeout(resolve, 0);
+      return;
+    }
+    const setImmediate = globalThis.setImmediate;
+    if (typeof window === "undefined" && setImmediate) {
+      setImmediate(resolve);
+      return;
+    }
+    if (typeof globalThis.MessageChannel === "function") {
+      const yieldId = nextRendererYieldId;
+      nextRendererYieldId += 1;
+      pendingRendererYields.set(yieldId, resolve);
+      getRendererYieldChannel().port2.postMessage(yieldId);
+      return;
+    }
+    globalThis.setTimeout(resolve, 0);
+  });
+}
+
+// src/shared/utf8-byte-limits.ts
+function readUtf8CodePointAt(text, index) {
+  const leadUnit = text.charCodeAt(index);
+  if (leadUnit < 55296 || leadUnit > 56319 || index + 1 >= text.length) {
+    return leadUnit;
+  }
+  const trailUnit = text.charCodeAt(index + 1);
+  if (trailUnit < 56320 || trailUnit > 57343) {
+    return leadUnit;
+  }
+  return (leadUnit - 55296) * 1024 + (trailUnit - 56320) + 65536;
+}
+function measureUtf8ByteLength(text, options = {}) {
+  const stopAfterBytes = options.stopAfterBytes;
+  let byteLength = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const codePoint = readUtf8CodePointAt(text, index);
+    byteLength += getUtf8ByteLengthForCodePoint(codePoint);
+    if (Number.isFinite(stopAfterBytes) && byteLength > (stopAfterBytes ?? 0)) {
+      return { byteLength, exceededLimit: true };
+    }
+    if (codePoint > 65535) {
+      index += 1;
+    }
+  }
+  return { byteLength, exceededLimit: false };
+}
+var MAX_UTF8_SCRATCH_BYTES = 1024 * 1024;
+var utf8Encoder = new TextEncoder();
+var utf8Scratch = new Uint8Array(0);
+function getUtf8ChunkEndIndex(text, startIndex, maxBytes) {
+  let bytes = 0;
+  let endIndex = startIndex;
+  while (endIndex < text.length) {
+    const codePoint = readUtf8CodePointAt(text, endIndex);
+    const codePointBytes = getUtf8ByteLengthForCodePoint(codePoint);
+    if (bytes > 0 && bytes + codePointBytes > maxBytes) {
+      break;
+    }
+    bytes += codePointBytes;
+    endIndex += codePoint > 65535 ? 2 : 1;
+  }
+  return endIndex;
+}
+function getUtf8ByteLengthForCodePoint(codePoint) {
+  if (codePoint <= 127) {
+    return 1;
+  }
+  if (codePoint <= 2047) {
+    return 2;
+  }
+  if (codePoint <= 65535) {
+    return 3;
+  }
+  return 4;
+}
+
+// src/shared/clipboard-text.ts
+var CLIPBOARD_TEXT_READ_MAX_BYTES = 16 * 1024 * 1024;
+var CLIPBOARD_TEXT_WRITE_MAX_BYTES = 16 * 1024 * 1024;
+var CLIPBOARD_TEXT_WRITE_TOO_LARGE_ERROR = "Clipboard text is too large to copy safely.";
+var CLIPBOARD_TEXT_MEASURE_YIELD_CODE_UNITS = 256 * 1024;
+function measureClipboardTextByteLength(text, options = {}) {
+  return measureUtf8ByteLength(text, options);
+}
+async function measureClipboardTextByteLengthWithYield(text, options = {}) {
+  const stopAfterBytes = options.stopAfterBytes;
+  const yieldAfterCodeUnits = Math.max(
+    1,
+    options.yieldAfterCodeUnits ?? CLIPBOARD_TEXT_MEASURE_YIELD_CODE_UNITS
+  );
+  const yieldBetweenBatches = options.yieldToEventLoop ?? yieldToEventLoop;
+  let nextYieldAt = yieldAfterCodeUnits;
+  let byteLength = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const codePoint = readUtf8CodePointAt(text, index);
+    byteLength += getUtf8ByteLengthForCodePoint(codePoint);
+    if (Number.isFinite(stopAfterBytes) && byteLength > (stopAfterBytes ?? 0)) {
+      return { byteLength, exceededLimit: true };
+    }
+    if (codePoint > 65535) {
+      index += 1;
+    }
+    if (index >= nextYieldAt) {
+      await yieldBetweenBatches();
+      nextYieldAt = index + yieldAfterCodeUnits;
+    }
+  }
+  return { byteLength, exceededLimit: false };
+}
+async function isClipboardTextByteLengthOverLimitWithYield(text, maxBytes, options = {}) {
+  if (text.length > maxBytes) {
+    return true;
+  }
+  return (await measureClipboardTextByteLengthWithYield(text, {
+    stopAfterBytes: maxBytes,
+    yieldAfterCodeUnits: options.yieldAfterCodeUnits,
+    yieldToEventLoop: options.yieldToEventLoop
+  })).exceededLimit;
+}
+function getClipboardTextWriteMaxBytes(options, fallback = CLIPBOARD_TEXT_WRITE_MAX_BYTES) {
+  return Number.isFinite(options?.maxBytes) && (options?.maxBytes ?? 0) > 0 ? Math.floor(options?.maxBytes ?? fallback) : fallback;
+}
+async function assertClipboardTextWriteWithinLimitWithYield(text, options) {
+  const maxBytes = getClipboardTextWriteMaxBytes(options);
+  if (await isClipboardTextByteLengthOverLimitWithYield(text, maxBytes)) {
+    throw new Error(CLIPBOARD_TEXT_WRITE_TOO_LARGE_ERROR);
+  }
+  return text;
+}
+
+// src/main/browser/agent-browser-bridge-mouse.ts
+var CDP_POINTER_BUTTON_ORDER = ["left", "right", "middle", "back", "forward"];
+var CDP_POINTER_BUTTON_MASKS = {
+  left: 1,
+  right: 2,
+  middle: 4,
+  back: 8,
+  forward: 16
+};
+function normalizeCdpMouseButton(button) {
+  return button === "middle" || button === "right" ? button : "left";
+}
+function normalizeCdpPointerButton(button) {
+  return button === "back" || button === "forward" ? button : normalizeCdpMouseButton(button);
+}
+function cdpPointerButtonMask(button) {
+  return CDP_POINTER_BUTTON_MASKS[button];
+}
+function cdpPointerButtonFromMask(buttons) {
+  for (const button of CDP_POINTER_BUTTON_ORDER) {
+    if ((buttons & CDP_POINTER_BUTTON_MASKS[button]) !== 0) {
+      return button;
+    }
+  }
+  return "none";
+}
+function cdpMouseModifierMask(modifiers) {
+  if (!modifiers || modifiers.length === 0) {
+    return 0;
+  }
+  let mask = 0;
+  for (const modifier of modifiers) {
+    if (modifier === "alt") {
+      mask |= 1;
+    } else if (modifier === "ctrl") {
+      mask |= 2;
+    } else if (modifier === "cmd") {
+      mask |= 4;
+    } else if (modifier === "shift") {
+      mask |= 8;
+    }
+  }
+  return mask;
+}
+function readClickPoint(value, fallback) {
+  const point = value && typeof value === "object" ? value : null;
+  const x = point?.x;
+  const y = point?.y;
+  if (typeof x !== "number" || !Number.isFinite(x) || typeof y !== "number" || !Number.isFinite(y)) {
+    return fallback;
+  }
+  return { x, y, adjusted: point?.adjusted === true, handled: point?.handled === true };
+}
+function mobileTouchClickExpression(x, y, radius, allowDomActivation) {
+  return `(() => {
+    const inputX = ${JSON.stringify(x)};
+    const inputY = ${JSON.stringify(y)};
+    const radius = ${JSON.stringify(radius)};
+    const allowDomActivation = ${JSON.stringify(allowDomActivation)};
+    const selector = [
+      'a[href]',
+      'button',
+      'input',
+      'textarea',
+      'select',
+      'summary',
+      'label',
+      '[role="button"]',
+      '[role="link"]',
+      '[role="menuitem"]',
+      '[role="tab"]',
+      '[role="checkbox"]',
+      '[role="radio"]',
+      '[role="switch"]',
+      '[onclick]',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(',');
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+    const isUsable = (el) => {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+        style.visibility !== 'hidden' && style.pointerEvents !== 'none';
+    };
+    const dispatchClick = (target, clickX, clickY) => {
+      try {
+        if (typeof target.focus === 'function') {
+          target.focus({ preventScroll: true });
+        }
+      } catch {
+        try { target.focus(); } catch {}
+      }
+      if (typeof target.click === 'function') {
+        target.click();
+        return true;
+      }
+      const init = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: clickX,
+        clientY: clickY,
+        screenX: clickX,
+        screenY: clickY,
+        button: 0,
+        buttons: 1
+      };
+      try {
+        if (typeof PointerEvent === 'function') {
+          target.dispatchEvent(new PointerEvent('pointerdown', { ...init, pointerType: 'touch', pointerId: 1 }));
+          target.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0, pointerType: 'touch', pointerId: 1 }));
+        }
+      } catch {}
+      target.dispatchEvent(new MouseEvent('mousedown', init));
+      target.dispatchEvent(new MouseEvent('mouseup', { ...init, buttons: 0 }));
+      target.dispatchEvent(new MouseEvent('click', { ...init, buttons: 0 }));
+      return true;
+    };
+    const clickableFor = (el) => {
+      for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+        if (node.matches(selector)) return node;
+        if (window.getComputedStyle(node).cursor === 'pointer') return node;
+      }
+      return null;
+    };
+    const offsets = [[0, 0]];
+    for (const distance of [radius * 0.45, radius, radius * 1.35]) {
+      for (const angle of [0, Math.PI / 4, Math.PI / 2, Math.PI * 3 / 4, Math.PI,
+        Math.PI * 5 / 4, Math.PI * 3 / 2, Math.PI * 7 / 4]) {
+        offsets.push([Math.cos(angle) * distance, Math.sin(angle) * distance]);
+      }
+    }
+    let best = null;
+    for (const [dx, dy] of offsets) {
+      const px = inputX + dx;
+      const py = inputY + dy;
+      if (px < 0 || py < 0 || px > window.innerWidth || py > window.innerHeight) continue;
+      for (const el of document.elementsFromPoint(px, py)) {
+        const target = clickableFor(el);
+        if (!target || !isUsable(target)) continue;
+        const rect = target.getBoundingClientRect();
+        const clickX = clamp(inputX, rect.left + 1, rect.right - 1);
+        const clickY = clamp(inputY, rect.top + 1, rect.bottom - 1);
+        const score = Math.hypot(clickX - inputX, clickY - inputY) + Math.hypot(dx, dy) * 0.25;
+        if (!best || score < best.score) best = { score, x: clickX, y: clickY, target };
+        break;
+      }
+    }
+    if (best && allowDomActivation && dispatchClick(best.target, best.x, best.y)) {
+      return { x: best.x, y: best.y, adjusted: true, handled: true };
+    }
+    if (best) {
+      return { x: best.x, y: best.y, adjusted: true, handled: false };
+    }
+    return { x: inputX, y: inputY, adjusted: false, handled: false };
+  })()`;
+}
+async function resolveMobileTouchClickPoint(dbg, x, y, radius, allowDomActivation) {
+  const fallback = { x, y, adjusted: false, handled: false };
+  if (typeof radius !== "number" || !Number.isFinite(radius) || radius <= 0) {
+    return fallback;
+  }
+  try {
+    const result = await dbg.sendCommand("Runtime.evaluate", {
+      expression: mobileTouchClickExpression(x, y, radius, allowDomActivation),
+      returnByValue: true,
+      silent: true
+    });
+    const raw = result && typeof result === "object" ? result : null;
+    const evaluated = raw?.result && typeof raw.result === "object" ? raw.result : null;
+    return readClickPoint(evaluated?.value, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+// src/main/browser/cdp-pointer-input.ts
+var MULTI_CLICK_INTERVAL_MS = 500;
+var MULTI_CLICK_SLOP_PX = 2;
+var pointerStates = /* @__PURE__ */ new WeakMap();
+function cdpPointerStateFor(webContents10) {
+  let state = pointerStates.get(webContents10);
+  if (!state) {
+    state = {
+      x: 0,
+      y: 0,
+      button: "none",
+      buttons: 0,
+      clickCount: 1,
+      lastClick: null
+    };
+    pointerStates.set(webContents10, state);
+  }
+  return state;
+}
+function trackCdpClickCount(state, button) {
+  const now = Date.now();
+  const previous = state.lastClick;
+  const repeated = previous !== null && previous.button === button && Math.abs(previous.x - state.x) <= MULTI_CLICK_SLOP_PX && Math.abs(previous.y - state.y) <= MULTI_CLICK_SLOP_PX && now - previous.at <= MULTI_CLICK_INTERVAL_MS;
+  const count = repeated ? previous.count >= 3 ? 1 : previous.count + 1 : 1;
+  state.lastClick = { button, x: state.x, y: state.y, at: now, count };
+  return count;
+}
+function assertFinitePointerValues(values) {
+  for (const [name, value] of Object.entries(values)) {
+    if (!Number.isFinite(value)) {
+      throw new BrowserError("browser_error", `Pointer input requires a finite ${name}`);
+    }
+  }
+}
+function pressCdpPointerButton(state, button) {
+  state.button = button;
+  state.buttons |= cdpPointerButtonMask(button);
+  state.clickCount = trackCdpClickCount(state, button);
+}
+function releaseCdpPointerButton(state, button) {
+  state.buttons &= ~cdpPointerButtonMask(button);
+  state.button = cdpPointerButtonFromMask(state.buttons);
+}
+function resolveCdpPointerReleaseButton(state) {
+  return state.button === "none" ? void 0 : state.button;
+}
+
+// src/main/browser/browser-text-insertion.ts
+var BROWSER_TEXT_INSERT_CHUNK_BYTES = 64 * 1024;
+function* iterateBrowserTextInsertionChunks(text, maxChunkBytes = BROWSER_TEXT_INSERT_CHUNK_BYTES) {
+  if (text.length === 0) {
+    return;
+  }
+  const normalizedMax = Number.isFinite(maxChunkBytes) && maxChunkBytes > 0 ? maxChunkBytes : 1;
+  const measurement = measureClipboardTextByteLength(text, { stopAfterBytes: normalizedMax });
+  if (!measurement.exceededLimit) {
+    yield text;
+    return;
+  }
+  let startIndex = 0;
+  while (startIndex < text.length) {
+    const endIndex = getUtf8ChunkEndIndex(text, startIndex, normalizedMax);
+    yield text.slice(startIndex, endIndex);
+    startIndex = endIndex;
+  }
+}
 
 // src/shared/constants.ts
 var DEFAULT_MCP_PORT = 47821;
@@ -214,14 +1340,3110 @@ function isFileUrl(url) {
   return url.trim().toLowerCase().startsWith("file:");
 }
 
-// src/main/browser/browser-guest-renderer-target.ts
+// src/main/browser/agent-browser-bridge-input.ts
+function focusedValueSetExpression(valueExpression, options) {
+  const nextValue = options?.append ? ["String(target.value ?? '') + ", valueExpression].join("") : valueExpression;
+  const dispatchEvents = options?.dispatchEvents ? " target.dispatchEvent(new Event('input', { bubbles: true })); target.dispatchEvent(new Event('change', { bubbles: true }));" : "";
+  return [
+    "(() => { const el = document.activeElement; if (el) {",
+    // Why: ARIA spinbutton wrappers can hold focus while a contained or controlled input owns the value.
+    ` const editableSelector = "input:not([type='hidden']):not([type='button']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='image']):not([type='reset']):not([type='submit']), textarea";`,
+    " const isEditable = (node) => !!node && (node.matches?.(editableSelector) ?? (node.tagName === 'TEXTAREA' || (node.tagName === 'INPUT' && !/^(hidden|button|checkbox|radio|file|image|reset|submit)$/i.test(node.getAttribute?.('type') ?? ''))));",
+    " const findEditable = (root) => root?.querySelector?.(editableSelector) ?? null;",
+    " let target = el;",
+    " if (!isEditable(target) && target.getAttribute?.('role') === 'spinbutton') {",
+    "   const controls = target.getAttribute('aria-controls');",
+    "   if (controls) { for (const id of controls.split(/\\s+/)) { if (!id) continue; const controlled = document.getElementById(id); if (isEditable(controlled)) { target = controlled; break; } const descendant = findEditable(controlled); if (descendant) { target = descendant; break; } } }",
+    "   if (target === el) { const descendant = findEditable(target); if (descendant) target = descendant; }",
+    " }",
+    " const nativeSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), 'value')?.set;",
+    " const nextValue = ",
+    nextValue,
+    "; if (nativeSetter) { nativeSetter.call(target, nextValue); } else { target.value = nextValue; }",
+    dispatchEvents,
+    " } })()"
+  ].join("");
+}
+function focusedRichTextEditExpression(valueExpression, options) {
+  const selectAll = options?.selectAll ? "true" : "false";
+  return [
+    "(() => {",
+    " const target = document.activeElement;",
+    " const value = ",
+    valueExpression,
+    ";",
+    ` const selectAll = ${selectAll};`,
+    " const isEditable = target?.isContentEditable === true || /^(|true|plaintext-only)$/i.test(target?.getAttribute?.('contenteditable') ?? 'false');",
+    " if (!target || target === document.body || !isEditable) { throw new Error('Focused rich-text target is unavailable'); }",
+    " if (selectAll) {",
+    "   if (typeof window.getSelection !== 'function') { throw new Error('Rich-text selection is unavailable'); }",
+    "   const selection = window.getSelection();",
+    "   if (!selection) { throw new Error('Rich-text selection is unavailable'); }",
+    "   selection.selectAllChildren(target);",
+    " }",
+    " const editCommand = selectAll && value.length === 0 ? 'delete' : 'insertText';",
+    " let edited = false;",
+    " try {",
+    "   edited = document.execCommand(editCommand, false, value) === true;",
+    " } catch { edited = false; }",
+    " if (!edited) { throw new Error('Browser rich-text editing command failed'); }",
+    " })()"
+  ].join("");
+}
+function isExplicitContentEditableResult(result) {
+  const value = result && typeof result === "object" ? result.value : void 0;
+  return typeof value === "string" && /^(|true|plaintext-only)$/i.test(value);
+}
+
+// src/shared/map-with-concurrency.ts
+function mapWithConcurrency(items, limit, fn) {
+  const workerCount = concurrencyWorkerCount(limit, items.length);
+  if (items.length <= workerCount) {
+    return Promise.all(items.map(fn));
+  }
+  const results = [];
+  let nextIndex = 0;
+  return Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await fn(items[index], index);
+      }
+    })
+  ).then(() => results);
+}
+function mapSettledWithConcurrency(items, limit, fn) {
+  return mapWithConcurrency(items, limit, async (item, index) => {
+    try {
+      return { status: "fulfilled", value: await fn(item, index) };
+    } catch (reason) {
+      return { status: "rejected", reason };
+    }
+  });
+}
+function concurrencyWorkerCount(limit, itemCount) {
+  const normalizedLimit = limit === Number.POSITIVE_INFINITY ? itemCount : Number.isFinite(limit) ? Math.floor(limit) : 1;
+  return Math.max(1, Math.min(normalizedLimit, itemCount));
+}
+
+// src/main/browser/cdp-ws-proxy.ts
+var import_ws3 = require("ws");
+var import_node_http = require("node:http");
+
+// src/main/browser/cdp-client-response-writer.ts
+var import_ws = require("ws");
+
+// src/shared/ws-outbound-backpressure-queue.ts
+var DEFAULT_SOFT_CAP_BYTES = 8 * 1024 * 1024;
+var DEFAULT_MAX_QUEUED_BYTES = 64 * 1024 * 1024;
+var DEFAULT_MAX_QUEUED_FRAMES = 4096;
+var DEFAULT_DRAIN_POLL_MS = 25;
+var QUEUE_COMPACTION_HEAD_THRESHOLD = 64;
+function createWsOutboundBackpressureQueue(options) {
+  const softCapBytes = options.softCapBytes ?? DEFAULT_SOFT_CAP_BYTES;
+  const maxQueuedBytes = options.maxQueuedBytes ?? DEFAULT_MAX_QUEUED_BYTES;
+  const maxFrameBytes = options.maxFrameBytes ?? maxQueuedBytes;
+  const maxQueuedFrames = options.maxQueuedFrames ?? DEFAULT_MAX_QUEUED_FRAMES;
+  const drainPollMs = options.drainPollMs ?? DEFAULT_DRAIN_POLL_MS;
+  const configuredDrainFramesPerTurn = options.maxDrainFramesPerTurn;
+  const maxDrainFramesPerTurn = typeof configuredDrainFramesPerTurn === "number" && Number.isSafeInteger(configuredDrainFramesPerTurn) && configuredDrainFramesPerTurn > 0 ? configuredDrainFramesPerTurn : Number.POSITIVE_INFINITY;
+  const setTimer = options.setTimer ?? ((cb, ms) => setTimeout(cb, ms));
+  const clearTimer = options.clearTimer ?? ((timer2) => clearTimeout(timer2));
+  const bufferedAmount = () => {
+    const value = options.getBufferedAmount();
+    return Number.isFinite(value) ? value : 0;
+  };
+  const queue2 = [];
+  let queueHead = 0;
+  let queued = 0;
+  let queuedFrames = 0;
+  let timer = null;
+  let overflowed = false;
+  let disposed = false;
+  const stopTimer = () => {
+    if (timer !== null) {
+      clearTimer(timer);
+      timer = null;
+    }
+  };
+  const dropBacklog = () => {
+    while (queueHead < queue2.length) {
+      const entry = queue2[queueHead++];
+      if (entry?.retained) {
+        entry.retained = false;
+        entry.frame = null;
+        entry.releaseQueuedBytes();
+      }
+    }
+    queue2.length = 0;
+    queueHead = 0;
+    queued = 0;
+    queuedFrames = 0;
+    stopTimer();
+  };
+  const failOverflow = (cap) => {
+    if (disposed || overflowed) {
+      return;
+    }
+    overflowed = true;
+    const evidence = {
+      cap,
+      queuedBytes: queued,
+      queuedFrames,
+      maxQueuedBytes,
+      maxQueuedFrames,
+      maxFrameBytes
+    };
+    dropBacklog();
+    options.onOverflow(evidence);
+  };
+  const sendFrame = (frame) => {
+    try {
+      options.send(frame);
+      return true;
+    } catch {
+      failOverflow("sendFailed");
+      return false;
+    }
+  };
+  const advanceQueueHead = () => {
+    while (queueHead < queue2.length && !queue2[queueHead]?.retained) {
+      queueHead += 1;
+    }
+  };
+  const resetDrainedQueue = () => {
+    queue2.length = 0;
+    queueHead = 0;
+    stopTimer();
+  };
+  const releaseEntry = (entry) => {
+    if (!entry.retained) {
+      return false;
+    }
+    entry.retained = false;
+    entry.frame = null;
+    queued -= entry.bytes;
+    queuedFrames -= 1;
+    entry.releaseQueuedBytes();
+    return true;
+  };
+  const cancelEntry = (entry) => {
+    if (!releaseEntry(entry)) {
+      return false;
+    }
+    const index = queue2.indexOf(entry, queueHead);
+    if (index !== -1) {
+      queue2[index] = void 0;
+    }
+    advanceQueueHead();
+    if (queuedFrames === 0) {
+      resetDrainedQueue();
+    }
+    return true;
+  };
+  const drain = () => {
+    timer = null;
+    if (disposed || overflowed) {
+      return;
+    }
+    if (!options.isWritable()) {
+      dropBacklog();
+      return;
+    }
+    advanceQueueHead();
+    let drainedFrames = 0;
+    while (queuedFrames > 0 && drainedFrames < maxDrainFramesPerTurn && bufferedAmount() <= softCapBytes && (options.canSend?.(queue2[queueHead].bytes, true) ?? true)) {
+      const entry = queue2[queueHead++];
+      queue2[queueHead - 1] = void 0;
+      const frame = entry.frame;
+      releaseEntry(entry);
+      advanceQueueHead();
+      if (queueHead >= QUEUE_COMPACTION_HEAD_THRESHOLD) {
+        queue2.splice(0, queueHead);
+        queueHead = 0;
+      }
+      if (!sendFrame(frame)) {
+        return;
+      }
+      drainedFrames += 1;
+    }
+    if (queuedFrames > 0) {
+      const nextDrainDelay = drainedFrames >= maxDrainFramesPerTurn ? 0 : drainPollMs;
+      timer = setTimer(drain, nextDrainDelay);
+    } else {
+      resetDrainedQueue();
+    }
+  };
+  const isIdle = (bytes) => queuedFrames === 0 && options.isWritable() && bufferedAmount() <= softCapBytes && (options.canSend?.(bytes, false) ?? true);
+  const enqueueCancelable = (frame) => {
+    if (disposed || overflowed) {
+      return { accepted: false, queued: false, cancel: () => false };
+    }
+    const bytes = options.byteLengthOf(frame);
+    if (!Number.isFinite(bytes) || bytes < 0 || bytes > maxFrameBytes) {
+      failOverflow("maxFrameBytes");
+      return { accepted: false, queued: false, cancel: () => false };
+    }
+    if (isIdle(bytes)) {
+      return {
+        accepted: sendFrame(frame),
+        queued: false,
+        cancel: () => false
+      };
+    }
+    const queuedBytesClaim = options.claimQueuedBytes?.(bytes);
+    if (options.claimQueuedBytes && !queuedBytesClaim) {
+      failOverflow("claimQueuedBytes");
+      return { accepted: false, queued: false, cancel: () => false };
+    }
+    const entry = {
+      frame,
+      bytes,
+      releaseQueuedBytes: queuedBytesClaim ?? (() => void 0),
+      retained: true
+    };
+    queue2.push(entry);
+    queued += bytes;
+    queuedFrames += 1;
+    if (queued > maxQueuedBytes || queuedFrames > maxQueuedFrames) {
+      failOverflow(queued > maxQueuedBytes ? "maxQueuedBytes" : "maxQueuedFrames");
+      return { accepted: false, queued: false, cancel: () => false };
+    }
+    if (timer === null) {
+      timer = setTimer(drain, drainPollMs);
+    }
+    return {
+      accepted: true,
+      queued: true,
+      cancel: () => cancelEntry(entry)
+    };
+  };
+  return {
+    enqueue(frame) {
+      return enqueueCancelable(frame).accepted;
+    },
+    enqueueCancelable,
+    isIdle,
+    queuedBytes: () => queued,
+    evidence: () => ({
+      queuedBytes: queued,
+      queuedFrames,
+      storageSlots: queue2.length
+    }),
+    dispose() {
+      disposed = true;
+      dropBacklog();
+    }
+  };
+}
+
+// src/main/browser/cdp-client-response-writer.ts
+var CdpClientResponseWriter = class {
+  constructor(getClient) {
+    this.getClient = getClient;
+  }
+  getClient;
+  responseSessionIdsByClient = /* @__PURE__ */ new WeakMap();
+  outboundByClient = /* @__PURE__ */ new WeakMap();
+  send(payload, client = this.getClient()) {
+    const responsePayload = client ? this.addResponseSessionId(payload, client) : payload;
+    if (client?.readyState === import_ws.WebSocket.OPEN) {
+      this.outboundQueue(client).enqueue(JSON.stringify(responsePayload));
+    }
+  }
+  outboundQueue(client) {
+    const existing = this.outboundByClient.get(client);
+    if (existing) {
+      return existing.queue;
+    }
+    const queue2 = createWsOutboundBackpressureQueue({
+      send: (frame) => client.send(frame),
+      byteLengthOf: (frame) => Buffer.byteLength(frame),
+      getBufferedAmount: () => client.bufferedAmount,
+      isWritable: () => client.readyState === import_ws.WebSocket.OPEN,
+      onOverflow: (evidence) => {
+        console.warn("[cdp] outbound queue overflow; terminating automation client:", {
+          cap: evidence.cap,
+          queuedBytes: evidence.queuedBytes,
+          queuedFrames: evidence.queuedFrames,
+          maxQueuedBytes: evidence.maxQueuedBytes,
+          maxQueuedFrames: evidence.maxQueuedFrames
+        });
+        client.terminate();
+      },
+      // Preserve large PDF/screenshot replies on a draining connection; queued bursts stay capped.
+      maxFrameBytes: Number.POSITIVE_INFINITY,
+      maxDrainFramesPerTurn: 128
+    });
+    const onClose = () => this.forgetClient(client);
+    this.outboundByClient.set(client, { queue: queue2, onClose });
+    client.once("close", onClose);
+    return queue2;
+  }
+  addResponseSessionId(payload, client) {
+    if (typeof payload !== "object" || payload === null) {
+      return payload;
+    }
+    const clientId = payload.id;
+    if (typeof clientId !== "number") {
+      return payload;
+    }
+    const responseSessionIds = this.responseSessionIdsByClient.get(client);
+    const sessionId = responseSessionIds?.get(clientId);
+    responseSessionIds?.delete(clientId);
+    return sessionId ? { ...payload, sessionId } : payload;
+  }
+  sendResult(clientId, result, client = this.getClient()) {
+    this.send({ id: clientId, result }, client);
+  }
+  sendError(clientId, message, client = this.getClient()) {
+    this.send({ id: clientId, error: { code: -32e3, message } }, client);
+  }
+  isActiveClient(client) {
+    return this.getClient() === client && client.readyState === import_ws.WebSocket.OPEN;
+  }
+  recordRequestSessionId(client, clientId, msg) {
+    const responseSessionIds = this.responseSessionIdsByClient.get(client) ?? /* @__PURE__ */ new Map();
+    if (msg.sessionId) {
+      responseSessionIds.set(clientId, msg.sessionId);
+    } else {
+      responseSessionIds.delete(clientId);
+    }
+    this.responseSessionIdsByClient.set(client, responseSessionIds);
+  }
+  forgetClient(client) {
+    this.responseSessionIdsByClient.delete(client);
+    const outbound = this.outboundByClient.get(client);
+    if (outbound) {
+      this.outboundByClient.delete(client);
+      client.off("close", outbound.onClose);
+      outbound.queue.dispose();
+    }
+  }
+};
+
+// src/main/browser/cdp-synthetic-session-registry.ts
+var CdpSyntheticSessionRegistry = class {
+  // Why: agent-browser filters events by sessionId from Target.attachToTarget.
+  clientSessionId = void 0;
+  clientSessionIds = /* @__PURE__ */ new Set();
+  clientBrowserSessionIds = /* @__PURE__ */ new Set();
+  nextClientSessionOrdinal = 0;
+  nextClientBrowserSessionOrdinal = 0;
+  get primarySessionId() {
+    return this.clientSessionId;
+  }
+  clear() {
+    this.clientSessionId = void 0;
+    this.clientSessionIds.clear();
+    this.clientBrowserSessionIds.clear();
+    this.nextClientSessionOrdinal = 0;
+    this.nextClientBrowserSessionOrdinal = 0;
+  }
+  attachPageSession() {
+    const sessionId = this.nextSyntheticPageSessionId();
+    this.clientSessionIds.add(sessionId);
+    this.clientSessionId ??= sessionId;
+    return sessionId;
+  }
+  attachBrowserSession() {
+    const sessionId = this.nextSyntheticBrowserSessionId();
+    this.clientBrowserSessionIds.add(sessionId);
+    return sessionId;
+  }
+  detachSession(detachedSessionId) {
+    if (typeof detachedSessionId === "string") {
+      this.clientSessionIds.delete(detachedSessionId);
+      this.clientBrowserSessionIds.delete(detachedSessionId);
+      if (detachedSessionId === this.clientSessionId) {
+        this.clientSessionId = this.clientSessionIds.values().next().value;
+      }
+    }
+  }
+  resolveDebuggerSessionId(msgSessionId) {
+    const syntheticSession = msgSessionId && this.clientSessionIds.has(msgSessionId) || msgSessionId && this.clientBrowserSessionIds.has(msgSessionId);
+    return msgSessionId && !syntheticSession ? msgSessionId : void 0;
+  }
+  nextSyntheticPageSessionId() {
+    this.nextClientSessionOrdinal += 1;
+    return this.nextClientSessionOrdinal === 1 ? "orca-proxy-session" : `orca-proxy-session-${this.nextClientSessionOrdinal}`;
+  }
+  nextSyntheticBrowserSessionId() {
+    this.nextClientBrowserSessionOrdinal += 1;
+    return this.nextClientBrowserSessionOrdinal === 1 ? "orca-proxy-browser-session" : `orca-proxy-browser-session-${this.nextClientBrowserSessionOrdinal}`;
+  }
+};
+
+// src/main/browser/cdp-target-discovery.ts
+var CdpTargetDiscovery = class {
+  constructor(webContents10, responder, sessions, getPort) {
+    this.webContents = webContents10;
+    this.responder = responder;
+    this.sessions = sessions;
+    this.getPort = getPort;
+  }
+  webContents;
+  responder;
+  sessions;
+  getPort;
+  handleHttpRequest(req, res) {
+    const url = req.url ?? "";
+    if (url === "/json/version" || url === "/json/version/") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      const chromeVersion = process.versions.chrome ?? "134.0.0.0";
+      res.end(
+        JSON.stringify({
+          Browser: `Chrome/${chromeVersion}`,
+          "Protocol-Version": "1.3",
+          webSocketDebuggerUrl: `ws://127.0.0.1:${this.getPort()}`
+        })
+      );
+      return;
+    }
+    if (url === "/json" || url === "/json/" || url === "/json/list" || url === "/json/list/") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify([
+          {
+            ...this.buildTargetInfo(),
+            id: "orca-proxy-target",
+            webSocketDebuggerUrl: `ws://127.0.0.1:${this.getPort()}`
+          }
+        ])
+      );
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  }
+  /** Returns true when the command was answered locally and needs no forwarding. */
+  handleCommand(client, clientId, msg) {
+    if (msg.method === "Target.getTargets") {
+      this.responder.sendResult(clientId, { targetInfos: [this.buildTargetInfo()] }, client);
+      return true;
+    }
+    if (msg.method === "Target.getTargetInfo") {
+      this.responder.sendResult(clientId, { targetInfo: this.buildTargetInfo() }, client);
+      return true;
+    }
+    if (msg.method === "Target.setDiscoverTargets" || msg.method === "Target.detachFromTarget") {
+      if (msg.method === "Target.detachFromTarget") {
+        const detachedSessionId = msg.params?.sessionId;
+        this.sessions.detachSession(detachedSessionId);
+      }
+      this.responder.sendResult(clientId, {}, client);
+      return true;
+    }
+    if (msg.method === "Target.attachToBrowserTarget") {
+      const sessionId = this.sessions.attachBrowserSession();
+      this.responder.sendResult(clientId, { sessionId }, client);
+      return true;
+    }
+    if (msg.method === "Target.attachToTarget") {
+      const sessionId = this.sessions.attachPageSession();
+      this.responder.sendResult(clientId, { sessionId }, client);
+      return true;
+    }
+    if (msg.method === "Browser.getVersion") {
+      const chromeVersion = process.versions.chrome ?? "134.0.0.0";
+      this.responder.sendResult(
+        clientId,
+        {
+          protocolVersion: "1.3",
+          product: `Chrome/${chromeVersion}`,
+          userAgent: "",
+          jsVersion: ""
+        },
+        client
+      );
+      return true;
+    }
+    return false;
+  }
+  buildTargetInfo() {
+    const destroyed = this.webContents.isDestroyed();
+    return {
+      targetId: "orca-proxy-target",
+      type: "page",
+      title: destroyed ? "" : this.webContents.getTitle(),
+      url: destroyed ? "" : this.webContents.getURL(),
+      attached: true,
+      canAccessOpener: false
+    };
+  }
+};
+
+// src/main/browser/cdp-debugger-channel.ts
+var import_ws2 = require("ws");
+
+// src/main/browser/guest-cdp-command.ts
+var VIEW_RESIZING_CDP_METHODS = /* @__PURE__ */ new Set([
+  "Emulation.setDeviceMetricsOverride",
+  "Emulation.setVisibleSize"
+]);
+function sendGuestCdpCommand(guest, method, params, sessionId) {
+  if (VIEW_RESIZING_CDP_METHODS.has(method) && (guest.isDestroyed() || guest.isCrashed())) {
+    return Promise.reject(
+      new BrowserError(
+        "browser_cdp_error",
+        "The page crashed; its viewport can be changed again once it reloads."
+      )
+    );
+  }
+  return Promise.resolve(
+    sessionId === void 0 ? guest.debugger.sendCommand(method, params) : guest.debugger.sendCommand(method, params, sessionId)
+  );
+}
+
+// src/main/browser/cdp-debugger-channel.ts
+var CdpDebuggerChannel = class {
+  constructor(webContents10, responder, sessions, getClient, onDetached) {
+    this.webContents = webContents10;
+    this.responder = responder;
+    this.sessions = sessions;
+    this.getClient = getClient;
+    this.onDetached = onDetached;
+  }
+  webContents;
+  responder;
+  sessions;
+  getClient;
+  onDetached;
+  debuggerMessageHandler = null;
+  debuggerDetachHandler = null;
+  debuggerLease = null;
+  attached = false;
+  async attachDebugger() {
+    if (this.attached) {
+      return;
+    }
+    try {
+      this.debuggerLease = acquireElectronDebugger(this.webContents);
+    } catch {
+      throw new Error("Could not attach debugger. DevTools may already be open for this tab.");
+    }
+    this.attached = true;
+    try {
+      await this.webContents.debugger.sendCommand("Page.enable", {});
+    } catch {
+    }
+    this.debuggerMessageHandler = (_event, ...rest) => {
+      const [method, params, sessionId] = rest;
+      const client = this.getClient();
+      if (!client || client.readyState !== import_ws2.WebSocket.OPEN) {
+        return;
+      }
+      const msg = { method, params };
+      msg.sessionId = sessionId || this.sessions.primarySessionId;
+      this.responder.send(msg, client);
+    };
+    this.debuggerDetachHandler = () => {
+      this.attached = false;
+      const lease = this.debuggerLease;
+      this.debuggerLease = null;
+      lease?.release();
+      this.onDetached();
+    };
+    this.webContents.debugger.on("message", this.debuggerMessageHandler);
+    this.webContents.debugger.on("detach", this.debuggerDetachHandler);
+  }
+  detachDebugger() {
+    if (this.debuggerMessageHandler) {
+      this.webContents.debugger.removeListener("message", this.debuggerMessageHandler);
+      this.debuggerMessageHandler = null;
+    }
+    if (this.debuggerDetachHandler) {
+      this.webContents.debugger.removeListener("detach", this.debuggerDetachHandler);
+      this.debuggerDetachHandler = null;
+    }
+    const lease = this.debuggerLease;
+    this.debuggerLease = null;
+    lease?.release();
+    this.attached = false;
+  }
+  sendDebuggerCommand(method, params, sessionId) {
+    return sessionId ? sendGuestCdpCommand(this.webContents, method, params, sessionId) : sendGuestCdpCommand(this.webContents, method, params);
+  }
+  forwardCommand(client, clientId, method, params, msgSessionId) {
+    if (this.webContents.isDestroyed()) {
+      this.responder.sendError(clientId, "Browser tab is no longer available", client);
+      return;
+    }
+    const sessionId = this.sessions.resolveDebuggerSessionId(msgSessionId);
+    try {
+      this.sendDebuggerCommand(method, params, sessionId).then((result) => {
+        this.responder.sendResult(clientId, result, client);
+      }).catch((err) => {
+        this.responder.sendError(clientId, err.message, client);
+      });
+    } catch (err) {
+      this.responder.sendError(clientId, err instanceof Error ? err.message : String(err), client);
+    }
+  }
+};
+
+// src/main/browser/cdp-page-navigation-commands.ts
+var LIFECYCLE_PRIMING_TIMEOUT_MS = 1e3;
+var CdpPageNavigationCommands = class {
+  constructor(webContents10, responder, sessions, debuggerChannel) {
+    this.webContents = webContents10;
+    this.responder = responder;
+    this.sessions = sessions;
+    this.debuggerChannel = debuggerChannel;
+  }
+  webContents;
+  responder;
+  sessions;
+  debuggerChannel;
+  async navigateWithLifecycle(client, clientId, params, msgSessionId) {
+    await this.primePageLifecycle(this.sessions.resolveDebuggerSessionId(msgSessionId));
+    if (!this.responder.isActiveClient(client)) {
+      return;
+    }
+    this.debuggerChannel.forwardCommand(client, clientId, "Page.navigate", params, msgSessionId);
+  }
+  async reloadWithLifecycle(client, clientId, params, msgSessionId) {
+    const sessionId = this.sessions.resolveDebuggerSessionId(msgSessionId);
+    const unsupportedParam = sessionId ? null : this.getUnsupportedRootReloadParam(params);
+    if (unsupportedParam) {
+      this.responder.sendError(
+        clientId,
+        `Page.reload parameter "${unsupportedParam}" is not supported for Orca tab reloads`,
+        client
+      );
+      return;
+    }
+    await this.primePageLifecycle(sessionId);
+    if (!this.responder.isActiveClient(client)) {
+      return;
+    }
+    if (sessionId) {
+      this.debuggerChannel.forwardCommand(client, clientId, "Page.reload", params, msgSessionId);
+      return;
+    }
+    if (this.webContents.isDestroyed()) {
+      this.responder.sendError(clientId, "Browser tab is no longer available", client);
+      return;
+    }
+    try {
+      if (params.ignoreCache === true) {
+        this.webContents.reloadIgnoringCache();
+      } else {
+        this.webContents.reload();
+      }
+      this.responder.sendResult(clientId, {}, client);
+    } catch (err) {
+      this.responder.sendError(clientId, err instanceof Error ? err.message : String(err), client);
+    }
+  }
+  getUnsupportedRootReloadParam(params) {
+    return Object.keys(params).find((key) => key !== "ignoreCache") ?? null;
+  }
+  async primePageLifecycle(sessionId) {
+    let timeout = null;
+    const priming = (async () => {
+      await this.debuggerChannel.sendDebuggerCommand("Network.enable", {}, sessionId);
+      await this.debuggerChannel.sendDebuggerCommand("Page.enable", {}, sessionId);
+      await this.debuggerChannel.sendDebuggerCommand(
+        "Page.setLifecycleEventsEnabled",
+        { enabled: true },
+        sessionId
+      );
+    })().catch(() => {
+    });
+    try {
+      await Promise.race([
+        priming,
+        new Promise((resolve) => {
+          timeout = setTimeout(resolve, LIFECYCLE_PRIMING_TIMEOUT_MS);
+          timeout.unref?.();
+        })
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+};
+
+// src/main/browser/cdp-dom-focus-replay.ts
+var CdpDomFocusReplay = class {
+  constructor(webContents10, responder, debuggerChannel) {
+    this.webContents = webContents10;
+    this.responder = responder;
+    this.debuggerChannel = debuggerChannel;
+  }
+  webContents;
+  responder;
+  debuggerChannel;
+  // Why: holds each session's last DOM.focus params to replay right before the next
+  // Input.insertText, countering the native webContents.focus() that would blur the target.
+  pendingDomFocusBySession = /* @__PURE__ */ new Map();
+  clear() {
+    this.pendingDomFocusBySession.clear();
+  }
+  invalidateForMethod(method, effectiveSessionId) {
+    if (method !== "DOM.focus" && method !== "Input.insertText") {
+      this.pendingDomFocusBySession.delete(effectiveSessionId);
+    }
+  }
+  // Why: this must stay synchronous up to the `.set()` call so the pending-focus
+  // entry exists before the event loop can dispatch a pipelined Input.insertText
+  // message, closing the race where the replay would otherwise be silently skipped.
+  forwardDomFocus(client, clientId, params, effectiveSessionId) {
+    const focused = this.sendDomFocus(client, clientId, params, effectiveSessionId);
+    this.pendingDomFocusBySession.set(effectiveSessionId, focused);
+  }
+  async sendDomFocus(client, clientId, params, effectiveSessionId) {
+    if (this.webContents.isDestroyed()) {
+      this.responder.sendError(clientId, "Browser tab is no longer available", client);
+      return void 0;
+    }
+    try {
+      const result = await this.debuggerChannel.sendDebuggerCommand(
+        "DOM.focus",
+        params,
+        effectiveSessionId
+      );
+      this.responder.sendResult(clientId, result, client);
+      return { ...params };
+    } catch (err) {
+      this.responder.sendError(clientId, err instanceof Error ? err.message : String(err), client);
+      return void 0;
+    }
+  }
+  async forwardInsertText(client, clientId, params, effectiveSessionId) {
+    const pendingFocus = this.pendingDomFocusBySession.get(effectiveSessionId);
+    this.pendingDomFocusBySession.delete(effectiveSessionId);
+    const pendingFocusParams = pendingFocus ? await pendingFocus : void 0;
+    if (!this.responder.isActiveClient(client)) {
+      return;
+    }
+    if (pendingFocusParams) {
+      if (this.webContents.isDestroyed()) {
+        this.responder.sendError(clientId, "Browser tab is no longer available", client);
+        return;
+      }
+      try {
+        await this.debuggerChannel.sendDebuggerCommand(
+          "DOM.focus",
+          pendingFocusParams,
+          effectiveSessionId
+        );
+      } catch (err) {
+        this.responder.sendError(clientId, err instanceof Error ? err.message : String(err), client);
+        return;
+      }
+      if (!this.responder.isActiveClient(client)) {
+        return;
+      }
+    }
+    this.debuggerChannel.forwardCommand(
+      client,
+      clientId,
+      "Input.insertText",
+      params,
+      effectiveSessionId
+    );
+  }
+};
+
+// src/main/browser/cdp-print-to-pdf.ts
+var import_node_crypto = require("node:crypto");
+var PDF_DEFAULT_MARGIN_INCHES = 1 / 2.54;
+var PDF_STREAM_CHUNK_BYTES = 1024 * 1024;
+var PDF_STREAM_HANDLE_PREFIX = "orca-pdf-";
+var PDF_STREAM_TTL_MS = 5 * 60 * 1e3;
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function buildPrintToPdfOptions(params) {
+  const options = {};
+  if (typeof params.landscape === "boolean") {
+    options.landscape = params.landscape;
+  }
+  if (typeof params.displayHeaderFooter === "boolean") {
+    options.displayHeaderFooter = params.displayHeaderFooter;
+  }
+  if (typeof params.printBackground === "boolean") {
+    options.printBackground = params.printBackground;
+  }
+  if (typeof params.preferCSSPageSize === "boolean") {
+    options.preferCSSPageSize = params.preferCSSPageSize;
+  }
+  if (typeof params.generateTaggedPDF === "boolean") {
+    options.generateTaggedPDF = params.generateTaggedPDF;
+  }
+  if (typeof params.generateDocumentOutline === "boolean") {
+    options.generateDocumentOutline = params.generateDocumentOutline;
+  }
+  const scale = finiteNumber(params.scale);
+  if (scale !== null && scale > 0) {
+    options.scale = scale;
+  }
+  const paperWidth = finiteNumber(params.paperWidth);
+  const paperHeight = finiteNumber(params.paperHeight);
+  if (paperWidth !== null && paperHeight !== null && paperWidth > 0 && paperHeight > 0) {
+    options.pageSize = { width: paperWidth, height: paperHeight };
+  }
+  const marginTop = finiteNumber(params.marginTop);
+  const marginBottom = finiteNumber(params.marginBottom);
+  const marginLeft = finiteNumber(params.marginLeft);
+  const marginRight = finiteNumber(params.marginRight);
+  if ([marginTop, marginBottom, marginLeft, marginRight].some((margin) => margin !== null)) {
+    options.margins = {
+      top: marginTop ?? PDF_DEFAULT_MARGIN_INCHES,
+      bottom: marginBottom ?? PDF_DEFAULT_MARGIN_INCHES,
+      left: marginLeft ?? PDF_DEFAULT_MARGIN_INCHES,
+      right: marginRight ?? PDF_DEFAULT_MARGIN_INCHES
+    };
+  }
+  if (typeof params.pageRanges === "string") {
+    options.pageRanges = params.pageRanges;
+  }
+  if (typeof params.headerTemplate === "string") {
+    options.headerTemplate = params.headerTemplate;
+  }
+  if (typeof params.footerTemplate === "string") {
+    options.footerTemplate = params.footerTemplate;
+  }
+  return options;
+}
+var CdpPdfStreamStore = class {
+  streams = /* @__PURE__ */ new Map();
+  handlePrefix = `${PDF_STREAM_HANDLE_PREFIX}${(0, import_node_crypto.randomUUID)()}-`;
+  nextId = 0;
+  /** True when `params.handle` names one of this store's streams. */
+  ownsHandle(params) {
+    return typeof params.handle === "string" && params.handle.startsWith(this.handlePrefix);
+  }
+  create(data) {
+    const handle = `${this.handlePrefix}${++this.nextId}`;
+    this.streams.set(handle, {
+      data,
+      offset: 0,
+      cleanupTimer: this.scheduleCleanup(handle)
+    });
+    return handle;
+  }
+  /** Read the next chunk, or `null` if the handle is unknown/expired. */
+  read(params) {
+    const handle = typeof params.handle === "string" ? params.handle : "";
+    const stream = this.streams.get(handle);
+    if (!stream) {
+      return null;
+    }
+    this.refreshCleanup(handle, stream);
+    const offset = finiteNumber(params.offset);
+    if (offset !== null) {
+      stream.offset = Math.max(0, Math.floor(offset));
+    }
+    const requestedSize = finiteNumber(params.size);
+    const size = requestedSize !== null && requestedSize > 0 ? Math.floor(requestedSize) : PDF_STREAM_CHUNK_BYTES;
+    const start = Math.min(stream.offset, stream.data.length);
+    const end = Math.min(start + size, stream.data.length);
+    const chunk = stream.data.subarray(start, end);
+    stream.offset = end;
+    return { data: chunk.toString("base64"), eof: end >= stream.data.length };
+  }
+  close(params) {
+    const handle = typeof params.handle === "string" ? params.handle : "";
+    this.delete(handle);
+  }
+  clear() {
+    for (const stream of this.streams.values()) {
+      clearTimeout(stream.cleanupTimer);
+    }
+    this.streams.clear();
+  }
+  scheduleCleanup(handle) {
+    const cleanupTimer = setTimeout(() => {
+      this.delete(handle);
+    }, PDF_STREAM_TTL_MS);
+    const maybeNodeTimer = cleanupTimer;
+    maybeNodeTimer.unref?.();
+    return cleanupTimer;
+  }
+  refreshCleanup(handle, stream) {
+    clearTimeout(stream.cleanupTimer);
+    stream.cleanupTimer = this.scheduleCleanup(handle);
+  }
+  delete(handle) {
+    const stream = this.streams.get(handle);
+    if (!stream) {
+      return;
+    }
+    clearTimeout(stream.cleanupTimer);
+    this.streams.delete(handle);
+  }
+};
+
+// src/main/browser/cdp-page-capture-commands.ts
+var CdpPageCaptureCommands = class {
+  constructor(webContents10, responder, holdPaint) {
+    this.webContents = webContents10;
+    this.responder = responder;
+    this.holdPaint = holdPaint;
+  }
+  webContents;
+  responder;
+  holdPaint;
+  pdfStreams = new CdpPdfStreamStore();
+  clear() {
+    this.pdfStreams.clear();
+  }
+  ownsHandle(params) {
+    return this.pdfStreams.ownsHandle(params);
+  }
+  async handlePrintToPdf(client, clientId, params) {
+    if (this.webContents.isDestroyed()) {
+      this.responder.sendError(clientId, "Browser tab is no longer available", client);
+      return;
+    }
+    try {
+      const pdf = await this.webContents.printToPDF(buildPrintToPdfOptions(params));
+      if (!this.responder.isActiveClient(client)) {
+        return;
+      }
+      const buffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+      if (params.transferMode === "ReturnAsStream") {
+        const handle = this.pdfStreams.create(buffer);
+        this.responder.sendResult(clientId, { data: "", stream: handle }, client);
+        return;
+      }
+      this.responder.sendResult(clientId, { data: buffer.toString("base64") }, client);
+    } catch (err) {
+      this.responder.sendError(clientId, err instanceof Error ? err.message : String(err), client);
+    }
+  }
+  handleStreamRead(client, clientId, params) {
+    const chunk = this.pdfStreams.read(params);
+    if (!chunk) {
+      this.responder.sendError(clientId, "Invalid stream handle", client);
+      return;
+    }
+    this.responder.sendResult(
+      clientId,
+      { base64Encoded: true, data: chunk.data, eof: chunk.eof },
+      client
+    );
+  }
+  handleStreamClose(client, clientId, params) {
+    this.pdfStreams.close(params);
+    this.responder.sendResult(clientId, {}, client);
+  }
+  async handleScreenshot(client, clientId, params) {
+    try {
+      const result = await captureScreenshot(this.webContents, params, this.holdPaint);
+      this.responder.sendResult(clientId, result, client);
+    } catch (err) {
+      this.responder.sendError(clientId, err instanceof Error ? err.message : String(err), client);
+    }
+  }
+};
+
+// src/main/browser/cdp-loopback-request-guard.ts
+function isTrustedCdpLoopbackRequest(req, port) {
+  if (req.headers.origin !== void 0) {
+    return false;
+  }
+  const host = req.headers.host?.toLowerCase();
+  return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+}
+
+// src/main/browser/cdp-ws-proxy.ts
+var CdpWsProxy = class {
+  constructor(webContents10, holdPaint) {
+    this.webContents = webContents10;
+    this.discovery = new CdpTargetDiscovery(
+      webContents10,
+      this.responder,
+      this.sessions,
+      () => this.port
+    );
+    this.debuggerChannel = new CdpDebuggerChannel(
+      webContents10,
+      this.responder,
+      this.sessions,
+      () => this.client,
+      () => this.stop()
+    );
+    this.navigation = new CdpPageNavigationCommands(
+      webContents10,
+      this.responder,
+      this.sessions,
+      this.debuggerChannel
+    );
+    this.domFocusReplay = new CdpDomFocusReplay(webContents10, this.responder, this.debuggerChannel);
+    this.pageCapture = new CdpPageCaptureCommands(webContents10, this.responder, holdPaint);
+  }
+  webContents;
+  httpServer = null;
+  wss = null;
+  client = null;
+  detachClientListeners = null;
+  port = 0;
+  responder = new CdpClientResponseWriter(() => this.client);
+  sessions = new CdpSyntheticSessionRegistry();
+  discovery;
+  debuggerChannel;
+  navigation;
+  domFocusReplay;
+  pageCapture;
+  async start() {
+    await this.debuggerChannel.attachDebugger();
+    return new Promise((resolve, reject) => {
+      this.httpServer = (0, import_node_http.createServer)((req, res) => {
+        if (!isTrustedCdpLoopbackRequest(req, this.port)) {
+          res.writeHead(403);
+          res.end();
+          return;
+        }
+        this.discovery.handleHttpRequest(req, res);
+      });
+      this.wss = new import_ws3.WebSocketServer({
+        server: this.httpServer,
+        verifyClient: ({ req }, done) => done(isTrustedCdpLoopbackRequest(req, this.port), 403)
+      });
+      const failStart = (error) => {
+        this.httpServer?.removeListener("error", onListenError);
+        this.wss?.close();
+        this.wss = null;
+        this.httpServer?.close();
+        this.httpServer = null;
+        this.debuggerChannel.detachDebugger();
+        reject(error);
+      };
+      const onListenError = (error) => {
+        failStart(error);
+      };
+      this.wss.on("connection", (ws) => {
+        this.closeClient();
+        this.client = ws;
+        const onMessage = (data) => {
+          this.handleClientMessage(ws, data.toString());
+        };
+        const onClose = () => {
+          detach();
+          if (this.client === ws) {
+            this.clearClientState();
+            this.client = null;
+          }
+        };
+        const detach = () => {
+          ws.off("message", onMessage);
+          ws.off("close", onClose);
+          if (this.detachClientListeners === detach) {
+            this.detachClientListeners = null;
+          }
+        };
+        this.detachClientListeners = detach;
+        ws.on("message", onMessage);
+        ws.on("close", onClose);
+      });
+      this.httpServer.listen(0, "127.0.0.1", () => {
+        this.httpServer?.removeListener("error", onListenError);
+        const addr = this.httpServer.address();
+        if (typeof addr === "object" && addr) {
+          this.port = addr.port;
+          resolve(`ws://127.0.0.1:${this.port}`);
+        } else {
+          failStart(new Error("Failed to bind proxy server"));
+        }
+      });
+      this.httpServer.once("error", onListenError);
+    });
+  }
+  async stop() {
+    this.debuggerChannel.detachDebugger();
+    this.closeClient();
+    if (this.wss) {
+      this.wss.close();
+      this.wss = null;
+    }
+    if (this.httpServer) {
+      this.httpServer.close();
+      this.httpServer = null;
+    }
+  }
+  getPort() {
+    return this.port;
+  }
+  closeClient() {
+    const client = this.client;
+    this.detachClientListeners?.();
+    this.detachClientListeners = null;
+    this.client = null;
+    this.clearClientState();
+    if (client) {
+      this.responder.forgetClient(client);
+    }
+    client?.close();
+  }
+  clearClientState() {
+    this.domFocusReplay.clear();
+    this.pageCapture.clear();
+    this.sessions.clear();
+  }
+  handleClientMessage(client, raw) {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (msg.id == null || !msg.method) {
+      return;
+    }
+    const clientId = msg.id;
+    this.responder.recordRequestSessionId(client, clientId, msg);
+    if (this.discovery.handleCommand(client, clientId, msg)) {
+      return;
+    }
+    const effectiveSessionId = this.sessions.resolveDebuggerSessionId(msg.sessionId);
+    this.domFocusReplay.invalidateForMethod(msg.method, effectiveSessionId);
+    if (msg.method === "Page.bringToFront") {
+      if (!this.webContents.isDestroyed()) {
+        this.webContents.focus();
+      }
+      this.responder.sendResult(clientId, {}, client);
+      return;
+    }
+    if (msg.method === "DOM.focus") {
+      this.domFocusReplay.forwardDomFocus(client, clientId, msg.params ?? {}, effectiveSessionId);
+      return;
+    }
+    if (msg.method === "Page.captureScreenshot") {
+      void this.pageCapture.handleScreenshot(client, clientId, msg.params);
+      return;
+    }
+    if (msg.method === "Page.printToPDF") {
+      void this.pageCapture.handlePrintToPdf(client, clientId, msg.params ?? {});
+      return;
+    }
+    if (msg.method === "IO.read") {
+      const params = msg.params ?? {};
+      if (this.pageCapture.ownsHandle(params)) {
+        this.pageCapture.handleStreamRead(client, clientId, params);
+        return;
+      }
+      this.debuggerChannel.forwardCommand(client, clientId, msg.method, params, msg.sessionId);
+      return;
+    }
+    if (msg.method === "IO.close") {
+      const params = msg.params ?? {};
+      if (this.pageCapture.ownsHandle(params)) {
+        this.pageCapture.handleStreamClose(client, clientId, params);
+        return;
+      }
+      this.debuggerChannel.forwardCommand(client, clientId, msg.method, params, msg.sessionId);
+      return;
+    }
+    if (msg.method === "Input.insertText" && !this.webContents.isDestroyed()) {
+      this.webContents.focus();
+      void this.domFocusReplay.forwardInsertText(
+        client,
+        clientId,
+        msg.params ?? {},
+        effectiveSessionId
+      );
+      return;
+    }
+    if (msg.method === "Page.navigate" && !this.webContents.isDestroyed()) {
+      void this.navigation.navigateWithLifecycle(client, clientId, msg.params ?? {}, msg.sessionId);
+      return;
+    }
+    if (msg.method === "Page.reload" && !this.webContents.isDestroyed()) {
+      void this.navigation.reloadWithLifecycle(client, clientId, msg.params ?? {}, msg.sessionId);
+      return;
+    }
+    this.debuggerChannel.forwardCommand(
+      client,
+      clientId,
+      msg.method,
+      msg.params ?? {},
+      msg.sessionId
+    );
+  }
+};
+
+// src/main/browser/agent-browser-bridge-raw-process.ts
+var import_node_child_process3 = require("node:child_process");
+
+// src/main/browser/agent-browser-bridge-execution.ts
+var import_node_child_process2 = require("node:child_process");
+
+// src/main/browser/agent-browser-bridge-result.ts
+function translateResult(stdout) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: "browser_error",
+        message: `Unexpected output from agent-browser: ${stdout.slice(0, 1e3)}`
+      }
+    };
+  }
+  if (parsed.success) {
+    return { ok: true, result: parsed.data };
+  }
+  const message = parsed.error ?? "Unknown browser error";
+  return {
+    ok: false,
+    error: {
+      code: classifyErrorCode(message),
+      message
+    }
+  };
+}
+
+// src/main/browser/agent-browser-bridge-state.ts
 var import_electron = require("electron");
+
+// src/main/browser/agent-browser-process-environment.ts
+var import_node_crypto2 = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var import_node_path2 = require("node:path");
+var AGENT_BROWSER_SOCKET_DIRECTORY_PREFIX = "orca-ab-";
+var AGENT_BROWSER_IDLE_TIMEOUT_MS = 10 * 60 * 1e3;
+function createAgentBrowserProcessEnvironment(options) {
+  const env = { ...options.inheritedEnv };
+  if (!env.AGENT_BROWSER_IDLE_TIMEOUT_MS?.trim()) {
+    env.AGENT_BROWSER_IDLE_TIMEOUT_MS = String(AGENT_BROWSER_IDLE_TIMEOUT_MS);
+  }
+  if (options.platform === "win32" || env.AGENT_BROWSER_SOCKET_DIR?.trim()) {
+    return { env, ownsSocketDirectory: false };
+  }
+  const profileKey = (0, import_node_crypto2.createHash)("sha256").update(options.userDataPath).digest("hex").slice(0, 16);
+  const socketDirectory = import_node_path2.posix.join(
+    "/tmp",
+    `${AGENT_BROWSER_SOCKET_DIRECTORY_PREFIX}${profileKey}`
+  );
+  try {
+    (0, import_node_fs2.mkdirSync)(socketDirectory, { recursive: true, mode: 448 });
+    (0, import_node_fs2.chmodSync)(socketDirectory, 448);
+  } catch {
+    return { env, ownsSocketDirectory: false };
+  }
+  env.AGENT_BROWSER_SOCKET_DIR = socketDirectory;
+  return { env, ownsSocketDirectory: true };
+}
+
+// src/main/browser/agent-browser-bridge-state.ts
+var AgentBrowserBridgeState = class {
+  constructor(browserManager2, options = {}) {
+    this.browserManager = browserManager2;
+    this.options = options;
+    this.agentBrowserBin = options.agentBrowserBin ?? "agent-browser";
+    const processEnvironment = createAgentBrowserProcessEnvironment({
+      inheritedEnv: process.env,
+      platform: process.platform,
+      userDataPath: options.userDataPath ?? import_electron.app.getPath("userData")
+    });
+    this.agentBrowserEnv = processEnvironment.env;
+    this.ownsAgentBrowserSocketDirectory = processEnvironment.ownsSocketDirectory;
+    const idleTimeoutMs = Number(this.agentBrowserEnv.AGENT_BROWSER_IDLE_TIMEOUT_MS);
+    this.agentBrowserIdleTimeoutMs = idleTimeoutMs > 0 ? idleTimeoutMs : null;
+  }
+  browserManager;
+  options;
+  // Why: per-worktree active tab so one worktree's tab switch can't affect another's command targeting.
+  activeWebContentsPerWorktree = /* @__PURE__ */ new Map();
+  activeWebContentsId = null;
+  sessions = /* @__PURE__ */ new Map();
+  commandQueues = /* @__PURE__ */ new Map();
+  processingQueues = /* @__PURE__ */ new Set();
+  agentBrowserBin;
+  agentBrowserEnv;
+  ownsAgentBrowserSocketDirectory;
+  // Why: null when nothing bounds the daemon, so the bridge never guesses that one was replaced.
+  agentBrowserIdleTimeoutMs;
+  // Why: stash intercept patterns from a swap-destroyed session, keyed by name, so the next session restores them.
+  pendingInterceptRestore = /* @__PURE__ */ new Map();
+  // Why: promise-lock so two concurrent ensureSession calls don't both create the session entry.
+  pendingSessionCreation = /* @__PURE__ */ new Map();
+  // Why: `agent-browser close` is async, keyed by session name — recreating before it finishes lets the old teardown close the new session.
+  pendingSessionDestruction = /* @__PURE__ */ new Map();
+  cancelledProcesses = /* @__PURE__ */ new WeakSet();
+  shutdownStarted = false;
+  resolveTabIdSafe(webContentsId) {
+    return this.browserManager.getTabIdForWebContentsId(webContentsId);
+  }
+  getWebContents(webContentsId) {
+    try {
+      const { webContents: webContents10 } = require("electron");
+      const target = webContents10.fromId(webContentsId);
+      return target && !target.isDestroyed() ? target : null;
+    } catch {
+      return null;
+    }
+  }
+};
+
+// src/main/browser/agent-browser-bridge-tabs.ts
+var AgentBrowserBridgeTabs = class extends AgentBrowserBridgeState {
+  // ── Tab tracking ──
+  setActiveTab(webContentsId, worktreeId) {
+    this.activeWebContentsId = webContentsId;
+    if (worktreeId) {
+      this.activeWebContentsPerWorktree.set(worktreeId, webContentsId);
+    }
+    this.options.onTabsChanged?.(worktreeId);
+  }
+  selectFallbackActiveWebContents(worktreeId, excludedWebContentsId) {
+    for (const [, wcId] of this.getRegisteredTabs(worktreeId)) {
+      if (wcId === excludedWebContentsId) {
+        continue;
+      }
+      if (this.getWebContents(wcId)) {
+        this.activeWebContentsPerWorktree.set(worktreeId, wcId);
+        return wcId;
+      }
+    }
+    this.activeWebContentsPerWorktree.delete(worktreeId);
+    return null;
+  }
+  getActiveWebContentsId() {
+    return this.activeWebContentsId;
+  }
+  getPageInfo(worktreeId, browserPageId) {
+    try {
+      const target = this.resolveCommandTarget(worktreeId, browserPageId);
+      const wc = this.getWebContents(target.webContentsId);
+      if (!wc) {
+        return null;
+      }
+      return {
+        browserPageId: target.browserPageId,
+        url: wc.getURL() ?? "",
+        title: wc.getTitle() ?? ""
+      };
+    } catch {
+      return null;
+    }
+  }
+  onTabChanged(webContentsId, worktreeId) {
+    this.activeWebContentsId = webContentsId;
+    if (worktreeId) {
+      this.activeWebContentsPerWorktree.set(worktreeId, webContentsId);
+    }
+    this.options.onTabsChanged?.(worktreeId);
+  }
+  getRegisteredTabs(worktreeId) {
+    const all = this.browserManager.getWebContentsIdByTabId();
+    if (!worktreeId) {
+      return all;
+    }
+    const filtered = /* @__PURE__ */ new Map();
+    for (const [tabId, wcId] of all) {
+      if (this.browserManager.getScopeIdForTab(tabId) === worktreeId) {
+        filtered.set(tabId, wcId);
+      }
+    }
+    return filtered;
+  }
+  // ── Tab management ──
+  tabList(worktreeId) {
+    const tabs = this.getRegisteredTabs(worktreeId);
+    let activeWcId = (worktreeId && this.activeWebContentsPerWorktree.get(worktreeId)) ?? this.activeWebContentsId;
+    const result = [];
+    let index = 0;
+    let firstLiveWcId = null;
+    for (const [tabId, wcId] of tabs) {
+      const wc = this.getWebContents(wcId);
+      if (!wc) {
+        this.browserManager.unregisterGuest(tabId);
+        continue;
+      }
+      if (firstLiveWcId === null) {
+        firstLiveWcId = wcId;
+      }
+      const loadError = this.browserManager.getBrowserPageLoadError(tabId);
+      const certificateFailure = this.browserManager.getBrowserPageCertificateFailure(tabId);
+      result.push({
+        browserPageId: tabId,
+        index: index++,
+        // Why: failed WebContents report chrome-error://, not the address the user asked to load.
+        url: loadError?.validatedUrl ?? wc.getURL() ?? "",
+        title: wc.getTitle() ?? "",
+        active: wcId === activeWcId,
+        loadError,
+        certificateFailure
+      });
+    }
+    if (activeWcId == null && firstLiveWcId !== null) {
+      activeWcId = firstLiveWcId;
+      if (result.length > 0) {
+        result[0].active = true;
+      }
+    }
+    return { tabs: result };
+  }
+  getActivePageId(worktreeId, browserPageId) {
+    try {
+      return this.resolveCommandTarget(worktreeId, browserPageId).browserPageId;
+    } catch {
+      return null;
+    }
+  }
+  resolveCommandTarget(worktreeId, browserPageId, requireScopedTarget = false) {
+    if (!browserPageId) {
+      return requireScopedTarget ? this.resolveScopedActiveTab(worktreeId) : this.resolveActiveTab(worktreeId);
+    }
+    const tabs = this.getRegisteredTabs(worktreeId);
+    const webContentsId = tabs.get(browserPageId);
+    if (webContentsId == null) {
+      const scope = worktreeId ? " in this worktree" : "";
+      throw new BrowserError(
+        "browser_tab_not_found",
+        `Browser page ${browserPageId} was not found${scope}`
+      );
+    }
+    if (!this.getWebContents(webContentsId)) {
+      this.browserManager.unregisterGuest(browserPageId);
+      throw new BrowserError(
+        "browser_tab_not_found",
+        `Browser page ${browserPageId} is no longer available`
+      );
+    }
+    return { browserPageId, webContentsId };
+  }
+  resolveActiveTab(worktreeId) {
+    const tabs = this.getRegisteredTabs(worktreeId);
+    if (tabs.size === 0) {
+      throw new BrowserError("browser_no_tab", "No browser tab open in this worktree");
+    }
+    const preferredWcId = (worktreeId && this.activeWebContentsPerWorktree.get(worktreeId)) ?? this.activeWebContentsId;
+    if (preferredWcId != null) {
+      for (const [tabId, wcId] of tabs) {
+        if (wcId === preferredWcId && this.getWebContents(wcId)) {
+          return { browserPageId: tabId, webContentsId: wcId };
+        }
+        if (wcId === preferredWcId) {
+          this.browserManager.unregisterGuest(tabId);
+          if (this.activeWebContentsId === wcId) {
+            this.activeWebContentsId = null;
+          }
+          if (worktreeId && this.activeWebContentsPerWorktree.get(worktreeId) === wcId) {
+            this.activeWebContentsPerWorktree.delete(worktreeId);
+          }
+        }
+      }
+    }
+    for (const [tabId, wcId] of tabs) {
+      if (this.getWebContents(wcId)) {
+        this.activeWebContentsId = wcId;
+        if (worktreeId) {
+          this.activeWebContentsPerWorktree.set(worktreeId, wcId);
+        }
+        return { browserPageId: tabId, webContentsId: wcId };
+      }
+      this.browserManager.unregisterGuest(tabId);
+    }
+    throw new BrowserError(
+      "browser_no_tab",
+      "No live browser tab available \u2014 all registered tabs have been destroyed"
+    );
+  }
+  // Why: don't fall back to the global tab for text mutation — it could inject into another worktree's foreground webview and steal focus.
+  resolveScopedActiveTab(worktreeId) {
+    if (worktreeId) {
+      return this.resolveActiveTab(worktreeId);
+    }
+    const worktreesWithLiveTabs = /* @__PURE__ */ new Set();
+    for (const [tabId, wcId] of this.getRegisteredTabs(void 0)) {
+      if (this.getWebContents(wcId)) {
+        worktreesWithLiveTabs.add(this.browserManager.getScopeIdForTab(tabId));
+      }
+    }
+    if (worktreesWithLiveTabs.size === 0) {
+      throw new BrowserError("browser_no_tab", "No browser tab open in this worktree");
+    }
+    if (worktreesWithLiveTabs.size > 1) {
+      throw new BrowserError(
+        "browser_target_ambiguous",
+        "Multiple worktrees have browser tabs open; pass --worktree to target text insertion safely"
+      );
+    }
+    const [onlyWorktreeId] = worktreesWithLiveTabs;
+    return this.resolveActiveTab(onlyWorktreeId);
+  }
+};
+
+// src/main/browser/agent-browser-session-reset.ts
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
+var SAFE_SESSION_NAME = /^[A-Za-z0-9_-]+$/;
+function canSkipAgentBrowserSessionReset(options) {
+  const { socketDirectory, sessionName } = options;
+  if (!options.ownsSocketDirectory || !socketDirectory || !SAFE_SESSION_NAME.test(sessionName)) {
+    return false;
+  }
+  try {
+    (0, import_node_fs3.lstatSync)((0, import_node_path3.join)(socketDirectory, `${sessionName}.sock`));
+    return false;
+  } catch (error) {
+    return error.code === "ENOENT";
+  }
+}
+
+// src/main/browser/agent-browser-bridge-execution.ts
+var AgentBrowserBridgeExecution = class extends AgentBrowserBridgeTabs {
+  requireTargetWebContents(target) {
+    const wc = this.getWebContents(target.webContentsId);
+    if (!wc || wc.isDestroyed()) {
+      throw this.createPageUnavailableError(`${ORCA_TAB_SESSION_PREFIX}${target.browserPageId}`);
+    }
+    return wc;
+  }
+  /**
+   * Notice that the daemon retired itself between two commands.
+   *
+   * A replacement daemon still serves the page (every call reasserts `--cdp`)
+   * but carries none of the session's network routes, so without this the
+   * interception the caller configured is silently gone (#16367).
+   */
+  reinitializeIfDaemonIdledOut(sessionName, session5) {
+    if (this.agentBrowserIdleTimeoutMs === null || Date.now() - session5.lastCommandAt < this.agentBrowserIdleTimeoutMs) {
+      return;
+    }
+    session5.initialized = false;
+    if (session5.activeInterceptPatterns.length > 0) {
+      this.pendingInterceptRestore.set(sessionName, [...session5.activeInterceptPatterns]);
+    }
+  }
+  assertCommandAdmission() {
+    if (this.shutdownStarted) {
+      throw new BrowserError("browser_owner_unavailable", "Browser runtime is shutting down");
+    }
+  }
+  async execAgentBrowser(sessionName, commandArgs, execOptions) {
+    const session5 = this.sessions.get(sessionName);
+    if (!session5) {
+      throw this.createPageUnavailableError(sessionName);
+    }
+    if (!this.getWebContents(session5.webContentsId)) {
+      await this.destroySession(sessionName);
+      throw this.createPageUnavailableError(sessionName);
+    }
+    this.reinitializeIfDaemonIdledOut(sessionName, session5);
+    session5.lastCommandAt = Date.now();
+    const args = ["--session", sessionName];
+    const managesInterceptRoutes = commandArgs[0] === "network" && (commandArgs[1] === "route" || commandArgs[1] === "unroute");
+    const needsInit = !session5.initialized;
+    args.push("--cdp", String(session5.proxy.getPort()));
+    for (const commandArg of commandArgs) {
+      args.push(commandArg);
+    }
+    args.push("--json");
+    const stdout = await this.runAgentBrowserRaw(sessionName, args, execOptions);
+    const translated = translateResult(stdout);
+    if (!translated.ok) {
+      throw this.createCommandError(
+        sessionName,
+        translated.error.message,
+        translated.error.code,
+        session5.webContentsId
+      );
+    }
+    if (needsInit) {
+      session5.initialized = true;
+      const pendingPatterns = managesInterceptRoutes ? void 0 : this.pendingInterceptRestore.get(sessionName);
+      if (pendingPatterns && pendingPatterns.length > 0) {
+        this.pendingInterceptRestore.delete(sessionName);
+        try {
+          const urlPattern = pendingPatterns[0] ?? "**/*";
+          await this.runAgentBrowserRaw(sessionName, [
+            "--session",
+            sessionName,
+            "--cdp",
+            String(session5.proxy.getPort()),
+            "network",
+            "route",
+            urlPattern,
+            "--json"
+          ]);
+          session5.activeInterceptPatterns = pendingPatterns;
+        } catch {
+        }
+      }
+    }
+    return translated.result;
+  }
+  async isExplicitContentEditableTarget(sessionName, element) {
+    const result = await this.execAgentBrowser(sessionName, [
+      "get",
+      "attr",
+      element,
+      "contenteditable"
+    ]);
+    return isExplicitContentEditableResult(result);
+  }
+  async fillExplicitContentEditable(sessionName, element, value) {
+    await this.execAgentBrowser(sessionName, ["focus", element]);
+    await this.execAgentBrowser(sessionName, ["eval", "--stdin"], {
+      stdinText: focusedRichTextEditExpression(JSON.stringify(value), { selectAll: true })
+    });
+  }
+  createPageUnavailableError(sessionName) {
+    return new BrowserError("browser_tab_not_found", pageUnavailableMessageForSession(sessionName));
+  }
+  closeStaleAgentBrowserSession(sessionName) {
+    if (canSkipAgentBrowserSessionReset({
+      ownsSocketDirectory: this.ownsAgentBrowserSocketDirectory,
+      socketDirectory: this.agentBrowserEnv.AGENT_BROWSER_SOCKET_DIR,
+      sessionName
+    })) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      let child = null;
+      let settled = false;
+      const finish = (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+      const timeout = setTimeout(() => {
+        child?.kill();
+        finish(
+          new BrowserError(
+            "browser_owner_unavailable",
+            `Could not reset stale helper session ${sessionName}; retry after agent-browser exits`
+          )
+        );
+      }, STALE_SESSION_CLOSE_TIMEOUT_MS);
+      try {
+        child = (0, import_node_child_process2.execFile)(
+          this.agentBrowserBin,
+          ["--session", sessionName, "close"],
+          // Why windowsHide: agent-browser is console-subsystem and Orca's main
+          // process owns no console, so each spawn gets a fresh visible conhost
+          // that takes foreground -- keystrokes typed into a terminal at that
+          // moment land in the black box (#14543).
+          {
+            env: this.agentBrowserEnv,
+            timeout: STALE_SESSION_CLOSE_TIMEOUT_MS,
+            windowsHide: true
+          },
+          (error) => finish(
+            error ? new BrowserError(
+              "browser_owner_unavailable",
+              `Could not reset stale helper session ${sessionName}: ${error.message}`
+            ) : void 0
+          )
+        );
+      } catch (error) {
+        finish(
+          new BrowserError(
+            "browser_owner_unavailable",
+            `Could not reset stale helper session ${sessionName}: ${error instanceof Error ? error.message : String(error)}`
+          )
+        );
+      }
+    });
+  }
+  createCommandError(sessionName, message, fallbackCode, webContentsId) {
+    if (fallbackCode === "browser_error" && isTabClosedTransportError(message) && this.isSessionTargetClosed(sessionName, webContentsId)) {
+      return this.createPageUnavailableError(sessionName);
+    }
+    return new BrowserError(fallbackCode, message);
+  }
+  isSessionTargetClosed(sessionName, webContentsId) {
+    const session5 = this.sessions.get(sessionName);
+    if (!session5) {
+      return true;
+    }
+    const targetWebContentsId = webContentsId ?? session5.webContentsId;
+    return !this.getWebContents(targetWebContentsId);
+  }
+};
+
+// src/main/browser/agent-browser-bridge-raw-process.ts
+var AgentBrowserBridgeRawProcess = class extends AgentBrowserBridgeExecution {
+  runAgentBrowserRaw(sessionName, args, execOptions) {
+    return new Promise((resolve, reject) => {
+      const session5 = this.sessions.get(sessionName);
+      let child = null;
+      let exitDrainTimer;
+      child = (0, import_node_child_process3.execFile)(
+        this.agentBrowserBin,
+        args,
+        // Why: screenshots return large base64 that exceeds Node's default 1MB maxBuffer (ENOBUFS).
+        {
+          timeout: execOptions?.timeoutMs ?? EXEC_TIMEOUT_MS,
+          maxBuffer: 50 * 1024 * 1024,
+          // Why windowsHide: see the stale-session close above -- every
+          // agent-browser invocation would otherwise flash a console (#14543).
+          windowsHide: true,
+          env: execOptions?.envOverrides ? { ...this.agentBrowserEnv, ...execOptions.envOverrides } : this.agentBrowserEnv
+        },
+        (error, stdout, stderr) => {
+          clearTimeout(exitDrainTimer);
+          if (session5 && session5.activeProcess === child) {
+            session5.activeProcess = null;
+          }
+          if (child && this.cancelledProcesses.has(child)) {
+            this.cancelledProcesses.delete(child);
+            reject(
+              new BrowserError("browser_tab_closed", "Tab was closed while command was running")
+            );
+            return;
+          }
+          const liveSession = this.sessions.get(sessionName);
+          if (error && error.killed) {
+            if (execOptions?.timeoutError) {
+              reject(execOptions.timeoutError);
+              return;
+            }
+            if (liveSession) {
+              liveSession.consecutiveTimeouts++;
+              if (liveSession.consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_LIMIT) {
+                this.destroySession(sessionName);
+              }
+            }
+            reject(new BrowserError("browser_error", "Browser command timed out"));
+            return;
+          }
+          if (liveSession) {
+            liveSession.consecutiveTimeouts = 0;
+          }
+          if (error) {
+            if (stdout) {
+              try {
+                const parsed = JSON.parse(stdout);
+                if (parsed.error) {
+                  const code2 = classifyErrorCode(parsed.error);
+                  reject(
+                    this.createCommandError(sessionName, parsed.error, code2, session5?.webContentsId)
+                  );
+                  return;
+                }
+              } catch {
+              }
+            }
+            const message = stderr || error.message;
+            const code = classifyErrorCode(message);
+            reject(this.createCommandError(sessionName, message, code, session5?.webContentsId));
+            return;
+          }
+          resolve(stdout);
+        }
+      );
+      child.once("exit", () => {
+        exitDrainTimer = setTimeout(() => {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+        }, AGENT_BROWSER_EXIT_DRAIN_MS);
+      });
+      if (session5) {
+        session5.activeProcess = child;
+      }
+      if (execOptions?.stdinText !== void 0 && child?.stdin) {
+        child.stdin.on("error", () => {
+        });
+        child.stdin.end(execOptions.stdinText);
+      }
+    });
+  }
+};
+
+// src/main/browser/agent-browser-bridge-lifecycle.ts
+var AgentBrowserBridgeLifecycle = class extends AgentBrowserBridgeRawProcess {
+  async onTabClosed(webContentsId) {
+    const browserPageId = this.resolveTabIdSafe(webContentsId);
+    const owningWorktreeId = browserPageId ? this.browserManager.getScopeIdForTab(browserPageId) : void 0;
+    let nextWorktreeActiveWebContentsId = null;
+    if (owningWorktreeId && this.activeWebContentsPerWorktree.get(owningWorktreeId) === webContentsId) {
+      nextWorktreeActiveWebContentsId = this.selectFallbackActiveWebContents(
+        owningWorktreeId,
+        webContentsId
+      );
+    }
+    if (this.activeWebContentsId === webContentsId) {
+      this.activeWebContentsId = nextWorktreeActiveWebContentsId;
+    }
+    if (browserPageId) {
+      await this.onPageClosed(browserPageId);
+    }
+    this.options.onTabsChanged?.(owningWorktreeId);
+  }
+  /**
+   * Retire a page's daemon by page id.
+   *
+   * The headless offscreen backend owns pages by id and unregisters the guest
+   * itself, so `onTabClosed`'s webContentsId lookup can never resolve one — it
+   * has to say which page closed (#16367).
+   */
+  async onPageClosed(browserPageId) {
+    const sessionName = `${ORCA_TAB_SESSION_PREFIX}${browserPageId}`;
+    await this.destroySession(sessionName);
+    this.pendingInterceptRestore.delete(sessionName);
+  }
+  async onProcessSwap(browserPageId, newWebContentsId, previousWebContentsId) {
+    const sessionName = `${ORCA_TAB_SESSION_PREFIX}${browserPageId}`;
+    const session5 = this.sessions.get(sessionName);
+    const oldWebContentsId = previousWebContentsId ?? session5?.webContentsId;
+    const owningWorktreeId = this.browserManager.getScopeIdForTab(browserPageId);
+    if (session5 && session5.activeInterceptPatterns.length > 0) {
+      this.pendingInterceptRestore.set(sessionName, [...session5.activeInterceptPatterns]);
+    }
+    await this.destroySession(sessionName);
+    if (oldWebContentsId != null && this.activeWebContentsId === oldWebContentsId) {
+      this.activeWebContentsId = newWebContentsId;
+    }
+    if (owningWorktreeId && oldWebContentsId != null && this.activeWebContentsPerWorktree.get(owningWorktreeId) === oldWebContentsId) {
+      this.activeWebContentsPerWorktree.set(owningWorktreeId, newWebContentsId);
+    }
+    this.options.onTabsChanged?.(owningWorktreeId ?? void 0);
+  }
+  async ensureSession(sessionName, browserPageId, webContentsId) {
+    const pendingDestruction = this.pendingSessionDestruction.get(sessionName);
+    if (pendingDestruction) {
+      await pendingDestruction;
+    }
+    this.assertCommandAdmission();
+    if (this.sessions.has(sessionName)) {
+      return;
+    }
+    const pending = this.pendingSessionCreation.get(sessionName);
+    if (pending) {
+      await pending;
+      this.assertCommandAdmission();
+      return;
+    }
+    const createSession = async () => {
+      const wc = this.getWebContents(webContentsId);
+      if (!wc) {
+        throw new BrowserError(
+          "browser_tab_not_found",
+          `Browser page ${browserPageId} is no longer available`
+        );
+      }
+      await this.closeStaleAgentBrowserSession(sessionName);
+      const proxy = new CdpWsProxy(wc, () => this.browserManager.holdPaintForCapture(webContentsId));
+      const cdpEndpoint = await proxy.start();
+      this.sessions.set(sessionName, {
+        proxy,
+        cdpEndpoint,
+        initialized: false,
+        consecutiveTimeouts: 0,
+        activeInterceptPatterns: [],
+        activeCapture: false,
+        lastCommandAt: Date.now(),
+        webContentsId,
+        activeProcess: null
+      });
+    };
+    const promise = createSession();
+    this.pendingSessionCreation.set(sessionName, promise);
+    try {
+      await promise;
+    } finally {
+      this.pendingSessionCreation.delete(sessionName);
+    }
+  }
+  async destroySession(sessionName, options = { closeTimeoutMs: AGENT_BROWSER_CLEANUP_TIMEOUT_MS }) {
+    const pendingDestruction = this.pendingSessionDestruction.get(sessionName);
+    if (pendingDestruction) {
+      await pendingDestruction;
+      return;
+    }
+    const pendingCreation = this.pendingSessionCreation.get(sessionName);
+    if (pendingCreation) {
+      try {
+        await pendingCreation;
+      } catch {
+      }
+    }
+    const session5 = this.sessions.get(sessionName);
+    if (!session5) {
+      this.rejectQueuedCommandsForClosedSession(sessionName);
+      return;
+    }
+    this.sessions.delete(sessionName);
+    this.pendingSessionCreation.delete(sessionName);
+    this.rejectQueuedCommandsForClosedSession(sessionName);
+    if (session5.activeProcess) {
+      this.cancelledProcesses.add(session5.activeProcess);
+      try {
+        session5.activeProcess.kill();
+      } catch {
+      }
+      session5.activeProcess = null;
+    }
+    const destroy = (async () => {
+      try {
+        await this.runAgentBrowserRaw(
+          sessionName,
+          ["--session", sessionName, "close"],
+          options.closeTimeoutMs === void 0 ? void 0 : { timeoutMs: options.closeTimeoutMs }
+        );
+      } catch {
+      }
+      await session5.proxy.stop();
+    })();
+    this.pendingSessionDestruction.set(sessionName, destroy);
+    try {
+      await destroy;
+    } finally {
+      this.pendingSessionDestruction.delete(sessionName);
+    }
+  }
+  rejectQueuedCommandsForClosedSession(sessionName) {
+    const queue2 = this.commandQueues.get(sessionName);
+    this.commandQueues.delete(sessionName);
+    this.processingQueues.delete(sessionName);
+    if (queue2) {
+      const err = new BrowserError(
+        "browser_tab_closed",
+        "Tab was closed while commands were queued"
+      );
+      for (const cmd of queue2) {
+        cmd.reject(err);
+      }
+      queue2.length = 0;
+    }
+  }
+};
+
+// src/main/browser/agent-browser-bridge-shutdown.ts
+var AgentBrowserBridgeShutdown = class extends AgentBrowserBridgeLifecycle {
+  // ── Session lifecycle ──
+  // Why: a previous run that crashed or was SIGKILL'd left one daemon per open tab with
+  // nobody holding its name — closeStaleAgentBrowserSession only resets a name being reused.
+  async sweepOrphanedSessions() {
+    return sweepOrphanedAgentBrowserSessions({
+      binaryPath: this.agentBrowserBin,
+      env: this.agentBrowserEnv,
+      ownsSocketDirectory: this.ownsAgentBrowserSocketDirectory,
+      isSessionLive: (sessionName) => this.sessions.has(sessionName) || this.pendingSessionCreation.has(sessionName)
+    });
+  }
+  async destroyAllSessions(options) {
+    this.shutdownStarted = true;
+    const sessionNames = /* @__PURE__ */ new Set([
+      ...this.sessions.keys(),
+      ...this.pendingSessionCreation.keys(),
+      ...this.pendingSessionDestruction.keys()
+    ]);
+    await mapSettledWithConcurrency(
+      [...sessionNames],
+      AGENT_BROWSER_CLEANUP_CONCURRENCY,
+      (sessionName) => this.destroySession(sessionName, options)
+    );
+    this.pendingInterceptRestore.clear();
+  }
+};
+
+// src/main/browser/agent-browser-bridge-queue.ts
+var AgentBrowserBridgeQueue = class extends AgentBrowserBridgeShutdown {
+  // Why: route tab switch through the command queue so it can't race in-flight commands targeting the old tab.
+  async tabSwitch(index, worktreeId, browserPageId) {
+    return this.enqueueCommand(worktreeId, async () => {
+      const tabs = this.getRegisteredTabs(worktreeId);
+      const liveEntries = [...tabs.entries()].filter(([, wcId2]) => this.getWebContents(wcId2));
+      let switchedIndex = index ?? -1;
+      let resolvedPageId = browserPageId;
+      if (resolvedPageId) {
+        switchedIndex = liveEntries.findIndex(([tabId2]) => tabId2 === resolvedPageId);
+      }
+      if (switchedIndex < 0 || switchedIndex >= liveEntries.length) {
+        const targetLabel = resolvedPageId != null ? `Browser page ${resolvedPageId}` : `Tab index ${index}`;
+        throw new BrowserError(
+          "browser_tab_not_found",
+          `${targetLabel} out of range (0-${liveEntries.length - 1})`
+        );
+      }
+      const [tabId, wcId] = liveEntries[switchedIndex];
+      this.activeWebContentsId = wcId;
+      const owningWorktreeId = worktreeId ?? this.browserManager.getScopeIdForTab(tabId);
+      if (owningWorktreeId) {
+        this.activeWebContentsPerWorktree.set(owningWorktreeId, wcId);
+      }
+      this.options.onTabsChanged?.(owningWorktreeId ?? void 0);
+      return { switched: switchedIndex, browserPageId: tabId };
+    });
+  }
+  // ── Internal ──
+  async enqueueCommand(worktreeId, execute) {
+    return this.enqueueTargetedCommand(worktreeId, void 0, execute);
+  }
+  async enqueueTargetedCommand(worktreeId, browserPageId, execute, options = {}) {
+    this.assertCommandAdmission();
+    const { browserPageId: pageId } = this.resolveCommandTarget(
+      worktreeId,
+      browserPageId,
+      options.requireScopedTarget
+    );
+    const sessionName = `${ORCA_TAB_SESSION_PREFIX}${pageId}`;
+    return new Promise((resolve, reject) => {
+      let queue2 = this.commandQueues.get(sessionName);
+      if (!queue2) {
+        queue2 = [];
+        this.commandQueues.set(sessionName, queue2);
+      }
+      queue2.push({
+        execute: () => this.executeQueuedCommand(worktreeId, pageId, execute, options),
+        resolve,
+        reject
+      });
+      this.processQueue(sessionName);
+    });
+  }
+  async executeQueuedCommand(worktreeId, browserPageId, execute, options) {
+    this.assertCommandAdmission();
+    const sessionName = `${ORCA_TAB_SESSION_PREFIX}${browserPageId}`;
+    const target = this.resolveCommandTarget(worktreeId, browserPageId);
+    if (options.ensureSession !== false) {
+      await this.ensureSession(sessionName, browserPageId, target.webContentsId);
+    }
+    return execute(sessionName, target);
+  }
+  async processQueue(sessionName) {
+    if (this.processingQueues.has(sessionName)) {
+      return;
+    }
+    this.processingQueues.add(sessionName);
+    const queue2 = this.commandQueues.get(sessionName);
+    while (queue2 && queue2.length > 0) {
+      const cmd = queue2.shift();
+      try {
+        const result = await cmd.execute();
+        cmd.resolve(result);
+      } catch (error) {
+        cmd.reject(error);
+      }
+    }
+    if (queue2 && queue2.length === 0 && this.commandQueues.get(sessionName) === queue2) {
+      this.commandQueues.delete(sessionName);
+    }
+    this.processingQueues.delete(sessionName);
+  }
+};
+
+// src/main/browser/agent-browser-bridge-core-commands.ts
+var AgentBrowserBridgeCoreCommands = class extends AgentBrowserBridgeQueue {
+  async snapshot(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName, target) => {
+      const result = await this.execAgentBrowser(sessionName, [
+        "snapshot"
+      ]);
+      return {
+        ...result,
+        browserPageId: target.browserPageId
+      };
+    });
+  }
+  async click(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["click", element]);
+    });
+  }
+  async dblclick(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["dblclick", element]);
+    });
+  }
+  async goto(url, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (_sessionName, target) => {
+        const wc = this.requireTargetWebContents(target);
+        const navigationUrl = normalizeBrowserNavigationUrl(url);
+        if (!navigationUrl) {
+          throw new BrowserError("invalid_argument", `Unsupported browser URL: ${url}`);
+        }
+        const navigationState = {
+          preventUnloadEvent: null
+        };
+        const onWillPreventUnload = (event) => {
+          navigationState.preventUnloadEvent = event;
+        };
+        wc.on("will-prevent-unload", onWillPreventUnload);
+        let navigationAborted = false;
+        const navigationDeadline = Date.now() + EMBEDDED_NAVIGATION_TIMEOUT_MS;
+        let navigationTimeout = null;
+        try {
+          await Promise.race([
+            wc.loadURL(navigationUrl),
+            new Promise((_resolve, reject) => {
+              navigationTimeout = setTimeout(
+                () => reject(
+                  new Error(
+                    `Browser navigation timed out after ${EMBEDDED_NAVIGATION_TIMEOUT_MS}ms`
+                  )
+                ),
+                EMBEDDED_NAVIGATION_TIMEOUT_MS
+              );
+              navigationTimeout.unref?.();
+            })
+          ]);
+        } catch (error) {
+          if (navigationTimeout) {
+            clearTimeout(navigationTimeout);
+            navigationTimeout = null;
+          }
+          if (!this.getWebContents(target.webContentsId)) {
+            throw this.createPageUnavailableError(
+              `${ORCA_TAB_SESSION_PREFIX}${target.browserPageId}`
+            );
+          }
+          if (!isAbortedNavigationError(error) || navigationState.preventUnloadEvent !== null && !navigationState.preventUnloadEvent.defaultPrevented) {
+            throw new BrowserError(
+              "browser_error",
+              `Failed to navigate browser page ${target.browserPageId}: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+          navigationAborted = true;
+          await waitForAbortedNavigationReplacement(
+            wc,
+            target.browserPageId,
+            Math.max(0, navigationDeadline - Date.now())
+          );
+        } finally {
+          wc.removeListener("will-prevent-unload", onWillPreventUnload);
+          if (navigationTimeout) {
+            clearTimeout(navigationTimeout);
+          }
+        }
+        const navigatedTarget = this.resolveCommandTarget(worktreeId, target.browserPageId);
+        const navigatedWebContents = this.requireTargetWebContents(navigatedTarget);
+        const loadError = navigationAborted ? this.browserManager.getBrowserPageLoadError(target.browserPageId) : null;
+        if (loadError) {
+          throw new BrowserError(
+            "browser_error",
+            `Failed to navigate browser page ${target.browserPageId}: ${loadError.description} (${loadError.code})`
+          );
+        }
+        return { url: navigatedWebContents.getURL(), title: navigatedWebContents.getTitle() };
+      },
+      { ensureSession: false }
+    );
+  }
+  async fill(element, value, worktreeId, browserPageId) {
+    await assertClipboardTextWriteWithinLimitWithYield(value);
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName) => {
+        if (!await this.isExplicitContentEditableTarget(sessionName, element)) {
+          await this.execAgentBrowser(sessionName, ["focus", element]);
+          await this.execAgentBrowser(sessionName, ["eval", "--stdin"], {
+            stdinText: focusedValueSetExpression(JSON.stringify(value), { dispatchEvents: true })
+          });
+          return { filled: element };
+        }
+        await this.fillExplicitContentEditable(sessionName, element, value);
+        return { filled: element };
+      },
+      { requireScopedTarget: true }
+    );
+  }
+};
+
+// src/main/browser/agent-browser-bridge-input-commands.ts
+var AgentBrowserBridgeInputCommands = class extends AgentBrowserBridgeCoreCommands {
+  async type(input, worktreeId, browserPageId) {
+    await assertClipboardTextWriteWithinLimitWithYield(input);
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName) => {
+        for (const chunk of iterateBrowserTextInsertionChunks(
+          input,
+          AGENT_BROWSER_TEXT_ARGUMENT_MAX_BYTES
+        )) {
+          await this.execAgentBrowser(sessionName, ["keyboard", "type", chunk]);
+        }
+        return { typed: true };
+      },
+      { requireScopedTarget: true }
+    );
+  }
+  async select(element, value, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, [
+        "select",
+        element,
+        value
+      ]);
+    });
+  }
+  async scroll(direction, amount, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["scroll", direction];
+      if (amount != null) {
+        args.push(String(amount));
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  async scrollIntoView(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["scrollintoview", element]);
+    });
+  }
+  async get(what, selector, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["get", what];
+      if (selector) {
+        args.push(selector);
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  async is(what, selector, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["is", what, selector]);
+    });
+  }
+  // ── Keyboard commands ──
+  async keyboardInsertText(text, worktreeId, browserPageId) {
+    await assertClipboardTextWriteWithinLimitWithYield(text);
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName) => {
+        let result = { inserted: true };
+        for (const chunk of iterateBrowserTextInsertionChunks(
+          text,
+          AGENT_BROWSER_TEXT_ARGUMENT_MAX_BYTES
+        )) {
+          result = await this.execAgentBrowser(sessionName, ["keyboard", "inserttext", chunk]);
+        }
+        return result;
+      },
+      { requireScopedTarget: true }
+    );
+  }
+};
+
+// src/main/browser/agent-browser-bridge-pointer-commands.ts
+var AgentBrowserBridgePointerCommands = class extends AgentBrowserBridgeInputCommands {
+  // Why: coordinate pointer input needs no accessibility snapshot, so it dispatches over
+  // the debugger `mouseClick` already uses instead of spawning a helper per event.
+  async dispatchPointerEvent(sessionName, target, describe, build) {
+    const wc = this.getWebContents(target.webContentsId);
+    if (!wc || wc.isDestroyed()) {
+      throw new BrowserError(
+        "browser_tab_not_found",
+        `Browser page ${target.browserPageId} is no longer available`
+      );
+    }
+    const state = cdpPointerStateFor(wc);
+    const preDispatch = { ...state };
+    let releaseDebugger = () => {
+    };
+    try {
+      releaseDebugger = acquireElectronDebugger(wc).release;
+      const { params, focus, result } = build(state);
+      if (focus) {
+        wc.focus();
+      }
+      await wc.debugger.sendCommand("Input.dispatchMouseEvent", params);
+      return result;
+    } catch (error) {
+      Object.assign(state, preDispatch);
+      if (error instanceof BrowserError) {
+        throw error;
+      }
+      if (!this.getWebContents(target.webContentsId)) {
+        throw this.createPageUnavailableError(sessionName);
+      }
+      throw new BrowserError(
+        "browser_error",
+        `Failed to ${describe} in browser page ${target.browserPageId}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    } finally {
+      releaseDebugger();
+    }
+  }
+  async mouseMove(x, y, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName, target) => this.dispatchPointerEvent(sessionName, target, "move the pointer", (state) => {
+        assertFinitePointerValues({ x, y });
+        state.x = x;
+        state.y = y;
+        return {
+          params: {
+            type: "mouseMoved",
+            x,
+            y,
+            button: state.button,
+            buttons: state.buttons
+          },
+          result: { moved: true }
+        };
+      }),
+      { ensureSession: false }
+    );
+  }
+  async mouseDown(button, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName, target) => this.dispatchPointerEvent(sessionName, target, "press the pointer", (state) => {
+        const cdpButton = normalizeCdpPointerButton(button);
+        pressCdpPointerButton(state, cdpButton);
+        return {
+          // Why: mirrors mouseClick — a press that does not focus the guest leaves
+          // keyboard input going to whatever held focus before.
+          focus: true,
+          params: {
+            type: "mousePressed",
+            x: state.x,
+            y: state.y,
+            button: cdpButton,
+            buttons: state.buttons,
+            clickCount: state.clickCount
+          },
+          result: { pressed: true }
+        };
+      }),
+      { ensureSession: false }
+    );
+  }
+  async mouseUp(button, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName, target) => this.dispatchPointerEvent(sessionName, target, "release the pointer", (state) => {
+        const cdpButton = normalizeCdpPointerButton(
+          button ?? resolveCdpPointerReleaseButton(state)
+        );
+        releaseCdpPointerButton(state, cdpButton);
+        return {
+          params: {
+            type: "mouseReleased",
+            x: state.x,
+            y: state.y,
+            button: cdpButton,
+            buttons: state.buttons,
+            clickCount: state.clickCount
+          },
+          result: { released: true }
+        };
+      }),
+      { ensureSession: false }
+    );
+  }
+  async mouseWheel(dy, dx, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName, target) => this.dispatchPointerEvent(sessionName, target, "scroll", (state) => {
+        assertFinitePointerValues({ dy, ...dx == null ? {} : { dx } });
+        const deltaX = dx ?? 0;
+        return {
+          // Why: dispatch at the tracked position so the scrollable under the cursor
+          // scrolls; the helper always dispatched wheel at (0,0).
+          params: {
+            type: "mouseWheel",
+            x: state.x,
+            y: state.y,
+            deltaX,
+            deltaY: dy,
+            buttons: state.buttons
+          },
+          result: { scrolled: true, deltaX, deltaY: dy }
+        };
+      }),
+      { ensureSession: false }
+    );
+  }
+};
+
+// src/main/browser/agent-browser-bridge-mouse-commands.ts
+var AgentBrowserBridgeMouseCommands = class extends AgentBrowserBridgePointerCommands {
+  // ── Mouse commands ──
+  async mouseClick(x, y, button, worktreeId, browserPageId, radius, modifiers) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (_sessionName, target) => {
+        const wc = this.getWebContents(target.webContentsId);
+        if (!wc || wc.isDestroyed()) {
+          throw new BrowserError(
+            "browser_tab_not_found",
+            `Browser page ${target.browserPageId} is no longer available`
+          );
+        }
+        const cdpButton = normalizeCdpMouseButton(button);
+        const buttons = cdpPointerButtonMask(cdpButton);
+        const cdpModifiers = cdpMouseModifierMask(modifiers);
+        const lease = acquireElectronDebugger(wc);
+        try {
+          wc.focus();
+          const point = cdpButton === "left" ? (
+            // Why: DOM activation can't carry Cmd/Ctrl/Alt/Shift, so modifier clicks use the adjusted point and let CDP dispatch the event.
+            await resolveMobileTouchClickPoint(wc.debugger, x, y, radius, cdpModifiers === 0)
+          ) : { x, y, adjusted: false, handled: false };
+          if (!point.handled) {
+            await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
+              type: "mousePressed",
+              x: point.x,
+              y: point.y,
+              button: cdpButton,
+              buttons,
+              modifiers: cdpModifiers,
+              clickCount: 1
+            });
+            await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
+              type: "mouseReleased",
+              x: point.x,
+              y: point.y,
+              button: cdpButton,
+              buttons: 0,
+              modifiers: cdpModifiers,
+              clickCount: 1
+            });
+          }
+          return {
+            clicked: {
+              x: point.x,
+              y: point.y,
+              button: cdpButton,
+              adjusted: point.adjusted,
+              handled: point.handled
+            }
+          };
+        } finally {
+          lease.release();
+        }
+      },
+      { ensureSession: false }
+    );
+  }
+  // ── Find (semantic locators) ──
+  async find(locator, value, action, text, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["find", locator, value, action];
+      if (text) {
+        args.push(text);
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  // ── Set commands ──
+  async setDevice(name, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["set", "device", name]);
+    });
+  }
+  async setOffline(state, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["set", "offline"];
+      if (state) {
+        args.push(state);
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  async setHeaders(headersJson, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["set", "headers", headersJson]);
+    });
+  }
+  async setCredentials(user, pass, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["set", "credentials", user, pass]);
+    });
+  }
+  async setMedia(colorScheme, reducedMotion, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["set", "media"];
+      if (colorScheme) {
+        args.push(colorScheme);
+      }
+      if (reducedMotion) {
+        args.push(reducedMotion);
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+};
+
+// src/main/browser/agent-browser-bridge-utility-commands.ts
+var AgentBrowserBridgeUtilityCommands = class extends AgentBrowserBridgeMouseCommands {
+  // ── Clipboard commands ──
+  async clipboardRead(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["clipboard", "read"]);
+    });
+  }
+  async clipboardWrite(text, worktreeId, browserPageId) {
+    await assertClipboardTextWriteWithinLimitWithYield(text, {
+      maxBytes: AGENT_BROWSER_CLIPBOARD_WRITE_MAX_BYTES
+    });
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["clipboard", "write", text]);
+    });
+  }
+  // ── Dialog commands ──
+  async dialogAccept(text, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["dialog", "accept"];
+      if (text) {
+        args.push(text);
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  async dialogDismiss(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["dialog", "dismiss"]);
+    });
+  }
+  // ── Storage commands ──
+  async storageLocalGet(key, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["storage", "local", "get", key]);
+    });
+  }
+  async storageLocalSet(key, value, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["storage", "local", "set", key, value]);
+    });
+  }
+  async storageLocalClear(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["storage", "local", "clear"]);
+    });
+  }
+  async storageSessionGet(key, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["storage", "session", "get", key]);
+    });
+  }
+  async storageSessionSet(key, value, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["storage", "session", "set", key, value]);
+    });
+  }
+  async storageSessionClear(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["storage", "session", "clear"]);
+    });
+  }
+  // ── Download command ──
+  async download(selector, path, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["download", selector, path]);
+    });
+  }
+  // ── Highlight command ──
+  async highlight(selector, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["highlight", selector]);
+    });
+  }
+  async back(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["back"]);
+    });
+  }
+  async forward(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["forward"]);
+    });
+  }
+  async reload(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (_sessionName, target) => {
+      const wc = this.getWebContents(target.webContentsId);
+      if (!wc) {
+        throw new BrowserError("browser_no_tab", "Tab is no longer available");
+      }
+      wc.reload();
+      await new Promise((resolve) => {
+        let settled = false;
+        let fallbackTimer = null;
+        const finish = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          wc.removeListener("did-finish-load", onFinish);
+          wc.removeListener("did-fail-load", onFail);
+          if (fallbackTimer) {
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+          }
+          resolve();
+        };
+        const onFinish = () => finish();
+        const onFail = () => finish();
+        wc.on("did-finish-load", onFinish);
+        wc.on("did-fail-load", onFail);
+        fallbackTimer = setTimeout(finish, 1e4);
+        if (typeof fallbackTimer.unref === "function") {
+          fallbackTimer.unref();
+        }
+      });
+      return { url: wc.getURL(), title: wc.getTitle() };
+    });
+  }
+};
+
+// src/main/browser/agent-browser-bridge-capture-commands.ts
+var AgentBrowserBridgeCaptureCommands = class extends AgentBrowserBridgeUtilityCommands {
+  async screenshot(format, worktreeId, browserPageId) {
+    const screenshotFormat = format === "jpeg" ? "jpeg" : "png";
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return this.readScreenshotFromResult(
+        await this.execAgentBrowser(sessionName, [
+          "screenshot",
+          "--screenshot-format",
+          screenshotFormat
+        ]),
+        screenshotFormat
+      );
+    });
+  }
+  async fullPageScreenshot(format, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (_sessionName, target) => {
+      const wc = this.requireTargetWebContents(target);
+      try {
+        return await captureFullPageScreenshot(
+          wc,
+          format === "jpeg" ? "jpeg" : "png",
+          () => this.browserManager.holdPaintForCapture(target.webContentsId)
+        );
+      } catch (error) {
+        throw new BrowserError("browser_error", error.message);
+      }
+    });
+  }
+  readScreenshotFromResult(raw, format) {
+    const parsed = raw;
+    if (!parsed?.path) {
+      throw new BrowserError("browser_error", "Screenshot returned no file path");
+    }
+    if (!(0, import_node_fs4.existsSync)(parsed.path)) {
+      throw new BrowserError("browser_error", `Screenshot file not found: ${parsed.path}`);
+    }
+    const data = (0, import_node_fs4.readFileSync)(parsed.path).toString("base64");
+    return { data, format: format === "jpeg" ? "jpeg" : "png" };
+  }
+  async evaluate(expression, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (_sessionName, target) => {
+        const wc = this.requireTargetWebContents(target);
+        let releaseDebugger = () => {
+        };
+        try {
+          releaseDebugger = acquireElectronDebugger(wc).release;
+          const { result, exceptionDetails } = await wc.debugger.sendCommand("Runtime.evaluate", {
+            expression,
+            returnByValue: true,
+            awaitPromise: true
+          });
+          if (exceptionDetails) {
+            throw new BrowserError(
+              "browser_eval_error",
+              exceptionDetails.exception?.description ?? exceptionDetails.text
+            );
+          }
+          const currentTarget = this.resolveCommandTarget(worktreeId, target.browserPageId);
+          if (currentTarget.webContentsId !== target.webContentsId) {
+            throw new BrowserError(
+              "browser_tab_changed",
+              `Browser page ${target.browserPageId} changed while evaluating; retry the command`
+            );
+          }
+          return {
+            result: result.value !== void 0 ? typeof result.value === "object" && result.value !== null ? JSON.stringify(result.value) : String(result.value) : result.description ?? "",
+            origin: wc.getURL()
+          };
+        } catch (error) {
+          if (error instanceof BrowserError) {
+            throw error;
+          }
+          if (!this.getWebContents(target.webContentsId)) {
+            throw this.createPageUnavailableError(
+              `${ORCA_TAB_SESSION_PREFIX}${target.browserPageId}`
+            );
+          }
+          throw new BrowserError(
+            "browser_error",
+            `Failed to evaluate in browser page ${target.browserPageId}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        } finally {
+          releaseDebugger();
+        }
+      },
+      { ensureSession: false }
+    );
+  }
+};
+
+// src/main/browser/agent-browser-bridge-interaction-commands.ts
+var AgentBrowserBridgeInteractionCommands = class extends AgentBrowserBridgeCaptureCommands {
+  async hover(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["hover", element]);
+    });
+  }
+  async drag(from, to, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["drag", from, to]);
+    });
+  }
+  async upload(element, filePaths, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, [
+        "upload",
+        element,
+        ...filePaths
+      ]);
+    });
+  }
+  async wait(options, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["wait"];
+      const hasCondition = !!options?.selector || !!options?.text || !!options?.url || !!options?.load || !!options?.fn;
+      if (options?.selector) {
+        args.push(options.selector);
+      } else if (options?.timeout != null && !hasCondition) {
+        args.push(String(options.timeout));
+      }
+      if (options?.text) {
+        args.push("--text", options.text);
+      }
+      if (options?.url) {
+        args.push("--url", options.url);
+      }
+      if (options?.load) {
+        args.push("--load", options.load);
+      }
+      if (options?.fn) {
+        args.push("--fn", options.fn);
+      }
+      const normalizedState = options?.state === "visible" ? void 0 : options?.state;
+      if (normalizedState) {
+        args.push("--state", normalizedState);
+      }
+      return await this.execAgentBrowser(sessionName, args, {
+        timeoutMs: options?.timeout != null && hasCondition ? options.timeout + WAIT_PROCESS_TIMEOUT_GRACE_MS : void 0,
+        timeoutError: options?.timeout != null && hasCondition ? new BrowserError(
+          "browser_timeout",
+          `Timed out waiting for browser condition after ${options.timeout}ms.`
+        ) : void 0
+      });
+    });
+  }
+  async check(element, checked, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = checked ? ["check", element] : ["uncheck", element];
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  async focus(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["focus", element]);
+    });
+  }
+  async clear(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName) => {
+        if (!await this.isExplicitContentEditableTarget(sessionName, element)) {
+          await this.execAgentBrowser(sessionName, ["fill", element, ""]);
+          return { cleared: element };
+        }
+        await this.fillExplicitContentEditable(sessionName, element, "");
+        return { cleared: element };
+      },
+      { requireScopedTarget: true }
+    );
+  }
+  async selectAll(element, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      await this.execAgentBrowser(sessionName, ["focus", element]);
+      return await this.execAgentBrowser(sessionName, [
+        "press",
+        "Control+a"
+      ]);
+    });
+  }
+  async keypress(key, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(
+      worktreeId,
+      browserPageId,
+      async (sessionName, target) => {
+        const parsed = parseCdpKeyEvent(key) ?? imeFallbackKeyEvent(key);
+        if (!parsed) {
+          await this.ensureSession(sessionName, target.browserPageId, target.webContentsId);
+          return await this.execAgentBrowser(sessionName, ["press", key]);
+        }
+        const wc = this.getWebContents(target.webContentsId);
+        if (!wc || wc.isDestroyed()) {
+          throw new BrowserError(
+            "browser_tab_not_found",
+            `Browser page ${target.browserPageId} is no longer available`
+          );
+        }
+        const event = {
+          windowsVirtualKeyCode: parsed.keyCode,
+          nativeVirtualKeyCode: parsed.keyCode,
+          key: parsed.key,
+          code: parsed.code,
+          modifiers: parsed.modifiers,
+          location: parsed.location
+        };
+        let releaseDebugger = () => {
+        };
+        try {
+          releaseDebugger = acquireElectronDebugger(wc).release;
+          await wc.debugger.sendCommand("Input.dispatchKeyEvent", {
+            // Why: rawKeyDown is the no-character form; sending keyDown without text
+            // makes Blink synthesize an empty input for editing keys.
+            type: parsed.text === null ? "rawKeyDown" : "keyDown",
+            ...event,
+            ...parsed.text === null ? {} : { text: parsed.text, unmodifiedText: parsed.text }
+          });
+          await wc.debugger.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            ...event,
+            // Why: the self bit is keydown-only -- Blink reports shiftKey false on the Shift keyup.
+            modifiers: parsed.modifiers & ~parsed.selfModifier
+          });
+          return { pressed: key };
+        } catch (error) {
+          if (error instanceof BrowserError) {
+            throw error;
+          }
+          if (!this.getWebContents(target.webContentsId)) {
+            throw this.createPageUnavailableError(sessionName);
+          }
+          throw new BrowserError(
+            "browser_error",
+            `Failed to press ${key} in browser page ${target.browserPageId}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        } finally {
+          releaseDebugger();
+        }
+      },
+      { ensureSession: false }
+    );
+  }
+  async pdf(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (_sessionName, target) => {
+      const wc = this.getWebContents(target.webContentsId);
+      if (!wc) {
+        throw new BrowserError("browser_no_tab", "Tab is no longer available");
+      }
+      const buffer = await wc.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true
+      });
+      return { data: buffer.toString("base64") };
+    });
+  }
+};
+
+// src/main/browser/agent-browser-bridge-state-commands.ts
+var AgentBrowserBridgeStateCommands = class extends AgentBrowserBridgeInteractionCommands {
+  // ── Cookie commands ──
+  async cookieGet(_url, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, [
+        "cookies",
+        "get"
+      ]);
+    });
+  }
+  async cookieSet(cookie, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["cookies", "set", cookie.name ?? "", cookie.value ?? ""];
+      if (cookie.domain) {
+        args.push("--domain", cookie.domain);
+      }
+      if (cookie.path) {
+        args.push("--path", cookie.path);
+      }
+      if (cookie.secure) {
+        args.push("--secure");
+      }
+      if (cookie.httpOnly) {
+        args.push("--httpOnly");
+      }
+      if (cookie.sameSite) {
+        args.push("--sameSite", cookie.sameSite);
+      }
+      if (cookie.expires != null) {
+        args.push("--expires", String(cookie.expires));
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  async cookieDelete(name, domain, _url, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = ["cookies", "clear"];
+      if (name) {
+        args.push("--name", name);
+      }
+      if (domain) {
+        args.push("--domain", domain);
+      }
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+  // ── Viewport / emulation commands ──
+  async setViewport(width, height, scale = 1, mobile = false, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (_sessionName, target) => {
+      const wc = this.getWebContents(target.webContentsId);
+      if (!wc) {
+        throw new BrowserError("browser_tab_not_found", "Tab is no longer available");
+      }
+      const dbg = wc.debugger;
+      if (!dbg.isAttached()) {
+        throw new BrowserError("browser_error", "Debugger not attached");
+      }
+      await sendGuestCdpCommand(wc, "Emulation.setDeviceMetricsOverride", {
+        width,
+        height,
+        deviceScaleFactor: scale,
+        mobile
+      });
+      await sendGuestCdpCommand(wc, "Emulation.setVisibleSize", { width, height }).catch(() => {
+      });
+      return {
+        width,
+        height,
+        deviceScaleFactor: scale,
+        mobile
+      };
+    });
+  }
+  async setGeolocation(lat, lon, _accuracy, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, [
+        "set",
+        "geo",
+        String(lat),
+        String(lon)
+      ]);
+    });
+  }
+  // ── Network interception commands ──
+  async interceptEnable(patterns, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const urlPattern = patterns?.[0] ?? "**/*";
+      const args = ["network", "route", urlPattern];
+      const result = await this.execAgentBrowser(
+        sessionName,
+        args
+      );
+      const session5 = this.sessions.get(sessionName);
+      if (session5) {
+        this.pendingInterceptRestore.delete(sessionName);
+        session5.activeInterceptPatterns = patterns ?? ["*"];
+      }
+      return result;
+    });
+  }
+  async interceptDisable(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const result = await this.execAgentBrowser(sessionName, [
+        "network",
+        "unroute"
+      ]);
+      const session5 = this.sessions.get(sessionName);
+      if (session5) {
+        this.pendingInterceptRestore.delete(sessionName);
+        session5.activeInterceptPatterns = [];
+      }
+      return result;
+    });
+  }
+  async interceptList(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["network", "requests"]);
+    });
+  }
+  // TODO: Add interceptContinue/interceptBlock once agent-browser supports per-request decisions, not just URL-pattern routing.
+  // ── Capture commands ──
+  async captureStart(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const result = await this.execAgentBrowser(sessionName, [
+        "network",
+        "har",
+        "start"
+      ]);
+      const session5 = this.sessions.get(sessionName);
+      if (session5) {
+        session5.activeCapture = true;
+      }
+      return result;
+    });
+  }
+  async captureStop(worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const result = await this.execAgentBrowser(sessionName, [
+        "network",
+        "har",
+        "stop"
+      ]);
+      const session5 = this.sessions.get(sessionName);
+      if (session5) {
+        session5.activeCapture = false;
+      }
+      return result;
+    });
+  }
+  async consoleLog(_limit, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, ["console"]);
+    });
+  }
+  async networkLog(_limit, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      return await this.execAgentBrowser(sessionName, [
+        "network",
+        "requests"
+      ]);
+    });
+  }
+  // ── Generic passthrough ──
+  async exec(command, worktreeId, browserPageId) {
+    return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
+      const args = stripAgentBrowserTargetArgs(parseShellArgs(command.trim()));
+      return await this.execAgentBrowser(sessionName, args);
+    });
+  }
+};
+
+// src/main/browser/agent-browser-bridge.ts
+var AgentBrowserBridge = class extends AgentBrowserBridgeStateCommands {
+};
+
+// src/main/browser/browser-guest-renderer-target.ts
+var import_electron2 = require("electron");
 function resolveRendererWebContents(rendererWebContentsIdByTabId, browserTabId) {
   const rendererWcId = rendererWebContentsIdByTabId.get(browserTabId);
   if (!rendererWcId) {
     return null;
   }
-  const renderer = import_electron.webContents.fromId(rendererWcId);
+  const renderer = import_electron2.webContents.fromId(rendererWcId);
   if (!renderer || renderer.isDestroyed()) {
     return null;
   }
@@ -301,7 +4523,7 @@ function setupGrabShortcutForwarding(args) {
 }
 
 // src/main/browser/browser-guest-context-menu.ts
-var import_electron2 = require("electron");
+var import_electron3 = require("electron");
 
 // src/main/browser/browser-guest-navigation-state.ts
 function readGuestNavigationState(guest) {
@@ -322,7 +4544,7 @@ function setupGuestContextMenu(args) {
     const pageUrl = redactKagiSessionToken(guest.getURL());
     const rawLinkUrl = params.linkURL || "";
     const linkUrl = rawLinkUrl.length > 0 ? normalizeExternalBrowserUrl(rawLinkUrl) ?? normalizeBrowserNavigationUrl(rawLinkUrl) : null;
-    const cursor = import_electron2.screen.getCursorScreenPoint();
+    const cursor = import_electron3.screen.getCursorScreenPoint();
     const navigationState = readGuestNavigationState(guest);
     renderer.send("browser:context-menu-requested", {
       browserPageId: browserTabId,
@@ -634,7 +4856,7 @@ function setupGuestShortcutForwarding(args) {
 }
 
 // src/main/browser/browser-manager-grab.ts
-var import_electron8 = require("electron");
+var import_electron9 = require("electron");
 
 // src/main/browser/grab-guest-content-script.ts
 var GRAB_GUEST_CONTENT_SCRIPT = `  function getSelectedText() {
@@ -2214,7 +6436,7 @@ async function captureSelectionScreenshot(rect, guest) {
 }
 
 // src/main/browser/browser-manager-viewport.ts
-var import_electron7 = require("electron");
+var import_electron8 = require("electron");
 
 // src/main/browser/browser-manager-types.ts
 function isChromiumInternalErrorUrl(url) {
@@ -2256,7 +6478,7 @@ function safeOrigin(rawUrl) {
 }
 
 // src/main/browser/browser-manager-registration.ts
-var import_electron6 = require("electron");
+var import_electron7 = require("electron");
 
 // src/main/plugin-runtime.ts
 var current = null;
@@ -2329,7 +6551,7 @@ function isNewBrowserTabPopupIntent(details) {
 }
 
 // src/main/browser/popup-origin-bar-window.ts
-var import_electron3 = require("electron");
+var import_electron4 = require("electron");
 var POPUP_ORIGIN_BAR_HEIGHT = 34;
 var DEFAULT_POPUP_CONTENT_WIDTH = 800;
 var DEFAULT_POPUP_CONTENT_HEIGHT = 600;
@@ -2383,10 +6605,10 @@ function clampPopupContentSize(options) {
     height: Math.max(MIN_POPUP_CONTENT_HEIGHT, options.height ?? DEFAULT_POPUP_CONTENT_HEIGHT)
   };
 }
-function closeUnpreparedPopup(window, contentWebContents, originBarWebContents) {
+function closeUnpreparedPopup(window2, contentWebContents, originBarWebContents) {
   const closedListeners = [];
   let closed = false;
-  window.once("closed", () => {
+  window2.once("closed", () => {
     closed = true;
     for (const listener of closedListeners.splice(0)) {
       listener();
@@ -2398,14 +6620,14 @@ function closeUnpreparedPopup(window, contentWebContents, originBarWebContents) 
   if (!originBarWebContents.isDestroyed()) {
     originBarWebContents.close();
   }
-  if (!window.isDestroyed()) {
-    window.close();
+  if (!window2.isDestroyed()) {
+    window2.close();
   }
   return {
     contentWebContents,
     close: () => {
-      if (!window.isDestroyed()) {
-        window.close();
+      if (!window2.isDestroyed()) {
+        window2.close();
       }
     },
     onClosed: (listener) => {
@@ -2420,7 +6642,7 @@ function closeUnpreparedPopup(window, contentWebContents, originBarWebContents) 
 function openPopupWithOriginBar(options, initialUrl, prepareContent) {
   const { width, height } = clampPopupContentSize(options);
   const initialOrigin = describePopupOrigin(initialUrl);
-  const window = new import_electron3.BaseWindow({
+  const window2 = new import_electron4.BaseWindow({
     width,
     height: height + POPUP_ORIGIN_BAR_HEIGHT,
     // Why: window.open features request a content size; without this the
@@ -2431,20 +6653,20 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
     minHeight: MIN_POPUP_CONTENT_HEIGHT + POPUP_ORIGIN_BAR_HEIGHT,
     title: initialOrigin.label
   });
-  const originBarView = new import_electron3.WebContentsView({
+  const originBarView = new import_electron4.WebContentsView({
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   const originBarWebContents = originBarView.webContents;
-  const contentView = new import_electron3.WebContentsView({
+  const contentView = new import_electron4.WebContentsView({
     // Why: Electron rejects an explicitly undefined webContents; omitting it
     // lets WebContentsView create contents for Cmd/Ctrl-click popups.
     ...options.webContents === void 0 ? {} : { webContents: options.webContents },
     webPreferences: options.webPreferences
   });
-  window.contentView.addChildView(contentView);
-  window.contentView.addChildView(originBarView);
+  window2.contentView.addChildView(contentView);
+  window2.contentView.addChildView(originBarView);
   const layoutViews = () => {
-    const bounds = window.getContentBounds();
+    const bounds = window2.getContentBounds();
     originBarView.setBounds({ x: 0, y: 0, width: bounds.width, height: POPUP_ORIGIN_BAR_HEIGHT });
     contentView.setBounds({
       x: 0,
@@ -2453,19 +6675,19 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
       height: Math.max(0, bounds.height - POPUP_ORIGIN_BAR_HEIGHT)
     });
   };
-  window.on("resize", layoutViews);
-  window.on("enter-full-screen", layoutViews);
-  window.on("leave-full-screen", layoutViews);
+  window2.on("resize", layoutViews);
+  window2.on("enter-full-screen", layoutViews);
+  window2.on("leave-full-screen", layoutViews);
   layoutViews();
   const contentWebContents = contentView.webContents;
   if (prepareContent && !prepareContent(contentWebContents)) {
-    return closeUnpreparedPopup(window, contentWebContents, originBarWebContents);
+    return closeUnpreparedPopup(window2, contentWebContents, originBarWebContents);
   }
   let currentUrl = initialUrl;
   const renderOrigin = () => {
     const { label, insecure } = describePopupOrigin(currentUrl);
-    if (!window.isDestroyed()) {
-      window.setTitle(label);
+    if (!window2.isDestroyed()) {
+      window2.setTitle(label);
     }
     void originBarWebContents.executeJavaScript(
       `document.body.classList.toggle('insecure', ${insecure ? "true" : "false"});document.getElementById('origin').textContent = ${JSON.stringify(label)};`
@@ -2483,8 +6705,8 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
   contentWebContents.on("did-navigate", handleDidNavigate);
   contentWebContents.on("did-finish-load", renderOrigin);
   const handlePageTitleUpdated = (_event, title) => {
-    if (!window.isDestroyed() && title) {
-      window.setTitle(title);
+    if (!window2.isDestroyed() && title) {
+      window2.setTitle(title);
     }
   };
   contentWebContents.on("page-title-updated", handlePageTitleUpdated);
@@ -2494,12 +6716,12 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
   }
   const closedListeners = [];
   const handleContentDestroyed = () => {
-    if (!window.isDestroyed()) {
-      window.close();
+    if (!window2.isDestroyed()) {
+      window2.close();
     }
   };
   contentWebContents.once("destroyed", handleContentDestroyed);
-  window.once("closed", () => {
+  window2.once("closed", () => {
     if (!contentWebContents.isDestroyed()) {
       contentWebContents.off("destroyed", handleContentDestroyed);
       contentWebContents.off("did-navigate", handleDidNavigate);
@@ -2517,8 +6739,8 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
   return {
     contentWebContents,
     close: () => {
-      if (!window.isDestroyed()) {
-        window.close();
+      if (!window2.isDestroyed()) {
+        window2.close();
       }
     },
     onClosed: (listener) => {
@@ -2528,24 +6750,24 @@ function openPopupWithOriginBar(options, initialUrl, prepareContent) {
 }
 
 // src/main/browser/browser-process-user-agent.ts
-var import_electron4 = require("electron");
+var import_electron5 = require("electron");
 
 // src/main/browser/browser-identity-mode-store.ts
-var import_node_crypto = require("node:crypto");
-var import_node_fs4 = require("node:fs");
-var import_node_path3 = require("node:path");
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs8 = require("node:fs");
+var import_node_path6 = require("node:path");
 
 // src/main/durable-file-write.ts
-var import_node_fs2 = require("node:fs");
-var import_node_path = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_node_path4 = require("node:path");
 
 // src/main/fs-utils.ts
-var import_node_fs = require("node:fs");
+var import_node_fs5 = require("node:fs");
 function renameFileWithWindowsRetry(source, target) {
-  runFileOperationWithWindowsRetry(() => (0, import_node_fs.renameSync)(source, target));
+  runFileOperationWithWindowsRetry(() => (0, import_node_fs5.renameSync)(source, target));
 }
 function copyFileWithWindowsRetry(source, target) {
-  runFileOperationWithWindowsRetry(() => (0, import_node_fs.copyFileSync)(source, target));
+  runFileOperationWithWindowsRetry(() => (0, import_node_fs5.copyFileSync)(source, target));
 }
 function runFileOperationWithWindowsRetry(operation) {
   for (let attempt = 1; ; attempt++) {
@@ -2573,13 +6795,13 @@ function sleepSync(ms) {
 function syncDirectoryDurablySync(directory) {
   let fd = null;
   try {
-    fd = (0, import_node_fs2.openSync)(directory, "r");
-    (0, import_node_fs2.fsyncSync)(fd);
+    fd = (0, import_node_fs6.openSync)(directory, "r");
+    (0, import_node_fs6.fsyncSync)(fd);
   } catch {
   } finally {
     if (fd !== null) {
       try {
-        (0, import_node_fs2.closeSync)(fd);
+        (0, import_node_fs6.closeSync)(fd);
       } catch {
       }
     }
@@ -2587,7 +6809,7 @@ function syncDirectoryDurablySync(directory) {
 }
 function renameDurableSync(tmpPath, finalPath) {
   renameFileWithWindowsRetry(tmpPath, finalPath);
-  syncDirectoryDurablySync((0, import_node_path.dirname)(finalPath));
+  syncDirectoryDurablySync((0, import_node_path4.dirname)(finalPath));
 }
 function durableWriteTempPath(finalPath, owner) {
   const ownerSuffix = owner === void 0 ? "" : `.owner-${owner}`;
@@ -2596,29 +6818,29 @@ function durableWriteTempPath(finalPath, owner) {
 function writeFileDurableSync(tmpPath, finalPath, payload, mode) {
   let renamed = false;
   try {
-    (0, import_node_fs2.writeFileSync)(tmpPath, payload, mode === void 0 ? void 0 : { mode });
-    const fd = (0, import_node_fs2.openSync)(tmpPath, "r+");
+    (0, import_node_fs6.writeFileSync)(tmpPath, payload, mode === void 0 ? void 0 : { mode });
+    const fd = (0, import_node_fs6.openSync)(tmpPath, "r+");
     try {
-      (0, import_node_fs2.fsyncSync)(fd);
+      (0, import_node_fs6.fsyncSync)(fd);
     } finally {
-      (0, import_node_fs2.closeSync)(fd);
+      (0, import_node_fs6.closeSync)(fd);
     }
     renameDurableSync(tmpPath, finalPath);
     renamed = true;
   } finally {
     if (!renamed) {
-      (0, import_node_fs2.rmSync)(tmpPath, { force: true });
+      (0, import_node_fs6.rmSync)(tmpPath, { force: true });
     }
   }
 }
 
 // src/main/browser/browser-identity-mode-record.ts
-var import_node_fs3 = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_path5 = require("node:path");
 var BROWSER_IDENTITY_MODE_FILE = "browser-identity-mode.json";
 var BROWSER_IDENTITY_MODE_VERSION = 1;
 function browserIdentityModeRecordPath(userDataPath) {
-  return (0, import_node_path2.join)(userDataPath, BROWSER_IDENTITY_MODE_FILE);
+  return (0, import_node_path5.join)(userDataPath, BROWSER_IDENTITY_MODE_FILE);
 }
 function unhealthyResult(state) {
   return {
@@ -2656,7 +6878,7 @@ function parseRecord(raw) {
 }
 function readBrowserIdentityModeRecord(userDataPath) {
   try {
-    return parseRecord((0, import_node_fs3.readFileSync)(browserIdentityModeRecordPath(userDataPath), "utf-8"));
+    return parseRecord((0, import_node_fs7.readFileSync)(browserIdentityModeRecordPath(userDataPath), "utf-8"));
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return {
@@ -2684,7 +6906,7 @@ function snapshotForRead(result) {
 }
 function writeRecord(userDataPath, record) {
   const filePath = browserIdentityModeRecordPath(userDataPath);
-  (0, import_node_fs4.mkdirSync)((0, import_node_path3.dirname)(filePath), { recursive: true });
+  (0, import_node_fs8.mkdirSync)((0, import_node_path6.dirname)(filePath), { recursive: true });
   writeFileDurableSync(
     durableWriteTempPath(filePath),
     filePath,
@@ -2694,9 +6916,9 @@ function writeRecord(userDataPath, record) {
 }
 function backupUnhealthyRecord(userDataPath) {
   const filePath = browserIdentityModeRecordPath(userDataPath);
-  const bytes = (0, import_node_fs4.readFileSync)(filePath);
-  const backupPath = `${filePath}.${Date.now()}.${(0, import_node_crypto.randomUUID)().slice(0, 8)}.bak`;
-  if ((0, import_node_fs4.existsSync)(backupPath)) {
+  const bytes = (0, import_node_fs8.readFileSync)(filePath);
+  const backupPath = `${filePath}.${Date.now()}.${(0, import_node_crypto3.randomUUID)().slice(0, 8)}.bak`;
+  if ((0, import_node_fs8.existsSync)(backupPath)) {
     throw new Error(`Browser identity backup ${backupPath} already exists`);
   }
   writeFileDurableSync(durableWriteTempPath(backupPath), backupPath, bytes);
@@ -2743,16 +6965,16 @@ function notifySnapshotListeners(snapshot) {
 }
 async function setBrowserIdentityMode(mode, options = {}) {
   const store = requireModeStore();
-  const current2 = store.snapshot;
-  if (current2.configuredMode === null) {
+  const current3 = store.snapshot;
+  if (current3.configuredMode === null) {
     if (!options.reset) {
       return {
         ok: false,
         error: {
           code: "browser_identity_reset_required",
-          message: current2.state === "future" ? "Browser identity data was written by a newer Orca; update Orca, or reset it explicitly to overwrite it." : `Browser identity data is ${current2.state}; reset it explicitly to overwrite it.`
+          message: current3.state === "future" ? "Browser identity data was written by a newer Orca; update Orca, or reset it explicitly to overwrite it." : `Browser identity data is ${current3.state}; reset it explicitly to overwrite it.`
         },
-        identity: current2
+        identity: current3
       };
     }
     try {
@@ -2764,7 +6986,7 @@ async function setBrowserIdentityMode(mode, options = {}) {
           code: "browser_identity_backup_failed",
           message: error instanceof Error ? error.message : String(error)
         },
-        identity: current2
+        identity: current3
       };
     }
   }
@@ -2783,16 +7005,16 @@ async function setBrowserIdentityMode(mode, options = {}) {
         code: "browser_identity_write_failed",
         message: error instanceof Error ? error.message : String(error)
       },
-      identity: current2
+      identity: current3
     };
   }
   const identity2 = {
     state: "valid",
-    appliedMode: current2.appliedMode,
+    appliedMode: current3.appliedMode,
     configuredMode: mode,
     explicitSelection: true,
     migrationNoticePending: false,
-    restartRequired: mode !== current2.appliedMode
+    restartRequired: mode !== current3.appliedMode
   };
   store.snapshot = identity2;
   launchMigrationNoticePending = false;
@@ -2808,19 +7030,19 @@ async function markBrowserIdentityMigrationNoticePending(userDataPath, degraded)
   if (store.userDataPath !== userDataPath) {
     throw new Error("Browser identity mode store userData path changed");
   }
-  const current2 = store.snapshot;
-  if (current2.explicitSelection === true) {
+  const current3 = store.snapshot;
+  if (current3.explicitSelection === true) {
     return false;
   }
   launchMigrationNoticePending = true;
   migrationNoticeDegraded ||= degraded;
-  if (current2.configuredMode === null) {
+  if (current3.configuredMode === null) {
     return false;
   }
   const record = {
     version: BROWSER_IDENTITY_MODE_VERSION,
-    mode: current2.configuredMode,
-    explicitSelection: current2.explicitSelection,
+    mode: current3.configuredMode,
+    explicitSelection: current3.explicitSelection,
     migrationNoticePending: true
   };
   try {
@@ -2831,11 +7053,11 @@ async function markBrowserIdentityMigrationNoticePending(userDataPath, degraded)
   }
   store.snapshot = {
     state: "valid",
-    appliedMode: current2.appliedMode,
-    configuredMode: current2.configuredMode,
-    explicitSelection: current2.explicitSelection,
+    appliedMode: current3.appliedMode,
+    configuredMode: current3.configuredMode,
+    explicitSelection: current3.explicitSelection,
     migrationNoticePending: true,
-    restartRequired: current2.restartRequired
+    restartRequired: current3.restartRequired
   };
   notifySnapshotListeners(store.snapshot);
   return true;
@@ -2852,7 +7074,7 @@ function cleanElectronUserAgent(userAgent) {
 }
 function ensureBrowserProcessUserAgentIdentity(mode) {
   if (!identity) {
-    const fallback = import_electron4.app.userAgentFallback;
+    const fallback = import_electron5.app.userAgentFallback;
     identity = Object.freeze({
       mode,
       userAgent: mode === "clean" ? cleanElectronUserAgent(fallback) : fallback
@@ -3153,7 +7375,7 @@ var BrowserGrabSessionController = class {
 };
 
 // src/main/browser/browser-manager-viewport-scroll-state.ts
-var import_electron5 = require("electron");
+var import_electron6 = require("electron");
 var BrowserManagerViewportScrollState = class {
   rendererWebContentsIdByTabId = /* @__PURE__ */ new Map();
   // Why both: host-side wheel panning follows the requested preset, while the tab's identity follows
@@ -3211,7 +7433,7 @@ var BrowserManagerViewportScrollState = class {
     if (!rendererWebContentsId) {
       return null;
     }
-    const renderer = import_electron5.webContents.fromId(rendererWebContentsId);
+    const renderer = import_electron6.webContents.fromId(rendererWebContentsId);
     if (!renderer || renderer.isDestroyed()) {
       return null;
     }
@@ -3419,8 +7641,8 @@ var BrowserManagerNavigation = class extends BrowserManagerVisibility {
   standingCdpUserAgentOverride(guestId) {
     const state = this.cdpUserAgentOverrideStateByGuestId.get(guestId);
     const latestPending = state?.pending.at(-1);
-    const current2 = latestPending && latestPending.sequence > (state?.confirmed?.sequence ?? -1) ? latestPending : state?.confirmed;
-    return current2 && current2.override.userAgent !== "" ? current2.override : void 0;
+    const current3 = latestPending && latestPending.sequence > (state?.confirmed?.sequence ?? -1) ? latestPending : state?.confirmed;
+    return current3 && current3.override.userAgent !== "" ? current3.override : void 0;
   }
   canOverrideUserAgentOverCdp(guest) {
     try {
@@ -3536,8 +7758,8 @@ var BrowserManagerNavigation = class extends BrowserManagerVisibility {
 var BrowserManagerGuestPopupPolicy = class extends BrowserManagerNavigation {
   installGuestPopupPolicy(guest) {
     const gesture = trackBrowserGuestInputGesture(guest);
-    const handleDidCreateWindow = (window) => {
-      this.attachGuestPolicies(window.webContents, this.resolvePopupOwnerContext(guest.id));
+    const handleDidCreateWindow = (window2) => {
+      this.attachGuestPolicies(window2.webContents, this.resolvePopupOwnerContext(guest.id));
     };
     guest.on("did-create-window", handleDidCreateWindow);
     guest.setWindowOpenHandler(({ url, frameName, disposition }) => {
@@ -3779,7 +8001,7 @@ var BrowserManagerRegistration = class extends BrowserManagerGuestPolicy {
       previousCleanup();
       this.contextMenuCleanupByTabId.delete(browserTabId);
     }
-    const guest = import_electron6.webContents.fromId(webContentsId);
+    const guest = import_electron7.webContents.fromId(webContentsId);
     if (!guest || guest.isDestroyed()) {
       return false;
     }
@@ -3942,34 +8164,6 @@ var BrowserManagerQueries = class extends BrowserManagerRegistration {
   }
 };
 
-// src/main/browser/browser-error.ts
-var BrowserError = class extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-  code;
-};
-
-// src/main/browser/guest-cdp-command.ts
-var VIEW_RESIZING_CDP_METHODS = /* @__PURE__ */ new Set([
-  "Emulation.setDeviceMetricsOverride",
-  "Emulation.setVisibleSize"
-]);
-function sendGuestCdpCommand(guest, method, params, sessionId) {
-  if (VIEW_RESIZING_CDP_METHODS.has(method) && (guest.isDestroyed() || guest.isCrashed())) {
-    return Promise.reject(
-      new BrowserError(
-        "browser_cdp_error",
-        "The page crashed; its viewport can be changed again once it reloads."
-      )
-    );
-  }
-  return Promise.resolve(
-    sessionId === void 0 ? guest.debugger.sendCommand(method, params) : guest.debugger.sendCommand(method, params, sessionId)
-  );
-}
-
 // src/main/browser/browser-manager-viewport.ts
 var TOUCH_EMULATION_DISABLED = { enabled: false };
 var BrowserManagerViewport = class extends BrowserManagerQueries {
@@ -3979,7 +8173,7 @@ var BrowserManagerViewport = class extends BrowserManagerQueries {
     if (!webContentsId) {
       return false;
     }
-    const guest = import_electron7.webContents.fromId(webContentsId);
+    const guest = import_electron8.webContents.fromId(webContentsId);
     if (!guest || guest.isDestroyed()) {
       this.unregisterGuest(browserTabId);
       return false;
@@ -4056,7 +8250,7 @@ var BrowserManagerViewport = class extends BrowserManagerQueries {
     if (!webContentsId || webContentsId !== expectedWebContentsId) {
       return false;
     }
-    const guest = import_electron7.webContents.fromId(webContentsId);
+    const guest = import_electron8.webContents.fromId(webContentsId);
     if (!guest || guest.isDestroyed()) {
       this.unregisterGuest(browserTabId);
       return false;
@@ -4131,7 +8325,7 @@ var BrowserManagerGrab = class extends BrowserManagerViewport {
     if (guestId == null) {
       return null;
     }
-    const guest = import_electron8.webContents.fromId(guestId);
+    const guest = import_electron9.webContents.fromId(guestId);
     if (!guest || guest.isDestroyed()) {
       this.unregisterGuest(browserTabId);
       return null;
@@ -4386,161 +8580,627 @@ var BrowserManager = class extends BrowserManagerFinal {
 };
 var browserManager = new BrowserManager();
 
-// src/main/browser/browser-system-resume-forwarding.ts
-var import_electron9 = require("electron");
-function installSystemResumeForwarding(getMainWindow) {
-  const onResume = () => {
-    const mainWindow = getMainWindow();
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      return;
+// src/main/ipc/browser-mcp-ipc.ts
+var import_electron10 = require("electron");
+
+// src/shared/browser-ipc-channels.ts
+var BROWSER_GRAB_INVOKE_CHANNELS = [
+  "browser:setGrabMode",
+  "browser:awaitGrabSelection",
+  "browser:cancelGrab",
+  "browser:captureSelectionScreenshot",
+  "browser:extractHoverPayload"
+];
+var BROWSER_PROFILE_INVOKE_CHANNELS = [
+  "browser:session:listProfiles",
+  "browser:session:createProfile",
+  "browser:session:deleteProfile",
+  "browser:session:importCookies",
+  "browser:session:resolvePartition",
+  "browser:session:clearDefaultCookies",
+  "browser:session:detectBrowsers",
+  "browser:session:importFromBrowser",
+  "browser:identity:get",
+  "browser:identity:set",
+  "browser:settings:get",
+  "browser:settings:set"
+];
+var BROWSER_MCP_INVOKE_CHANNELS = [
+  "browser:mcpGetEndpoint",
+  "browser:mcpGetStatus",
+  "browser:mcpRotateToken"
+];
+
+// src/main/mcp/browser-mcp-tools.ts
+var import_mcp = require("@modelcontextprotocol/sdk/server/mcp.js");
+var import_zod = require("zod");
+var TAB_SELECTION_RULES = "Tab selection: (1) With browserPageId, only that page is used; if scopeId is also given the page must belong to that scope, otherwise browser_tab_not_found. (2) With only scopeId, that scope's active tab is used (the one the user last switched to, or the one picked with tab_switch), else its first live tab. (3) With neither, the globally last active tab is used, else the first live tab; fill and type instead require exactly one scope with live tabs and return browser_target_ambiguous when several scopes have tabs (pass scopeId). (4) With no tabs at all the call fails with browser_no_tab; tools never open a new tab.";
+var targetShape = {
+  scopeId: import_zod.z.string().min(1).optional().describe("Workspace scope that owns the tab"),
+  browserPageId: import_zod.z.string().min(1).optional().describe("Id of a specific tab (see tabs_list)")
+};
+function textResult(text) {
+  return { content: [{ type: "text", text }] };
+}
+function jsonResult(value) {
+  return textResult(JSON.stringify(value));
+}
+function errorResult(text) {
+  return { isError: true, content: [{ type: "text", text }] };
+}
+function sanitizeMessage(message) {
+  const cleaned = message.replace(/^Command failed:[^\n]*\n?/gm, "").trim();
+  return cleaned === "" ? "agent-browser command failed" : cleaned;
+}
+function toErrorResult(error) {
+  if (error instanceof BrowserError) {
+    let message2 = sanitizeMessage(error.message);
+    if (error.code === "browser_target_ambiguous") {
+      message2 = message2.replace(/--worktree\b/g, "scopeId");
     }
-    mainWindow.webContents.send("browser:systemResumed");
+    const hint = error.code === "browser_no_tab" ? " Open a tab in the embedded browser first." : "";
+    return errorResult(`${error.code}: ${message2}${hint}`);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return errorResult(`browser_error: ${sanitizeMessage(message)}`);
+}
+function createBrowserMcpServer(deps) {
+  const { bridge, binary } = deps;
+  const server = new import_mcp.McpServer({ name: "orca-browser", version: "1.0.0" });
+  const missingBinary = () => binary.found ? null : errorResult(
+    `agent_browser_missing: agent-browser binary not found. Expected one of: ${binary.expectedPaths.join(", ")}`
+  );
+  const guarded = (run, needsBinary = true) => async (args) => {
+    if (needsBinary) {
+      const missing = missingBinary();
+      if (missing) {
+        return missing;
+      }
+    }
+    try {
+      return await run(args);
+    } catch (error) {
+      return toErrorResult(error);
+    }
   };
-  import_electron9.powerMonitor.on("resume", onResume);
-  return () => {
-    import_electron9.powerMonitor.removeListener("resume", onResume);
-  };
+  const describeTool = (summary) => `${summary} ${TAB_SELECTION_RULES}`;
+  server.registerTool(
+    "goto",
+    {
+      description: describeTool("Navigate a tab of the embedded browser to a URL."),
+      inputSchema: { url: import_zod.z.string().min(1), ...targetShape }
+    },
+    guarded(
+      async ({ url, scopeId, browserPageId }) => jsonResult(await bridge.goto(url, scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "back",
+    {
+      description: describeTool("Go back in the tab history."),
+      inputSchema: targetShape
+    },
+    guarded(
+      async ({ scopeId, browserPageId }) => jsonResult(await bridge.back(scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "forward",
+    {
+      description: describeTool("Go forward in the tab history."),
+      inputSchema: targetShape
+    },
+    guarded(
+      async ({ scopeId, browserPageId }) => jsonResult(await bridge.forward(scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "reload",
+    {
+      description: describeTool("Reload the tab."),
+      inputSchema: targetShape
+    },
+    guarded(
+      async ({ scopeId, browserPageId }) => jsonResult(await bridge.reload(scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "snapshot",
+    {
+      description: describeTool(
+        "Capture an accessibility snapshot of the page. Element refs such as @e1 can be used by click and fill."
+      ),
+      inputSchema: targetShape
+    },
+    guarded(async ({ scopeId, browserPageId }) => {
+      const result = await bridge.snapshot(scopeId, browserPageId);
+      const meta = JSON.stringify({
+        browserPageId: result.browserPageId,
+        url: result.url,
+        title: result.title
+      });
+      return textResult(`${meta}
+
+${result.snapshot}`);
+    })
+  );
+  server.registerTool(
+    "click",
+    {
+      description: describeTool("Click an element given by an @eN snapshot ref or a CSS selector."),
+      inputSchema: { element: import_zod.z.string().min(1), ...targetShape }
+    },
+    guarded(
+      async ({ element, scopeId, browserPageId }) => jsonResult(await bridge.click(element, scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "fill",
+    {
+      description: describeTool(
+        "Replace the value of an input element given by an @eN ref or CSS selector. An empty value clears it."
+      ),
+      inputSchema: { element: import_zod.z.string().min(1), value: import_zod.z.string(), ...targetShape }
+    },
+    guarded(
+      async ({
+        element,
+        value,
+        scopeId,
+        browserPageId
+      }) => jsonResult(await bridge.fill(element, value, scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "type",
+    {
+      description: describeTool("Type text into the currently focused element."),
+      inputSchema: { text: import_zod.z.string().min(1), ...targetShape }
+    },
+    guarded(
+      async ({ text, scopeId, browserPageId }) => jsonResult(await bridge.type(text, scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "press",
+    {
+      description: describeTool("Press a key or key combination such as Enter or Control+a."),
+      inputSchema: { key: import_zod.z.string().min(1), ...targetShape }
+    },
+    guarded(
+      async ({ key, scopeId, browserPageId }) => jsonResult(await bridge.keypress(key, scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "screenshot",
+    {
+      description: describeTool("Take a screenshot of the page as an image."),
+      inputSchema: { format: import_zod.z.enum(["png", "jpeg"]).optional(), ...targetShape }
+    },
+    guarded(async ({ format, scopeId, browserPageId }) => {
+      const result = await bridge.screenshot(format, scopeId, browserPageId);
+      return {
+        content: [{ type: "image", data: result.data, mimeType: `image/${result.format}` }]
+      };
+    })
+  );
+  server.registerTool(
+    "eval",
+    {
+      description: describeTool(
+        "Evaluate a JavaScript expression in the page and return the result."
+      ),
+      inputSchema: { expression: import_zod.z.string().min(1), ...targetShape }
+    },
+    guarded(
+      async ({ expression, scopeId, browserPageId }) => jsonResult(await bridge.evaluate(expression, scopeId, browserPageId))
+    )
+  );
+  server.registerTool(
+    "tabs_list",
+    {
+      description: "List the open tabs of the embedded browser, optionally limited to one scope. Each tab reports browserPageId, scopeId, index, url, title and whether it is active. " + TAB_SELECTION_RULES,
+      inputSchema: { scopeId: targetShape.scopeId }
+    },
+    guarded(({ scopeId }) => {
+      const { tabs } = bridge.tabList(scopeId);
+      return jsonResult({
+        tabs: tabs.map((tab) => ({
+          browserPageId: tab.browserPageId,
+          scopeId: deps.getScopeIdForTab(tab.browserPageId),
+          index: tab.index,
+          url: tab.url,
+          title: tab.title,
+          active: tab.active
+        }))
+      });
+    }, false)
+  );
+  server.registerTool(
+    "tab_switch",
+    {
+      description: describeTool(
+        "Set the agent's active tab by index or browserPageId (exactly one). This does not change what the user sees."
+      ),
+      inputSchema: { index: import_zod.z.number().int().min(0).optional(), ...targetShape }
+    },
+    guarded(async ({ index, scopeId, browserPageId }) => {
+      if (index === void 0 && browserPageId === void 0) {
+        return errorResult("invalid_arguments: tab_switch requires index or browserPageId");
+      }
+      if (index !== void 0 && browserPageId !== void 0) {
+        return errorResult("invalid_arguments: pass either index or browserPageId, not both");
+      }
+      return jsonResult(await bridge.tabSwitch(index, scopeId, browserPageId));
+    }, false)
+  );
+  server.registerTool(
+    "wait",
+    {
+      description: describeTool(
+        "Wait for a selector, text, URL pattern, load state, JS function or a timeout in milliseconds."
+      ),
+      inputSchema: {
+        selector: import_zod.z.string().optional(),
+        text: import_zod.z.string().optional(),
+        url: import_zod.z.string().optional(),
+        load: import_zod.z.string().optional(),
+        fn: import_zod.z.string().optional(),
+        state: import_zod.z.string().optional(),
+        timeout: import_zod.z.number().int().positive().optional(),
+        ...targetShape
+      }
+    },
+    guarded(
+      async ({
+        selector,
+        timeout,
+        text,
+        url,
+        load,
+        fn,
+        state,
+        scopeId,
+        browserPageId
+      }) => jsonResult(
+        await bridge.wait(
+          { selector, timeout, text, url, load, fn, state },
+          scopeId,
+          browserPageId
+        )
+      )
+    )
+  );
+  return server;
 }
 
-// src/main/ipc/browser-guest-view-ipc.ts
-var import_electron10 = require("electron");
+// src/main/mcp/mcp-http-server.ts
+var import_node_crypto4 = require("node:crypto");
+var import_node_http2 = require("node:http");
+var import_streamableHttp = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
+var MCP_HOST = "127.0.0.1";
+var MCP_PATH = "/mcp";
+var MCP_MAX_BODY_BYTES = 1048576;
+var BodyTooLargeError = class extends Error {
+};
+function writeJson(res, status2, body, headers = {}) {
+  if (res.headersSent) {
+    return;
+  }
+  res.writeHead(status2, { "Content-Type": "application/json", ...headers });
+  res.end(JSON.stringify(body));
+}
+function jsonRpcError(code, message) {
+  return { jsonrpc: "2.0", error: { code, message }, id: null };
+}
+function isAuthorized(header, expected) {
+  if (!header) {
+    return false;
+  }
+  const match = /^Bearer (.+)$/.exec(header);
+  if (!match) {
+    return false;
+  }
+  const provided = Buffer.from(match[1]);
+  const wanted = Buffer.from(expected);
+  return provided.length === wanted.length && (0, import_node_crypto4.timingSafeEqual)(provided, wanted);
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (chunk) => {
+      if (tooLarge) {
+        return;
+      }
+      size += chunk.length;
+      if (size > MCP_MAX_BODY_BYTES) {
+        tooLarge = true;
+        chunks.length = 0;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (tooLarge) {
+        reject(new BodyTooLargeError());
+        return;
+      }
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", reject);
+  });
+}
+var BrowserMcpHttpServer = class {
+  constructor(opts) {
+    this.opts = opts;
+  }
+  opts;
+  httpServer = null;
+  port = null;
+  async start() {
+    const server = (0, import_node_http2.createServer)((req, res) => {
+      void this.handle(req, res);
+    });
+    await new Promise((resolve, reject) => {
+      const onError = (error) => reject(error);
+      server.once("error", onError);
+      server.listen(this.opts.port, MCP_HOST, () => {
+        server.off("error", onError);
+        resolve();
+      });
+    });
+    this.httpServer = server;
+    this.port = server.address().port;
+    return this.port;
+  }
+  async stop() {
+    const server = this.httpServer;
+    this.httpServer = null;
+    this.port = null;
+    if (!server) {
+      return;
+    }
+    await new Promise((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+  }
+  getPort() {
+    return this.port;
+  }
+  getAddress() {
+    const address = this.httpServer?.address();
+    return address && typeof address === "object" ? address.address : null;
+  }
+  async handle(req, res) {
+    try {
+      const pathname = new URL(req.url ?? "/", `http://${MCP_HOST}`).pathname;
+      if (pathname !== MCP_PATH) {
+        writeJson(res, 404, jsonRpcError(-32e3, "Not found"));
+        return;
+      }
+      if (req.headers.origin !== void 0) {
+        writeJson(res, 403, jsonRpcError(-32e3, "Forbidden"));
+        return;
+      }
+      if (!isAuthorized(req.headers.authorization, this.opts.getToken())) {
+        writeJson(res, 401, jsonRpcError(-32001, "Unauthorized"), {
+          "WWW-Authenticate": 'Bearer realm="orca-browser"'
+        });
+        return;
+      }
+      if (req.method !== "POST") {
+        writeJson(res, 405, jsonRpcError(-32e3, "Method not allowed"), { Allow: "POST" });
+        return;
+      }
+      const declaredLength = Number(req.headers["content-length"]);
+      if (declaredLength > MCP_MAX_BODY_BYTES) {
+        req.resume();
+        setTimeout(() => req.socket.destroy(), 1e3).unref();
+        writeJson(res, 413, jsonRpcError(-32e3, "Payload too large"), { Connection: "close" });
+        return;
+      }
+      let raw;
+      try {
+        raw = await readBody(req);
+      } catch (error) {
+        if (error instanceof BodyTooLargeError) {
+          writeJson(res, 413, jsonRpcError(-32e3, "Payload too large"), { Connection: "close" });
+          return;
+        }
+        throw error;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        writeJson(res, 400, jsonRpcError(-32700, "Parse error"));
+        return;
+      }
+      const mcpServer = this.opts.createMcpServer();
+      const transport = new import_streamableHttp.StreamableHTTPServerTransport({
+        sessionIdGenerator: void 0,
+        enableJsonResponse: true
+      });
+      res.on("close", () => {
+        void transport.close();
+        void mcpServer.close();
+      });
+      await mcpServer.connect(transport);
+      await transport.handleRequest(req, res, parsed);
+    } catch {
+      writeJson(res, 500, jsonRpcError(-32603, "Internal server error"));
+    }
+  }
+};
+
+// src/main/mcp/mcp-token-store.ts
+var import_node_crypto5 = require("node:crypto");
+var import_promises = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+var MCP_TOKEN_RELATIVE_PATH = "orca-browser/mcp-token";
+var TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+function isValidMcpToken(value) {
+  return TOKEN_PATTERN.test(value);
+}
+function tokenPath(userDataDir) {
+  return (0, import_node_path7.join)(userDataDir, ...MCP_TOKEN_RELATIVE_PATH.split("/"));
+}
+var queue = Promise.resolve();
+function serialized(task) {
+  const run = queue.then(task, task);
+  queue = run.catch(() => void 0);
+  return run;
+}
+function loadOrCreateMcpToken(userDataDir) {
+  return serialized(() => loadOrCreate(userDataDir));
+}
+function writeNewMcpToken(userDataDir) {
+  return serialized(() => writeNew(userDataDir));
+}
+async function loadOrCreate(userDataDir) {
+  try {
+    const existing = (await (0, import_promises.readFile)(tokenPath(userDataDir), "utf8")).trim();
+    if (isValidMcpToken(existing)) {
+      return existing;
+    }
+  } catch {
+  }
+  return writeNew(userDataDir);
+}
+async function writeNew(userDataDir) {
+  const token = (0, import_node_crypto5.randomBytes)(32).toString("hex");
+  const target = tokenPath(userDataDir);
+  await (0, import_promises.mkdir)((0, import_node_path7.dirname)(target), { recursive: true, mode: 448 });
+  const temp = `${target}.${process.pid}.${(0, import_node_crypto5.randomBytes)(4).toString("hex")}.tmp`;
+  await (0, import_promises.writeFile)(temp, token, { mode: 384 });
+  await (0, import_promises.rename)(temp, target);
+  return token;
+}
+
+// src/main/mcp/browser-mcp-runtime.ts
+var current2 = null;
+var status = { state: "starting", port: DEFAULT_MCP_PORT };
+var lifecycle = Promise.resolve();
+function serialize(task) {
+  const run = lifecycle.then(task, task);
+  lifecycle = run.catch(() => void 0);
+  return run;
+}
+function startBrowserMcpRuntime(opts) {
+  return serialize(() => startRuntime(opts));
+}
+function stopBrowserMcpRuntime() {
+  return serialize(stopRuntime);
+}
+async function startRuntime(opts) {
+  const { userDataDir, port, logger, tools } = opts;
+  await stopRuntime();
+  status = { state: "starting", port };
+  try {
+    const state = {
+      userDataDir,
+      token: await loadOrCreateMcpToken(userDataDir),
+      endpoint: null,
+      server: new BrowserMcpHttpServer({
+        port,
+        // Read through the state object so a rotation applies to the very next request.
+        getToken: () => state.token,
+        createMcpServer: () => createBrowserMcpServer(tools)
+      })
+    };
+    current2 = state;
+    try {
+      const actualPort = await state.server.start();
+      state.endpoint = { url: `http://${MCP_HOST}:${actualPort}${MCP_PATH}`, token: state.token };
+      status = { state: "listening", port: actualPort };
+    } catch (error) {
+      const code = error.code;
+      logger.error("orca-browser MCP server failed to start", { port, code });
+      status = code === "EADDRINUSE" ? { state: "port_in_use", port } : {
+        state: "error",
+        port,
+        message: error instanceof Error ? error.message : String(error)
+      };
+    }
+  } catch (error) {
+    logger.error("orca-browser MCP server failed to start", {
+      port,
+      code: error.code
+    });
+    status = {
+      state: "error",
+      port,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+async function stopRuntime() {
+  const state = current2;
+  current2 = null;
+  status = { state: "starting", port: status.port };
+  if (state) {
+    await state.server.stop();
+  }
+}
+function getMcpEndpoint() {
+  return current2?.endpoint ? { url: current2.endpoint.url, token: current2.token } : null;
+}
+function getMcpStatus() {
+  return { ...status };
+}
+async function rotateMcpToken() {
+  const state = current2;
+  if (!state) {
+    throw new Error("orca-browser MCP runtime is not started");
+  }
+  const token = await writeNewMcpToken(state.userDataDir);
+  state.token = token;
+  return token;
+}
 
 // src/main/ipc/browser-renderer-trust.ts
 function isTrustedBrowserRenderer(sender) {
   return !sender.isDestroyed() && sender.getType() === "window" && sender.id === getBrowserHost().getMainWindow()?.webContents.id;
 }
 
-// src/main/ipc/browser-guest-view-ipc.ts
-function registerBrowserGuestViewHandlers() {
-  import_electron10.ipcMain.removeHandler("browser:openDevTools");
-  import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
-  import_electron10.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
-  import_electron10.ipcMain.removeHandler("browser:setAnnotationViewportBridge");
-  import_electron10.ipcMain.handle("browser:openDevTools", (event, args) => {
-    if (!isTrustedBrowserRenderer(event.sender)) {
-      return false;
-    }
-    return browserManager.openDevTools(args.browserPageId);
-  });
-  import_electron10.ipcMain.handle(
-    "browser:setViewportOverride",
-    (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender)) {
-        return false;
-      }
-      if (args.override !== null) {
-        const { width, height, deviceScaleFactor, mobile } = args.override;
-        const isFinitePositive = (n) => typeof n === "number" && Number.isFinite(n) && n > 0;
-        if (!isFinitePositive(width) || width < 1 || width > 1e4) {
-          return false;
-        }
-        if (!isFinitePositive(height) || height < 1 || height > 1e4) {
-          return false;
-        }
-        if (!isFinitePositive(deviceScaleFactor) || deviceScaleFactor < 0.1 || deviceScaleFactor > 5) {
-          return false;
-        }
-        if (typeof mobile !== "boolean") {
-          return false;
-        }
-      }
-      return browserManager.setViewportOverride(args.browserPageId, args.override);
-    }
-  );
-  import_electron10.ipcMain.on?.(
-    "browser:reportViewportScrollState",
-    (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender) || typeof args?.browserPageId !== "string") {
-        return;
-      }
-      const state = args.state;
-      if (!state) {
-        return;
-      }
-      browserManager.setViewportScrollState(args.browserPageId, event.sender.id, {
-        scrollLeft: Number(state.scrollLeft),
-        scrollTop: Number(state.scrollTop),
-        maxScrollLeft: Number(state.maxScrollLeft),
-        maxScrollTop: Number(state.maxScrollTop)
-      });
-    }
-  );
-  import_electron10.ipcMain.handle(
-    "browser:setAnnotationViewportBridge",
-    (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender)) {
-        return false;
-      }
-      if (typeof args?.browserPageId !== "string" || typeof args.enabled !== "boolean" || typeof args.emitViewport !== "boolean" || !isValidBrowserAnnotationViewportBridgeMarkers(args.markers) || args.selectionId !== void 0 && (typeof args.selectionId !== "string" || args.selectionId.length > 80) || !isValidBrowserAnnotationViewportBridgeToken(args.token)) {
-        return false;
-      }
-      const resolveGuest = () => browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
-      if (!resolveGuest()) {
-        return false;
-      }
-      return browserManager.setAnnotationViewportBridge(
-        args.browserPageId,
-        {
-          enabled: args.enabled,
-          emitViewport: args.emitViewport,
-          markers: args.markers,
-          selectionId: args.selectionId,
-          token: args.token
-        },
-        resolveGuest
-      );
-    }
-  );
-  return () => {
-    import_electron10.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
-    import_electron10.ipcMain.removeHandler("browser:openDevTools");
-    import_electron10.ipcMain.removeHandler("browser:setViewportOverride");
-    import_electron10.ipcMain.removeHandler("browser:setAnnotationViewportBridge");
-  };
-}
-
-// src/main/ipc/browser-host-ipc.ts
-var import_electron11 = require("electron");
-var HOST_CHANNELS = ["browser:openExternal", "browser:writeClipboardText"];
-function registerBrowserHostHandlers() {
-  for (const channel of HOST_CHANNELS) {
-    import_electron11.ipcMain.removeHandler(channel);
+// src/main/ipc/browser-mcp-ipc.ts
+function assertTrusted(sender) {
+  if (!isTrustedBrowserRenderer(sender)) {
+    throw new Error("Untrusted renderer");
   }
-  import_electron11.ipcMain.handle(
-    "browser:openExternal",
-    async (event, args) => {
-      if (!isTrustedBrowserRenderer(event.sender) || typeof args?.url !== "string") {
-        return false;
-      }
-      const url = normalizeExternalBrowserUrl(args.url);
-      if (!url) {
-        return false;
-      }
-      await getBrowserHost().openExternal(url);
-      return true;
-    }
+}
+function registerBrowserMcpHandlers() {
+  unregisterBrowserMcpHandlers();
+  import_electron10.ipcMain.handle(
+    "browser:mcpGetEndpoint",
+    (event) => isTrustedBrowserRenderer(event.sender) ? getMcpEndpoint() : null
   );
-  import_electron11.ipcMain.handle("browser:writeClipboardText", (event, text) => {
-    if (!isTrustedBrowserRenderer(event.sender) || typeof text !== "string") {
-      return;
-    }
-    import_electron11.clipboard.writeText(text);
+  import_electron10.ipcMain.handle("browser:mcpGetStatus", (event) => {
+    assertTrusted(event.sender);
+    return getMcpStatus();
   });
-  return () => {
-    for (const channel of HOST_CHANNELS) {
-      import_electron11.ipcMain.removeHandler(channel);
-    }
-  };
+  import_electron10.ipcMain.handle("browser:mcpRotateToken", (event) => {
+    assertTrusted(event.sender);
+    return rotateMcpToken();
+  });
+}
+function unregisterBrowserMcpHandlers() {
+  for (const channel of BROWSER_MCP_INVOKE_CHANNELS) {
+    import_electron10.ipcMain.removeHandler(channel);
+  }
 }
 
 // src/main/ipc/browser.ts
-var import_electron14 = require("electron");
-
-// src/main/ipc/browser-grab-ipc.ts
 var import_electron13 = require("electron");
 
-// src/main/ipc/browser-tab-registration-wait.ts
+// src/main/ipc/browser-grab-ipc.ts
 var import_electron12 = require("electron");
+
+// src/main/ipc/browser-tab-registration-wait.ts
+var import_electron11 = require("electron");
 var pendingTabRegistrations = /* @__PURE__ */ new Map();
 var pendingScopeTabRegistrations = /* @__PURE__ */ new Map();
 var pendingAnyTabRegistrations = /* @__PURE__ */ new Set();
@@ -4572,7 +9232,7 @@ function isLiveBrowserWebContentsId(webContentsId) {
   if (webContentsId == null) {
     return false;
   }
-  const guest = import_electron12.webContents.fromId(webContentsId);
+  const guest = import_electron11.webContents.fromId(webContentsId);
   return Boolean(guest && !guest.isDestroyed());
 }
 function waitForNextTabRegistration(browserPageId, timeoutMs) {
@@ -4626,12 +9286,12 @@ function disposeGrabModeStateForPage(browserPageId) {
   grabModeOperationByPageId.delete(browserPageId);
 }
 function registerBrowserGrabHandlers() {
-  import_electron13.ipcMain.removeHandler("browser:setGrabMode");
-  import_electron13.ipcMain.removeHandler("browser:awaitGrabSelection");
-  import_electron13.ipcMain.removeHandler("browser:cancelGrab");
-  import_electron13.ipcMain.removeHandler("browser:captureSelectionScreenshot");
-  import_electron13.ipcMain.removeHandler("browser:extractHoverPayload");
-  import_electron13.ipcMain.handle(
+  import_electron12.ipcMain.removeHandler("browser:setGrabMode");
+  import_electron12.ipcMain.removeHandler("browser:awaitGrabSelection");
+  import_electron12.ipcMain.removeHandler("browser:cancelGrab");
+  import_electron12.ipcMain.removeHandler("browser:captureSelectionScreenshot");
+  import_electron12.ipcMain.removeHandler("browser:extractHoverPayload");
+  import_electron12.ipcMain.handle(
     "browser:setGrabMode",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4676,7 +9336,7 @@ function registerBrowserGrabHandlers() {
       });
     }
   );
-  import_electron13.ipcMain.handle(
+  import_electron12.ipcMain.handle(
     "browser:awaitGrabSelection",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4689,7 +9349,7 @@ function registerBrowserGrabHandlers() {
       return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest);
     }
   );
-  import_electron13.ipcMain.handle("browser:cancelGrab", (event, args) => {
+  import_electron12.ipcMain.handle("browser:cancelGrab", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
@@ -4700,7 +9360,7 @@ function registerBrowserGrabHandlers() {
     browserManager.cancelGrabOp(args.browserPageId, "user");
     return true;
   });
-  import_electron13.ipcMain.handle(
+  import_electron12.ipcMain.handle(
     "browser:captureSelectionScreenshot",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4721,7 +9381,7 @@ function registerBrowserGrabHandlers() {
       return { ok: true, screenshot };
     }
   );
-  import_electron13.ipcMain.handle(
+  import_electron12.ipcMain.handle(
     "browser:extractHoverPayload",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4741,6 +9401,10 @@ function registerBrowserGrabHandlers() {
 }
 
 // src/main/ipc/browser.ts
+var agentBrowserBridgeRef = null;
+function setAgentBrowserBridgeRef(bridge) {
+  agentBrowserBridgeRef = bridge;
+}
 var BROWSER_HANDLER_CHANNELS = [
   "browser:registerGuest",
   "browser:isGuestRegistered",
@@ -4750,7 +9414,7 @@ var BROWSER_HANDLER_CHANNELS = [
 ];
 function registerBrowserHandlers() {
   for (const channel of BROWSER_HANDLER_CHANNELS) {
-    import_electron14.ipcMain.removeHandler(channel);
+    import_electron13.ipcMain.removeHandler(channel);
   }
   const registerGuest = (event, args, repairPolicies) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
@@ -4760,12 +9424,13 @@ function registerBrowserHandlers() {
       return false;
     }
     if (repairPolicies) {
-      const guest = import_electron14.webContents.fromId(args.webContentsId);
+      const guest = import_electron13.webContents.fromId(args.webContentsId);
       if (!guest || guest.isDestroyed() || guest.getType() !== "webview" || guest.hostWebContents?.id !== event.sender.id) {
         return false;
       }
       browserManager.attachGuestPolicies(guest);
     }
+    const previousWcId = browserManager.getGuestWebContentsId(args.browserPageId);
     const registered = browserManager.registerGuest({
       ...args,
       rendererWebContentsId: event.sender.id
@@ -4773,18 +9438,21 @@ function registerBrowserHandlers() {
     if (!registered) {
       return false;
     }
+    if (agentBrowserBridgeRef && previousWcId !== null && previousWcId !== args.webContentsId) {
+      agentBrowserBridgeRef.onProcessSwap(args.browserPageId, args.webContentsId, previousWcId);
+    }
     resolveTabRegistrationWaiters(args.browserPageId, args.scopeId);
     return true;
   };
-  import_electron14.ipcMain.handle(
+  import_electron13.ipcMain.handle(
     "browser:registerGuest",
     (event, args) => registerGuest(event, args, false)
   );
-  import_electron14.ipcMain.handle(
+  import_electron13.ipcMain.handle(
     "browser:repairGuestRegistration",
     (event, args) => registerGuest(event, args, true)
   );
-  import_electron14.ipcMain.handle(
+  import_electron13.ipcMain.handle(
     "browser:isGuestRegistered",
     (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender) || typeof args?.browserPageId !== "string" || typeof args.webContentsId !== "number") {
@@ -4793,32 +9461,241 @@ function registerBrowserHandlers() {
       return browserManager.getGuestWebContentsId(args.browserPageId) === args.webContentsId && isLiveBrowserWebContentsId(args.webContentsId);
     }
   );
-  import_electron14.ipcMain.handle("browser:unregisterGuest", (event, args) => {
+  import_electron13.ipcMain.handle("browser:unregisterGuest", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
     if (typeof args?.browserPageId !== "string") {
       return false;
     }
+    const wcId = browserManager.getGuestWebContentsId(args.browserPageId);
+    if (wcId !== null && agentBrowserBridgeRef) {
+      agentBrowserBridgeRef.onTabClosed(wcId);
+    }
     browserManager.unregisterGuest(args.browserPageId);
     disposeGrabModeStateForPage(args.browserPageId);
     return true;
   });
-  import_electron14.ipcMain.handle("browser:activeTabChanged", (event, _args) => {
+  import_electron13.ipcMain.handle("browser:activeTabChanged", (event, args) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
-    return false;
+    if (!agentBrowserBridgeRef) {
+      return false;
+    }
+    const wcId = browserManager.getGuestWebContentsId(args.browserPageId);
+    if (wcId !== null) {
+      agentBrowserBridgeRef.onTabChanged(wcId, browserManager.getScopeIdForTab(args.browserPageId));
+    }
+    return true;
   });
   return () => {
     for (const channel of BROWSER_HANDLER_CHANNELS) {
-      import_electron14.ipcMain.removeHandler(channel);
+      import_electron13.ipcMain.removeHandler(channel);
+    }
+  };
+}
+
+// src/main/mcp/install-agent-automation.ts
+var SESSION_CLOSE_TIMEOUT_MS = 5e3;
+function resolveBinary(host) {
+  try {
+    return resolveAgentBrowserBinary({ resourcesPath: host.resourcesPath });
+  } catch (error) {
+    host.logger.warn("agent-browser binary resolution failed", { error: String(error) });
+    return {
+      found: false,
+      expectedPaths: [(0, import_node_path8.join)(host.resourcesPath, agentBrowserNativeName())]
+    };
+  }
+}
+function installAgentAutomation(deps) {
+  const { host, mcpPort } = deps;
+  const binary = resolveBinary(host);
+  const bridge = new AgentBrowserBridge(deps.browserManager, {
+    agentBrowserBin: binary.found ? binary.path : binary.expectedPaths[0],
+    userDataPath: host.userDataDir
+  });
+  setAgentBrowserBridgeRef(bridge);
+  if (binary.found) {
+    void bridge.sweepOrphanedSessions();
+  } else {
+    host.logger.warn("agent-browser binary not found", { expectedPaths: binary.expectedPaths });
+  }
+  void startBrowserMcpRuntime({
+    userDataDir: host.userDataDir,
+    port: mcpPort,
+    logger: host.logger,
+    tools: {
+      bridge,
+      getScopeIdForTab: (id) => deps.browserManager.getScopeIdForTab(id),
+      binary
+    }
+  });
+  return {
+    bridge,
+    async dispose() {
+      await stopBrowserMcpRuntime();
+      setAgentBrowserBridgeRef(null);
+      await bridge.destroyAllSessions({ closeTimeoutMs: SESSION_CLOSE_TIMEOUT_MS });
+    }
+  };
+}
+var installBrowserAgentAutomation = (options) => {
+  const automation = installAgentAutomation({
+    host: options.host,
+    browserManager,
+    mcpPort: options.mcpPort
+  });
+  registerBrowserMcpHandlers();
+  return async () => {
+    unregisterBrowserMcpHandlers();
+    await automation.dispose();
+  };
+};
+
+// src/main/browser/browser-system-resume-forwarding.ts
+var import_electron14 = require("electron");
+function installSystemResumeForwarding(getMainWindow) {
+  const onResume = () => {
+    const mainWindow = getMainWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("browser:systemResumed");
+  };
+  import_electron14.powerMonitor.on("resume", onResume);
+  return () => {
+    import_electron14.powerMonitor.removeListener("resume", onResume);
+  };
+}
+
+// src/main/ipc/browser-guest-view-ipc.ts
+var import_electron15 = require("electron");
+function registerBrowserGuestViewHandlers() {
+  import_electron15.ipcMain.removeHandler("browser:openDevTools");
+  import_electron15.ipcMain.removeHandler("browser:setViewportOverride");
+  import_electron15.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
+  import_electron15.ipcMain.removeHandler("browser:setAnnotationViewportBridge");
+  import_electron15.ipcMain.handle("browser:openDevTools", (event, args) => {
+    if (!isTrustedBrowserRenderer(event.sender)) {
+      return false;
+    }
+    return browserManager.openDevTools(args.browserPageId);
+  });
+  import_electron15.ipcMain.handle(
+    "browser:setViewportOverride",
+    (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return false;
+      }
+      if (args.override !== null) {
+        const { width, height, deviceScaleFactor, mobile } = args.override;
+        const isFinitePositive = (n) => typeof n === "number" && Number.isFinite(n) && n > 0;
+        if (!isFinitePositive(width) || width < 1 || width > 1e4) {
+          return false;
+        }
+        if (!isFinitePositive(height) || height < 1 || height > 1e4) {
+          return false;
+        }
+        if (!isFinitePositive(deviceScaleFactor) || deviceScaleFactor < 0.1 || deviceScaleFactor > 5) {
+          return false;
+        }
+        if (typeof mobile !== "boolean") {
+          return false;
+        }
+      }
+      return browserManager.setViewportOverride(args.browserPageId, args.override);
+    }
+  );
+  import_electron15.ipcMain.on?.(
+    "browser:reportViewportScrollState",
+    (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender) || typeof args?.browserPageId !== "string") {
+        return;
+      }
+      const state = args.state;
+      if (!state) {
+        return;
+      }
+      browserManager.setViewportScrollState(args.browserPageId, event.sender.id, {
+        scrollLeft: Number(state.scrollLeft),
+        scrollTop: Number(state.scrollTop),
+        maxScrollLeft: Number(state.maxScrollLeft),
+        maxScrollTop: Number(state.maxScrollTop)
+      });
+    }
+  );
+  import_electron15.ipcMain.handle(
+    "browser:setAnnotationViewportBridge",
+    (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender)) {
+        return false;
+      }
+      if (typeof args?.browserPageId !== "string" || typeof args.enabled !== "boolean" || typeof args.emitViewport !== "boolean" || !isValidBrowserAnnotationViewportBridgeMarkers(args.markers) || args.selectionId !== void 0 && (typeof args.selectionId !== "string" || args.selectionId.length > 80) || !isValidBrowserAnnotationViewportBridgeToken(args.token)) {
+        return false;
+      }
+      const resolveGuest = () => browserManager.getAuthorizedGuest(args.browserPageId, event.sender.id);
+      if (!resolveGuest()) {
+        return false;
+      }
+      return browserManager.setAnnotationViewportBridge(
+        args.browserPageId,
+        {
+          enabled: args.enabled,
+          emitViewport: args.emitViewport,
+          markers: args.markers,
+          selectionId: args.selectionId,
+          token: args.token
+        },
+        resolveGuest
+      );
+    }
+  );
+  return () => {
+    import_electron15.ipcMain.removeAllListeners?.("browser:reportViewportScrollState");
+    import_electron15.ipcMain.removeHandler("browser:openDevTools");
+    import_electron15.ipcMain.removeHandler("browser:setViewportOverride");
+    import_electron15.ipcMain.removeHandler("browser:setAnnotationViewportBridge");
+  };
+}
+
+// src/main/ipc/browser-host-ipc.ts
+var import_electron16 = require("electron");
+var HOST_CHANNELS = ["browser:openExternal", "browser:writeClipboardText"];
+function registerBrowserHostHandlers() {
+  for (const channel of HOST_CHANNELS) {
+    import_electron16.ipcMain.removeHandler(channel);
+  }
+  import_electron16.ipcMain.handle(
+    "browser:openExternal",
+    async (event, args) => {
+      if (!isTrustedBrowserRenderer(event.sender) || typeof args?.url !== "string") {
+        return false;
+      }
+      const url = normalizeExternalBrowserUrl(args.url);
+      if (!url) {
+        return false;
+      }
+      await getBrowserHost().openExternal(url);
+      return true;
+    }
+  );
+  import_electron16.ipcMain.handle("browser:writeClipboardText", (event, text) => {
+    if (!isTrustedBrowserRenderer(event.sender) || typeof text !== "string") {
+      return;
+    }
+    import_electron16.clipboard.writeText(text);
+  });
+  return () => {
+    for (const channel of HOST_CHANNELS) {
+      import_electron16.ipcMain.removeHandler(channel);
     }
   };
 }
 
 // src/main/window/main-window-webview-security.ts
-var import_electron15 = require("electron");
+var import_electron17 = require("electron");
 
 // src/shared/browser-guest-web-preferences.ts
 var ORCA_BROWSER_GUEST_WEB_PREFERENCES = {
@@ -4902,12 +9779,12 @@ function installWebviewSecurity(getMainWindow) {
   const onWebContentsCreated = (_event, contents) => {
     guard(contents);
   };
-  for (const contents of import_electron15.webContents.getAllWebContents()) {
+  for (const contents of import_electron17.webContents.getAllWebContents()) {
     guard(contents);
   }
-  import_electron15.app.on("web-contents-created", onWebContentsCreated);
+  import_electron17.app.on("web-contents-created", onWebContentsCreated);
   return () => {
-    import_electron15.app.off("web-contents-created", onWebContentsCreated);
+    import_electron17.app.off("web-contents-created", onWebContentsCreated);
     for (const dispose of disposers.values()) {
       dispose();
     }
@@ -4935,49 +9812,24 @@ var installBrowserCore = (options) => {
 };
 
 // src/main/browser-grab-installer.ts
-var import_electron16 = require("electron");
-
-// src/shared/browser-ipc-channels.ts
-var BROWSER_GRAB_INVOKE_CHANNELS = [
-  "browser:setGrabMode",
-  "browser:awaitGrabSelection",
-  "browser:cancelGrab",
-  "browser:captureSelectionScreenshot",
-  "browser:extractHoverPayload"
-];
-var BROWSER_PROFILE_INVOKE_CHANNELS = [
-  "browser:session:listProfiles",
-  "browser:session:createProfile",
-  "browser:session:deleteProfile",
-  "browser:session:importCookies",
-  "browser:session:resolvePartition",
-  "browser:session:clearDefaultCookies",
-  "browser:session:detectBrowsers",
-  "browser:session:importFromBrowser",
-  "browser:identity:get",
-  "browser:identity:set",
-  "browser:settings:get",
-  "browser:settings:set"
-];
-
-// src/main/browser-grab-installer.ts
+var import_electron18 = require("electron");
 var installBrowserGrab = () => {
   registerBrowserGrabHandlers();
   return () => {
     for (const channel of BROWSER_GRAB_INVOKE_CHANNELS) {
-      import_electron16.ipcMain.removeHandler(channel);
+      import_electron18.ipcMain.removeHandler(channel);
     }
     resetGrabModeState();
   };
 };
 
 // src/main/browser-profiles-installer.ts
-var import_node_path17 = require("node:path");
+var import_node_path22 = require("node:path");
 
 // src/main/browser/browser-session-registry.ts
-var import_electron20 = require("electron");
-var import_node_crypto2 = require("node:crypto");
-var import_node_path7 = require("node:path");
+var import_electron22 = require("electron");
+var import_node_crypto6 = require("node:crypto");
+var import_node_path12 = require("node:path");
 
 // src/shared/orca-profiles.ts
 var DEFAULT_LOCAL_ORCA_PROFILE_ID = "local-default";
@@ -5004,17 +9856,17 @@ function getOrcaProfileBrowserSessionPartition(profileId, browserSessionProfileI
 }
 
 // src/main/browser/browser-session-cookie-staging.ts
-var import_electron17 = require("electron");
-var import_node_fs7 = require("node:fs");
-var import_node_path6 = require("node:path");
+var import_electron19 = require("electron");
+var import_node_fs11 = require("node:fs");
+var import_node_path11 = require("node:path");
 
 // src/main/browser/browser-session-meta-store.ts
-var import_node_fs5 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path9 = require("node:path");
 var BROWSER_SESSION_META_FILE_NAME = "browser-session-meta.json";
 function loadBrowserSessionMeta(resolveMetadataPath, defaultPartition) {
   try {
-    const raw = (0, import_node_fs5.readFileSync)(resolveMetadataPath(), "utf-8");
+    const raw = (0, import_node_fs9.readFileSync)(resolveMetadataPath(), "utf-8");
     const data = JSON.parse(raw);
     const legacyPendingCookieDbPath = typeof data?.pendingCookieDbPath === "string" ? data.pendingCookieDbPath : null;
     const pendingCookieImports = {};
@@ -5047,9 +9899,9 @@ function persistBrowserSessionMeta(resolveMetadataPath, defaultPartition, update
   try {
     const existing = loadBrowserSessionMeta(resolveMetadataPath, defaultPartition);
     const tmpPath = `${resolveMetadataPath()}.tmp`;
-    (0, import_node_fs5.mkdirSync)((0, import_node_path4.dirname)(resolveMetadataPath()), { recursive: true });
-    (0, import_node_fs5.writeFileSync)(tmpPath, JSON.stringify({ ...existing, ...updates }));
-    (0, import_node_fs5.renameSync)(tmpPath, resolveMetadataPath());
+    (0, import_node_fs9.mkdirSync)((0, import_node_path9.dirname)(resolveMetadataPath()), { recursive: true });
+    (0, import_node_fs9.writeFileSync)(tmpPath, JSON.stringify({ ...existing, ...updates }));
+    (0, import_node_fs9.renameSync)(tmpPath, resolveMetadataPath());
   } catch {
   }
 }
@@ -5427,15 +10279,15 @@ function applyScopedStagedCookieImport(liveCookiesPath, stagedCookiesPath) {
 }
 
 // src/main/browser/chromium-cookie-path.ts
-var import_node_fs6 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs10 = require("node:fs");
+var import_node_path10 = require("node:path");
 function resolveChromiumCookiesPath(profileDir) {
-  const networkPath = (0, import_node_path5.join)(profileDir, "Network", "Cookies");
-  if ((0, import_node_fs6.existsSync)(networkPath)) {
+  const networkPath = (0, import_node_path10.join)(profileDir, "Network", "Cookies");
+  if ((0, import_node_fs10.existsSync)(networkPath)) {
     return networkPath;
   }
-  const legacyPath = (0, import_node_path5.join)(profileDir, "Cookies");
-  return (0, import_node_fs6.existsSync)(legacyPath) ? legacyPath : null;
+  const legacyPath = (0, import_node_path10.join)(profileDir, "Cookies");
+  return (0, import_node_fs10.existsSync)(legacyPath) ? legacyPath : null;
 }
 
 // src/main/browser/browser-session-cookie-staging.ts
@@ -5445,7 +10297,7 @@ function supportsPendingBrowserCookieImportReplay(_partition) {
 function unlinkStagedCookieDb(stagedPath) {
   for (const suffix of ["", "-wal", "-shm"]) {
     try {
-      (0, import_node_fs7.unlinkSync)(stagedPath + suffix);
+      (0, import_node_fs11.unlinkSync)(stagedPath + suffix);
     } catch {
     }
   }
@@ -5458,15 +10310,15 @@ function scopedPendingPath(entry) {
 }
 function partitionCookiesPath(partition) {
   const partitionName = partition.replace("persist:", "");
-  const partitionDir = (0, import_node_path6.join)(import_electron17.app.getPath("userData"), "Partitions", partitionName);
-  return resolveChromiumCookiesPath(partitionDir) ?? (0, import_node_path6.join)(partitionDir, "Cookies");
+  const partitionDir = (0, import_node_path11.join)(import_electron19.app.getPath("userData"), "Partitions", partitionName);
+  return resolveChromiumCookiesPath(partitionDir) ?? (0, import_node_path11.join)(partitionDir, "Cookies");
 }
 function consumeStagedCookieImport(stagedPath) {
   const consumedPath = `${stagedPath}.consumed`;
   renameFileWithWindowsRetry(stagedPath, consumedPath);
   for (const path of [consumedPath, `${stagedPath}-wal`, `${stagedPath}-shm`]) {
     try {
-      (0, import_node_fs7.unlinkSync)(path);
+      (0, import_node_fs11.unlinkSync)(path);
     } catch {
     }
   }
@@ -5500,14 +10352,14 @@ function applyPendingBrowserCookieImports({
       if (!stagedPath) {
         continue;
       }
-      if (!(0, import_node_fs7.existsSync)(stagedPath)) {
+      if (!(0, import_node_fs11.existsSync)(stagedPath)) {
         delete remainingEntries[partition];
         continue;
       }
       const liveCookiesPath = partitionCookiesPath(partition);
       try {
-        (0, import_node_fs7.mkdirSync)((0, import_node_path6.join)(liveCookiesPath, ".."), { recursive: true });
-        const liveCookiesExist = (0, import_node_fs7.existsSync)(liveCookiesPath);
+        (0, import_node_fs11.mkdirSync)((0, import_node_path11.join)(liveCookiesPath, ".."), { recursive: true });
+        const liveCookiesExist = (0, import_node_fs11.existsSync)(liveCookiesPath);
         const markedScopedImage = isScopedStagedCookieImport(stagedPath);
         if (scopedPath && !markedScopedImage) {
           throw new Error("Scoped cookie import is missing its scope marker");
@@ -5515,19 +10367,19 @@ function applyPendingBrowserCookieImports({
         const copiedScopedImage = !liveCookiesExist && markedScopedImage;
         const appliedScopedImport = liveCookiesExist && markedScopedImage ? applyScopedStagedCookieImport(liveCookiesPath, stagedPath) : false;
         if (!appliedScopedImport) {
-          (0, import_node_fs7.copyFileSync)(stagedPath, liveCookiesPath);
+          (0, import_node_fs11.copyFileSync)(stagedPath, liveCookiesPath);
           let sidecarCopyFailed = false;
           for (const suffix of ["-wal", "-shm"]) {
             try {
-              (0, import_node_fs7.unlinkSync)(liveCookiesPath + suffix);
+              (0, import_node_fs11.unlinkSync)(liveCookiesPath + suffix);
             } catch {
             }
             const stagingSidecar = stagedPath + suffix;
-            if (!(0, import_node_fs7.existsSync)(stagingSidecar)) {
+            if (!(0, import_node_fs11.existsSync)(stagingSidecar)) {
               continue;
             }
             try {
-              (0, import_node_fs7.copyFileSync)(stagingSidecar, liveCookiesPath + suffix);
+              (0, import_node_fs11.copyFileSync)(stagingSidecar, liveCookiesPath + suffix);
             } catch {
               sidecarCopyFailed = true;
             }
@@ -5579,7 +10431,7 @@ function clearPendingBrowserCookieImport({
   const pendingCookieImports = { ...meta.pendingCookieImports };
   const pendingEntry = pendingCookieImports[partition];
   const stagedPath = typeof pendingEntry === "string" ? pendingEntry : pendingEntry.path;
-  if ((0, import_node_fs7.existsSync)(stagedPath)) {
+  if ((0, import_node_fs11.existsSync)(stagedPath)) {
     try {
       consumeStagedCookieImport(stagedPath);
     } catch {
@@ -5594,10 +10446,10 @@ function clearPendingBrowserCookieImport({
 }
 
 // src/main/browser/browser-session-partition-policies.ts
-var import_electron19 = require("electron");
+var import_electron21 = require("electron");
 
 // src/main/browser/browser-media-access.ts
-var import_electron18 = require("electron");
+var import_electron20 = require("electron");
 function requestedMediaTypes(details) {
   return new Set(details?.mediaTypes ?? []);
 }
@@ -5606,10 +10458,10 @@ function hasSystemMediaAccess(mediaType) {
     return true;
   }
   if (mediaType === "audio") {
-    return import_electron18.systemPreferences.getMediaAccessStatus("microphone") === "granted";
+    return import_electron20.systemPreferences.getMediaAccessStatus("microphone") === "granted";
   }
   if (mediaType === "video") {
-    return import_electron18.systemPreferences.getMediaAccessStatus("camera") === "granted";
+    return import_electron20.systemPreferences.getMediaAccessStatus("camera") === "granted";
   }
   return false;
 }
@@ -5622,13 +10474,13 @@ async function requestSystemMediaAccess(details) {
     return false;
   }
   if (mediaTypes.has("audio")) {
-    const granted = await import_electron18.systemPreferences.askForMediaAccess("microphone");
+    const granted = await import_electron20.systemPreferences.askForMediaAccess("microphone");
     if (!granted) {
       return false;
     }
   }
   if (mediaTypes.has("video")) {
-    const granted = await import_electron18.systemPreferences.askForMediaAccess("camera");
+    const granted = await import_electron20.systemPreferences.askForMediaAccess("camera");
     if (!granted) {
       return false;
     }
@@ -5796,7 +10648,7 @@ function resolvePermissionNoticeUrl(webContents10, details) {
 }
 async function installBrowserSessionPartitionPolicies(profile, options = {}) {
   const { partition } = profile;
-  const sess = import_electron19.session.fromPartition(partition);
+  const sess = import_electron21.session.fromPartition(partition);
   configureBrowserSessionUserAgentPolicy(sess, options.userAgentExceptions !== false);
   if (configuredPartitions.has(partition)) {
     return;
@@ -5894,7 +10746,7 @@ var BrowserSessionRegistry = class {
     if (!this.userDataDir) {
       throw new Error("Browser session registry is not configured");
     }
-    return (0, import_node_path7.join)(this.userDataDir, BROWSER_DATA_DIR_NAME);
+    return (0, import_node_path12.join)(this.userDataDir, BROWSER_DATA_DIR_NAME);
   }
   resetDefaultProfile() {
     const persisted = this.loadPersistedSource();
@@ -5908,7 +10760,7 @@ var BrowserSessionRegistry = class {
   }
   // Why: source metadata must persist across restarts (for the Settings import status) since the registry is in-memory only.
   get metadataPath() {
-    return (0, import_node_path7.join)(this.getDataDir(), BROWSER_SESSION_META_FILE_NAME);
+    return (0, import_node_path12.join)(this.getDataDir(), BROWSER_SESSION_META_FILE_NAME);
   }
   loadPersistedSource() {
     return this.loadPersistedMeta().defaultSource;
@@ -5941,9 +10793,9 @@ var BrowserSessionRegistry = class {
       );
     }
     if (meta.defaultSource) {
-      const current2 = this.profiles.get("default");
-      if (current2 && current2.source === null) {
-        this.profiles.set("default", { ...current2, source: meta.defaultSource });
+      const current3 = this.profiles.get("default");
+      if (current3 && current3.source === null) {
+        this.profiles.set("default", { ...current3, source: meta.defaultSource });
       }
     }
     if (meta.profiles.length > 0) {
@@ -6012,7 +10864,7 @@ var BrowserSessionRegistry = class {
     if (scope !== "isolated" && scope !== "imported") {
       return null;
     }
-    const id = (0, import_node_crypto2.randomUUID)();
+    const id = (0, import_node_crypto6.randomUUID)();
     const partition = getOrcaProfileBrowserSessionPartition(this.activeOrcaProfileId, id);
     const profile = {
       id,
@@ -6024,7 +10876,7 @@ var BrowserSessionRegistry = class {
     try {
       await installBrowserSessionPartitionPolicies(profile);
     } catch (error) {
-      await retireFailedBrowserSessionProfile(partition, import_electron20.session.fromPartition(partition));
+      await retireFailedBrowserSessionProfile(partition, import_electron22.session.fromPartition(partition));
       throw error;
     }
     this.profiles.set(id, profile);
@@ -6061,7 +10913,7 @@ var BrowserSessionRegistry = class {
       pendingCookieDbPath: typeof defaultPendingImport === "string" ? defaultPendingImport : null
     });
     try {
-      const sess = import_electron20.session.fromPartition(profile.partition);
+      const sess = import_electron22.session.fromPartition(profile.partition);
       forgetBrowserSessionPartitionConfiguration(profile.partition);
       retireBrowserSessionUserAgentPolicy(sess);
       await sess.clearStorageData();
@@ -6085,7 +10937,7 @@ var BrowserSessionRegistry = class {
         pendingCookieDbPath: null,
         pendingCookieImports
       });
-      const sess = import_electron20.session.fromPartition(this.defaultPartition);
+      const sess = import_electron22.session.fromPartition(this.defaultPartition);
       await sess.clearStorageData({ storages: ["cookies"] });
       return true;
     } catch {
@@ -6124,7 +10976,7 @@ function initializeBrowserSessionsForApp(opts) {
 }
 
 // src/main/ipc/browser-plugin-settings-ipc.ts
-var import_electron21 = require("electron");
+var import_electron23 = require("electron");
 
 // src/shared/browser-plugin-settings.ts
 var DEFAULT_BROWSER_PLUGIN_SETTINGS = {
@@ -6144,15 +10996,15 @@ function normalizeBrowserPluginSettings(raw) {
 }
 
 // src/main/browser/browser-plugin-settings-store.ts
-var import_node_fs8 = require("node:fs");
-var import_node_path8 = require("node:path");
+var import_node_fs12 = require("node:fs");
+var import_node_path13 = require("node:path");
 function settingsFilePath(userDataDir) {
-  return (0, import_node_path8.join)(userDataDir, "orca-browser", "settings.json");
+  return (0, import_node_path13.join)(userDataDir, "orca-browser", "settings.json");
 }
 function loadBrowserPluginSettings(userDataDir) {
   try {
     return normalizeBrowserPluginSettings(
-      JSON.parse((0, import_node_fs8.readFileSync)(settingsFilePath(userDataDir), "utf8"))
+      JSON.parse((0, import_node_fs12.readFileSync)(settingsFilePath(userDataDir), "utf8"))
     );
   } catch {
     return normalizeBrowserPluginSettings(null);
@@ -6164,7 +11016,7 @@ function saveBrowserPluginSettings(userDataDir, patch) {
     ...patch
   });
   const filePath = settingsFilePath(userDataDir);
-  (0, import_node_fs8.mkdirSync)((0, import_node_path8.join)(userDataDir, "orca-browser"), { recursive: true });
+  (0, import_node_fs12.mkdirSync)((0, import_node_path13.join)(userDataDir, "orca-browser"), { recursive: true });
   writeFileDurableSync(
     durableWriteTempPath(filePath),
     filePath,
@@ -6176,15 +11028,15 @@ function saveBrowserPluginSettings(userDataDir, patch) {
 
 // src/main/ipc/browser-plugin-settings-ipc.ts
 function registerBrowserPluginSettingsHandlers(userDataDir) {
-  import_electron21.ipcMain.removeHandler("browser:settings:get");
-  import_electron21.ipcMain.removeHandler("browser:settings:set");
-  import_electron21.ipcMain.handle("browser:settings:get", (event) => {
+  import_electron23.ipcMain.removeHandler("browser:settings:get");
+  import_electron23.ipcMain.removeHandler("browser:settings:set");
+  import_electron23.ipcMain.handle("browser:settings:get", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return normalizeBrowserPluginSettings(null);
     }
     return loadBrowserPluginSettings(userDataDir);
   });
-  import_electron21.ipcMain.handle(
+  import_electron23.ipcMain.handle(
     "browser:settings:set",
     (event, patch) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -6196,15 +11048,15 @@ function registerBrowserPluginSettingsHandlers(userDataDir) {
 }
 
 // src/main/ipc/browser-session-profile-ipc.ts
-var import_electron27 = require("electron");
+var import_electron29 = require("electron");
 
 // src/main/browser/browser-cookie-detection.ts
-var import_node_fs10 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_fs14 = require("node:fs");
+var import_node_path15 = require("node:path");
 
 // src/main/browser/browser-cookie-detection-types.ts
-var import_node_fs9 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs13 = require("node:fs");
+var import_node_path14 = require("node:path");
 var CHROMIUM_BROWSERS = [
   {
     family: "chrome",
@@ -6265,7 +11117,7 @@ function browserRootPath(def) {
       return null;
     }
     const home = process.env.HOME ?? "";
-    return (0, import_node_path9.join)(home, "Library", "Application Support", def.macRoot);
+    return (0, import_node_path14.join)(home, "Library", "Application Support", def.macRoot);
   }
   if (process.platform === "win32") {
     if (!def.winRoot) {
@@ -6275,24 +11127,24 @@ function browserRootPath(def) {
     if (!localAppData) {
       return null;
     }
-    return (0, import_node_path9.join)(localAppData, def.winRoot);
+    return (0, import_node_path14.join)(localAppData, def.winRoot);
   }
   if (!def.linuxRoot) {
     return null;
   }
-  const configHome = process.env.XDG_CONFIG_HOME ?? (0, import_node_path9.join)(process.env.HOME ?? "", ".config");
-  return (0, import_node_path9.join)(configHome, def.linuxRoot);
+  const configHome = process.env.XDG_CONFIG_HOME ?? (0, import_node_path14.join)(process.env.HOME ?? "", ".config");
+  return (0, import_node_path14.join)(configHome, def.linuxRoot);
 }
 function isSafeBrowserProfileDirectory(directory) {
   return directory.length > 0 && directory !== "." && !directory.includes("\0") && !directory.includes("/") && !directory.includes("\\") && !directory.includes("..");
 }
 function discoverProfiles(browserRoot) {
   try {
-    const localStatePath = (0, import_node_path9.join)(browserRoot, "Local State");
-    if (!(0, import_node_fs9.existsSync)(localStatePath)) {
+    const localStatePath = (0, import_node_path14.join)(browserRoot, "Local State");
+    if (!(0, import_node_fs13.existsSync)(localStatePath)) {
       return [{ name: "Default", directory: "Default" }];
     }
-    const raw = (0, import_node_fs9.readFileSync)(localStatePath, "utf-8");
+    const raw = (0, import_node_fs13.readFileSync)(localStatePath, "utf-8");
     const localState = JSON.parse(raw);
     const infoCache = localState?.profile?.info_cache;
     if (!infoCache || typeof infoCache !== "object") {
@@ -6314,14 +11166,14 @@ function discoverProfiles(browserRoot) {
 function firefoxProfilesRoot() {
   if (process.platform === "darwin") {
     const home2 = process.env.HOME ?? "";
-    return (0, import_node_path9.join)(home2, "Library", "Application Support", "Firefox", "Profiles");
+    return (0, import_node_path14.join)(home2, "Library", "Application Support", "Firefox", "Profiles");
   }
   if (process.platform === "win32") {
     const appData = process.env.APPDATA ?? "";
-    return appData ? (0, import_node_path9.join)(appData, "Mozilla", "Firefox", "Profiles") : null;
+    return appData ? (0, import_node_path14.join)(appData, "Mozilla", "Firefox", "Profiles") : null;
   }
   const home = process.env.HOME ?? "";
-  return (0, import_node_path9.join)(home, ".mozilla", "firefox");
+  return (0, import_node_path14.join)(home, ".mozilla", "firefox");
 }
 function discoverFirefoxProfiles() {
   const profilesRoot = firefoxProfilesRoot();
@@ -6329,10 +11181,10 @@ function discoverFirefoxProfiles() {
     return [];
   }
   try {
-    if (!(0, import_node_fs9.existsSync)(profilesRoot)) {
+    if (!(0, import_node_fs13.existsSync)(profilesRoot)) {
       return [];
     }
-    const entries = (0, import_node_fs9.readdirSync)(profilesRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    const entries = (0, import_node_fs13.readdirSync)(profilesRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
     const sorted = entries.sort((a, b) => {
       if (a.includes("default-release")) {
         return -1;
@@ -6363,8 +11215,8 @@ function detectFirefox() {
   }
   const profiles = discoverFirefoxProfiles();
   for (const profile of profiles) {
-    const cookiesPath = (0, import_node_path9.join)(profilesRoot, profile.directory, "cookies.sqlite");
-    if ((0, import_node_fs9.existsSync)(cookiesPath)) {
+    const cookiesPath = (0, import_node_path14.join)(profilesRoot, profile.directory, "cookies.sqlite");
+    if ((0, import_node_fs13.existsSync)(cookiesPath)) {
       return {
         family: "firefox",
         label: "Firefox",
@@ -6384,8 +11236,8 @@ function detectSafari() {
   }
   const home = process.env.HOME ?? "";
   const candidates = [
-    (0, import_node_path10.join)(home, "Library", "Cookies", "Cookies.binarycookies"),
-    (0, import_node_path10.join)(
+    (0, import_node_path15.join)(home, "Library", "Cookies", "Cookies.binarycookies"),
+    (0, import_node_path15.join)(
       home,
       "Library",
       "Containers",
@@ -6397,7 +11249,7 @@ function detectSafari() {
     )
   ];
   for (const candidate of candidates) {
-    if ((0, import_node_fs10.existsSync)(candidate)) {
+    if ((0, import_node_fs14.existsSync)(candidate)) {
       return {
         family: "safari",
         label: "Safari",
@@ -6418,7 +11270,7 @@ function detectInstalledBrowsers() {
     }
     const profiles = discoverProfiles(root);
     for (const profile of profiles) {
-      const profileDir = (0, import_node_path10.join)(root, profile.directory);
+      const profileDir = (0, import_node_path15.join)(root, profile.directory);
       const cookiesPath = resolveChromiumCookiesPath(profileDir);
       if (cookiesPath) {
         detected.push({
@@ -6453,8 +11305,8 @@ function selectBrowserProfile(browser, profileDirectory) {
     if (!profilesRoot) {
       return null;
     }
-    const cookiesPath2 = (0, import_node_path10.join)(profilesRoot, profileDirectory, "cookies.sqlite");
-    if (!(0, import_node_fs10.existsSync)(cookiesPath2)) {
+    const cookiesPath2 = (0, import_node_path15.join)(profilesRoot, profileDirectory, "cookies.sqlite");
+    if (!(0, import_node_fs14.existsSync)(cookiesPath2)) {
       return null;
     }
     return { ...browser, cookiesPath: cookiesPath2, selectedProfile: profileDirectory };
@@ -6467,7 +11319,7 @@ function selectBrowserProfile(browser, profileDirectory) {
   if (!root) {
     return null;
   }
-  const profileDir = (0, import_node_path10.join)(root, profileDirectory);
+  const profileDir = (0, import_node_path15.join)(root, profileDirectory);
   const cookiesPath = resolveChromiumCookiesPath(profileDir);
   if (!cookiesPath) {
     return null;
@@ -6480,39 +11332,7 @@ function selectBrowserProfile(browser, profileDirectory) {
 }
 
 // src/main/browser/browser-cookie-import-pipeline.ts
-var import_electron24 = require("electron");
-
-// src/shared/map-with-concurrency.ts
-function mapWithConcurrency(items, limit, fn) {
-  const workerCount = concurrencyWorkerCount(limit, items.length);
-  if (items.length <= workerCount) {
-    return Promise.all(items.map(fn));
-  }
-  const results = [];
-  let nextIndex = 0;
-  return Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await fn(items[index], index);
-      }
-    })
-  ).then(() => results);
-}
-function mapSettledWithConcurrency(items, limit, fn) {
-  return mapWithConcurrency(items, limit, async (item, index) => {
-    try {
-      return { status: "fulfilled", value: await fn(item, index) };
-    } catch (reason) {
-      return { status: "rejected", reason };
-    }
-  });
-}
-function concurrencyWorkerCount(limit, itemCount) {
-  const normalizedLimit = limit === Number.POSITIVE_INFINITY ? itemCount : Number.isFinite(limit) ? Math.floor(limit) : 1;
-  return Math.max(1, Math.min(normalizedLimit, itemCount));
-}
+var import_electron26 = require("electron");
 
 // src/main/browser/browser-cookie-import-clear.ts
 var COOKIE_CLEAR_CONCURRENCY = 8;
@@ -6523,12 +11343,12 @@ function cookieClearKey(url, name) {
 async function acquireCookieMutationLock(owner) {
   const previous = mutationLocks.get(owner) ?? Promise.resolve();
   let release;
-  const current2 = new Promise((resolve) => {
+  const current3 = new Promise((resolve) => {
     release = resolve;
   });
   mutationLocks.set(
     owner,
-    previous.then(() => current2)
+    previous.then(() => current3)
   );
   await previous;
   return release;
@@ -6629,48 +11449,7 @@ async function removeTransplantableCookies(targetSession, preserveFamilies, impo
 }
 
 // src/main/browser/browser-cookie-clear-store.ts
-var import_electron22 = require("electron");
-
-// src/main/browser/electron-debugger-lease.ts
-var debuggerLeases = /* @__PURE__ */ new WeakMap();
-function acquireElectronDebugger(webContents10) {
-  if (webContents10.isDestroyed()) {
-    throw new Error("Browser tab is no longer available");
-  }
-  const dbg = webContents10.debugger;
-  let state = debuggerLeases.get(webContents10);
-  if (!state) {
-    state = { attachedByLease: false, owners: /* @__PURE__ */ new Set() };
-    debuggerLeases.set(webContents10, state);
-  }
-  if (!dbg.isAttached()) {
-    dbg.attach("1.3");
-    state.attachedByLease = true;
-  }
-  const owner = /* @__PURE__ */ Symbol("electron-debugger-lease");
-  state.owners.add(owner);
-  let released = false;
-  return {
-    release: () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      state.owners.delete(owner);
-      if (state.owners.size > 0) {
-        return;
-      }
-      debuggerLeases.delete(webContents10);
-      if (!state.attachedByLease || !dbg.isAttached()) {
-        return;
-      }
-      try {
-        dbg.detach();
-      } catch {
-      }
-    }
-  };
-}
+var import_electron24 = require("electron");
 
 // src/main/browser/browser-cookie-identity-restore.ts
 async function restoreEveryCookieIdentity(identities, restore) {
@@ -6796,7 +11575,7 @@ function readJsonCookiePartition(raw, partitionKeyOpaque = void 0) {
 
 // src/main/browser/browser-cookie-clear-store.ts
 function findPartitionWebContents(targetSession) {
-  return import_electron22.webContents.getAllWebContents().find((contents) => !contents.isDestroyed() && contents.session === targetSession);
+  return import_electron24.webContents.getAllWebContents().find((contents) => !contents.isDestroyed() && contents.session === targetSession);
 }
 function cdpSameSite(sameSite) {
   if (sameSite === "strict") {
@@ -6868,7 +11647,7 @@ function identityFromCdpCookie(url, cdpCookie) {
   };
 }
 function openHiddenCookieWindow(targetSession) {
-  return new import_electron22.BrowserWindow({
+  return new import_electron24.BrowserWindow({
     show: false,
     webPreferences: {
       session: targetSession,
@@ -6879,10 +11658,10 @@ function openHiddenCookieWindow(targetSession) {
   });
 }
 async function leaseHiddenCookieDebugger(targetSession) {
-  const window = openHiddenCookieWindow(targetSession);
+  const window2 = openHiddenCookieWindow(targetSession);
   try {
-    await window.loadURL("data:text/html,<!doctype html><title>cookie-clear</title>");
-    const contents = window.webContents;
+    await window2.loadURL("data:text/html,<!doctype html><title>cookie-clear</title>");
+    const contents = window2.webContents;
     if (contents.isDestroyed()) {
       throw new Error("Could not attach to the cookie session for an atomic clear");
     }
@@ -6891,11 +11670,11 @@ async function leaseHiddenCookieDebugger(targetSession) {
       debugger: contents.debugger,
       dispose: () => {
         lease.release();
-        window.destroy();
+        window2.destroy();
       }
     };
   } catch (error) {
-    window.destroy();
+    window2.destroy();
     throw error;
   }
 }
@@ -7156,20 +11935,20 @@ async function writeImportedCookies(store, cookies, options) {
 }
 
 // src/main/browser/browser-cookie-import-pipeline.ts
-var import_promises = require("node:fs/promises");
+var import_promises2 = require("node:fs/promises");
 
 // src/main/browser/browser-cookie-import-diagnostics.ts
-var import_electron23 = require("electron");
-var import_node_fs11 = require("node:fs");
+var import_electron25 = require("electron");
+var import_node_fs15 = require("node:fs");
 var import_node_os = require("node:os");
-var import_node_path11 = require("node:path");
+var import_node_path16 = require("node:path");
 var _diagLog = null;
 function getDiagLogPath() {
   if (!_diagLog) {
     try {
-      _diagLog = (0, import_node_path11.join)(import_electron23.app.getPath("userData"), "orca-browser", "cookie-import-diag.log");
+      _diagLog = (0, import_node_path16.join)(import_electron25.app.getPath("userData"), "orca-browser", "cookie-import-diag.log");
     } catch {
-      _diagLog = (0, import_node_path11.join)((0, import_node_os.tmpdir)(), "orca-cookie-import-diag.log");
+      _diagLog = (0, import_node_path16.join)((0, import_node_os.tmpdir)(), "orca-cookie-import-diag.log");
     }
   }
   return _diagLog;
@@ -7205,8 +11984,8 @@ function diag(msg) {
   const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}
 `;
   try {
-    (0, import_node_fs11.mkdirSync)((0, import_node_path11.dirname)(getDiagLogPath()), { recursive: true });
-    (0, import_node_fs11.appendFileSync)(getDiagLogPath(), line);
+    (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(getDiagLogPath()), { recursive: true });
+    (0, import_node_fs15.appendFileSync)(getDiagLogPath(), line);
   } catch {
   }
   console.log("[cookie-import]", msg);
@@ -7290,7 +12069,7 @@ function validateCookieEntry(raw) {
 
 // src/main/browser/browser-cookie-import-pipeline.ts
 function cookieImportTarget(targetPartition) {
-  const targetSession = import_electron24.session.fromPartition(targetPartition);
+  const targetSession = import_electron26.session.fromPartition(targetPartition);
   return {
     partition: targetPartition,
     mutationLockOwner: targetSession,
@@ -7416,7 +12195,7 @@ async function pickCookieFile(parentWindow) {
     ],
     properties: ["openFile"]
   };
-  const result = parentWindow ? await import_electron24.dialog.showOpenDialog(parentWindow, opts) : await import_electron24.dialog.showOpenDialog(opts);
+  const result = parentWindow ? await import_electron26.dialog.showOpenDialog(parentWindow, opts) : await import_electron26.dialog.showOpenDialog(opts);
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
@@ -7425,7 +12204,7 @@ async function pickCookieFile(parentWindow) {
 async function importCookiesFromFile(filePath, targetPartition) {
   let rawContent;
   try {
-    rawContent = await (0, import_promises.readFile)(filePath, "utf-8");
+    rawContent = await (0, import_promises2.readFile)(filePath, "utf-8");
   } catch {
     return { ok: false, reason: "Could not read the selected file." };
   }
@@ -7470,30 +12249,30 @@ async function importCookiesFromFile(filePath, targetPartition) {
 }
 
 // src/main/browser/browser-cookie-chromium-import.ts
-var import_electron26 = require("electron");
-var import_node_fs15 = require("node:fs");
+var import_electron28 = require("electron");
+var import_node_fs19 = require("node:fs");
 
 // src/main/browser/browser-cookie-chromium-prepare.ts
-var import_electron25 = require("electron");
-var import_node_crypto4 = require("node:crypto");
-var import_node_fs14 = require("node:fs");
+var import_electron27 = require("electron");
+var import_node_crypto8 = require("node:crypto");
+var import_node_fs18 = require("node:fs");
 var import_node_sqlite2 = require("node:sqlite");
-var import_node_path15 = require("node:path");
+var import_node_path20 = require("node:path");
 
 // src/main/browser/chromium-cookie-snapshot.ts
-var import_node_fs12 = require("node:fs");
+var import_node_fs16 = require("node:fs");
 var import_node_os2 = require("node:os");
-var import_node_path12 = require("node:path");
+var import_node_path17 = require("node:path");
 var SNAPSHOT_ATTEMPTS = 5;
 function removeSnapshotDirectory(path) {
-  (0, import_node_fs12.rmSync)(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  (0, import_node_fs16.rmSync)(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 }
 function isMissingFileError(error) {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 function readFileState(path) {
   try {
-    const stats = (0, import_node_fs12.statSync)(path, { bigint: true });
+    const stats = (0, import_node_fs16.statSync)(path, { bigint: true });
     return {
       device: stats.dev,
       inode: stats.ino,
@@ -7517,7 +12296,7 @@ function sameFileState(left, right) {
 function removeAttemptFiles(databasePath) {
   for (const suffix of ["", "-wal", "-shm"]) {
     try {
-      (0, import_node_fs12.unlinkSync)(databasePath + suffix);
+      (0, import_node_fs16.unlinkSync)(databasePath + suffix);
     } catch {
     }
   }
@@ -7551,8 +12330,8 @@ function copyStableAttempt(sourcePath, databasePath) {
   return copiedDatabase?.size === databaseBefore.size && (walBefore ? copiedWal?.size === walBefore.size : copiedWal === null);
 }
 function createChromiumCookieSnapshot(sourcePath, options = {}) {
-  const snapshotDir = (0, import_node_fs12.mkdtempSync)((0, import_node_path12.join)(options.tempRoot ?? (0, import_node_os2.tmpdir)(), "orca-cookie-import-"));
-  const databasePath = (0, import_node_path12.join)(snapshotDir, "Cookies");
+  const snapshotDir = (0, import_node_fs16.mkdtempSync)((0, import_node_path17.join)(options.tempRoot ?? (0, import_node_os2.tmpdir)(), "orca-cookie-import-"));
+  const databasePath = (0, import_node_path17.join)(snapshotDir, "Cookies");
   let keepSnapshot = false;
   try {
     for (let attempt = 0; attempt < SNAPSHOT_ATTEMPTS; attempt += 1) {
@@ -7573,15 +12352,15 @@ function createChromiumCookieSnapshot(sourcePath, options = {}) {
 }
 
 // src/main/browser/browser-cookie-key.ts
-var import_node_crypto3 = require("node:crypto");
-var import_node_fs13 = require("node:fs");
-var import_node_path14 = require("node:path");
+var import_node_crypto7 = require("node:crypto");
+var import_node_fs17 = require("node:fs");
+var import_node_path19 = require("node:path");
 
 // src/main/process-sync.ts
-var import_node_child_process = require("node:child_process");
-var import_node_path13 = require("node:path");
+var import_node_child_process4 = require("node:child_process");
+var import_node_path18 = require("node:path");
 function runProcessSync(spec) {
-  const result = (0, import_node_child_process.spawnSync)(spec.program, [...spec.args], {
+  const result = (0, import_node_child_process4.spawnSync)(spec.program, [...spec.args], {
     encoding: "utf8",
     input: spec.input,
     timeout: spec.timeoutMs,
@@ -7600,7 +12379,7 @@ function systemRoot(env = process.env) {
   return env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? "C:\\Windows";
 }
 function windowsPowerShellPath(env = process.env) {
-  return import_node_path13.win32.join(systemRoot(env), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  return import_node_path18.win32.join(systemRoot(env), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
 // src/main/browser/browser-cookie-key.ts
@@ -7636,7 +12415,7 @@ function getMacEncryptionKey(keychainService, keychainAccount) {
     return {
       mode: "aes-128-cbc",
       keysByVersion: {
-        v10: (0, import_node_crypto3.pbkdf2Sync)(raw, PBKDF2_SALT, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH, "sha1")
+        v10: (0, import_node_crypto7.pbkdf2Sync)(raw, PBKDF2_SALT, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH, "sha1")
       }
     };
   } catch {
@@ -7644,7 +12423,7 @@ function getMacEncryptionKey(keychainService, keychainAccount) {
   }
 }
 function getLinuxEncryptionKey(keychainService, keychainAccount) {
-  const v10Key = (0, import_node_crypto3.pbkdf2Sync)("peanuts", PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
+  const v10Key = (0, import_node_crypto7.pbkdf2Sync)("peanuts", PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
   let keyringPassword = "";
   try {
     keyringPassword = runKeychainCommand(
@@ -7654,8 +12433,8 @@ function getLinuxEncryptionKey(keychainService, keychainAccount) {
     );
   } catch {
     try {
-      const app6 = keychainAccount.toLowerCase().replaceAll(" ", "");
-      keyringPassword = runKeychainCommand("secret-tool", ["lookup", "application", app6], 5e3);
+      const app7 = keychainAccount.toLowerCase().replaceAll(" ", "");
+      keyringPassword = runKeychainCommand("secret-tool", ["lookup", "application", app7], 5e3);
     } catch {
       diag("  Linux keyring unavailable \u2014 v11 cookies cannot be decrypted");
     }
@@ -7667,7 +12446,7 @@ function getLinuxEncryptionKey(keychainService, keychainAccount) {
       keyringUnavailable: true
     };
   }
-  const v11Key = (0, import_node_crypto3.pbkdf2Sync)(keyringPassword, PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
+  const v11Key = (0, import_node_crypto7.pbkdf2Sync)(keyringPassword, PBKDF2_SALT, 1, PBKDF2_KEY_LENGTH, "sha1");
   return { mode: "aes-128-cbc", keysByVersion: { v10: v10Key, v11: v11Key } };
 }
 function getWindowsEncryptionKey(browser) {
@@ -7679,12 +12458,12 @@ function getWindowsEncryptionKey(browser) {
   if (!root) {
     return null;
   }
-  const localStatePath = (0, import_node_path14.join)(root, "Local State");
-  if (!(0, import_node_fs13.existsSync)(localStatePath)) {
+  const localStatePath = (0, import_node_path19.join)(root, "Local State");
+  if (!(0, import_node_fs17.existsSync)(localStatePath)) {
     return null;
   }
   try {
-    const raw = (0, import_node_fs13.readFileSync)(localStatePath, "utf-8");
+    const raw = (0, import_node_fs17.readFileSync)(localStatePath, "utf-8");
     const localState = JSON.parse(raw);
     const encryptedKeyB64 = localState?.os_crypt?.encrypted_key;
     if (typeof encryptedKeyB64 !== "string") {
@@ -7746,18 +12525,18 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
       result: { ok: false, reason: "Target cookie database not found. Open a browser tab first." }
     };
   }
-  const stagingDir = (0, import_node_path15.join)(import_electron25.app.getPath("userData"), "orca-browser", "cookie-import-staging");
+  const stagingDir = (0, import_node_path20.join)(import_electron27.app.getPath("userData"), "orca-browser", "cookie-import-staging");
   const partitionSegment = partitionName.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const stagingCookiesPath = (0, import_node_path15.join)(
+  const stagingCookiesPath = (0, import_node_path20.join)(
     stagingDir,
-    `Cookies-${partitionSegment}-${Date.now()}-${(0, import_node_crypto4.randomUUID)()}`
+    `Cookies-${partitionSegment}-${Date.now()}-${(0, import_node_crypto8.randomUUID)()}`
   );
   let stagingAvailable = false;
   if (!supportsPendingBrowserCookieImportReplay(targetPartition)) {
     diag(`  restart fallback unsupported for partition "${targetPartition}" \u2014 not staging cookies`);
   } else {
     try {
-      (0, import_node_fs14.mkdirSync)(stagingDir, { recursive: true });
+      (0, import_node_fs18.mkdirSync)(stagingDir, { recursive: true });
       copyFileWithWindowsRetry(liveCookiesPath, stagingCookiesPath);
       stagingAvailable = true;
     } catch (err) {
@@ -7766,7 +12545,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
         `  staging copy unavailable: code=${fsErr.code ?? "unknown"} errno=${fsErr.errno ?? "unknown"} syscall=${fsErr.syscall ?? "unknown"} path=${liveCookiesPath} destination=${stagingCookiesPath}`
       );
       try {
-        (0, import_node_fs14.unlinkSync)(stagingCookiesPath);
+        (0, import_node_fs18.unlinkSync)(stagingCookiesPath);
       } catch {
       }
     }
@@ -7776,7 +12555,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
     sourceSnapshot = createChromiumCookieSnapshot(browser.cookiesPath);
   } catch (err) {
     try {
-      (0, import_node_fs14.unlinkSync)(stagingCookiesPath);
+      (0, import_node_fs18.unlinkSync)(stagingCookiesPath);
     } catch {
     }
     diag(`  Chromium snapshot failed: ${String(err)}`);
@@ -7799,7 +12578,7 @@ async function prepareChromiumCookieImport(browser, targetPartition, options, ta
   const discardStagingFile = () => {
     for (const suffix of ["", "-wal", "-shm"]) {
       try {
-        (0, import_node_fs14.unlinkSync)(stagingCookiesPath + suffix);
+        (0, import_node_fs18.unlinkSync)(stagingCookiesPath + suffix);
       } catch {
       }
     }
@@ -8067,7 +12846,7 @@ function buildChromiumCookieInsertParams(targetColumns, sourceRow, decryptedValu
 }
 
 // src/main/browser/browser-cookie-decryption.ts
-var import_node_crypto5 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var CHROMIUM_COOKIE_HMAC_LEN = 32;
 function hasHmacPrefix(buf) {
   if (buf.length <= CHROMIUM_COOKIE_HMAC_LEN) {
@@ -8082,7 +12861,7 @@ function hasHmacPrefix(buf) {
   return nonPrintable >= 8;
 }
 function hasHostKeyHashPrefix(buf, hostKey) {
-  return buf.length >= CHROMIUM_COOKIE_HMAC_LEN && buf.subarray(0, CHROMIUM_COOKIE_HMAC_LEN).equals((0, import_node_crypto5.createHash)("sha256").update(hostKey).digest());
+  return buf.length >= CHROMIUM_COOKIE_HMAC_LEN && buf.subarray(0, CHROMIUM_COOKIE_HMAC_LEN).equals((0, import_node_crypto9.createHash)("sha256").update(hostKey).digest());
 }
 function stripHmac(buf, hostKey) {
   return hasHostKeyHashPrefix(buf, hostKey) || hasHmacPrefix(buf) ? buf.subarray(CHROMIUM_COOKIE_HMAC_LEN) : buf;
@@ -8137,7 +12916,7 @@ function decryptCookieValueRaw(encryptedBuffer, keyResult, hostKey) {
   }
   try {
     const iv = Buffer.alloc(16, " ");
-    const decipher = (0, import_node_crypto5.createDecipheriv)("aes-128-cbc", key, iv);
+    const decipher = (0, import_node_crypto9.createDecipheriv)("aes-128-cbc", key, iv);
     decipher.setAutoPadding(true);
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return stripHmac(decrypted, hostKey);
@@ -8153,7 +12932,7 @@ function decryptAes256Gcm(payload, key, hostKey) {
   const authTag = payload.subarray(-16);
   const ciphertext = payload.subarray(12, -16);
   try {
-    const decipher = (0, import_node_crypto5.createDecipheriv)("aes-256-gcm", key, nonce);
+    const decipher = (0, import_node_crypto9.createDecipheriv)("aes-256-gcm", key, nonce);
     decipher.setAuthTag(authTag);
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return stripHmac(decrypted, hostKey);
@@ -8402,11 +13181,11 @@ async function finalizeChromiumCookieImport(context) {
 // src/main/browser/browser-cookie-chromium-import.ts
 async function importChromiumCookies(browser, targetPartition, options = {}) {
   diag(`importCookiesFromBrowser: browser=${browser.family} partition="${targetPartition}"`);
-  if (!(0, import_node_fs15.existsSync)(browser.cookiesPath)) {
+  if (!(0, import_node_fs19.existsSync)(browser.cookiesPath)) {
     diag(`  cookies DB not found: ${browser.cookiesPath}`);
     return { ok: false, reason: `${browser.label} cookies database not found.` };
   }
-  const targetSession = import_electron26.session.fromPartition(targetPartition);
+  const targetSession = import_electron28.session.fromPartition(targetPartition);
   return withCookieMutationLock(targetSession, async () => {
     let context = null;
     try {
@@ -8455,26 +13234,26 @@ async function importChromiumCookies(browser, targetPartition, options = {}) {
 
 // src/main/browser/browser-cookie-firefox-import.ts
 var import_node_sqlite3 = require("node:sqlite");
-var import_node_fs16 = require("node:fs");
+var import_node_fs20 = require("node:fs");
 var import_node_os3 = require("node:os");
-var import_node_path16 = require("node:path");
+var import_node_path21 = require("node:path");
 async function importCookiesFromFirefox(browser, targetPartition, options) {
   diag(`importCookiesFromFirefox: partition="${targetPartition}"`);
-  const tmpDir = (0, import_node_fs16.mkdtempSync)((0, import_node_path16.join)((0, import_node_os3.tmpdir)(), "orca-cookie-import-"));
-  const tmpCookiesPath = (0, import_node_path16.join)(tmpDir, "cookies.sqlite");
+  const tmpDir = (0, import_node_fs20.mkdtempSync)((0, import_node_path21.join)((0, import_node_os3.tmpdir)(), "orca-cookie-import-"));
+  const tmpCookiesPath = (0, import_node_path21.join)(tmpDir, "cookies.sqlite");
   try {
-    (0, import_node_fs16.copyFileSync)(browser.cookiesPath, tmpCookiesPath);
+    (0, import_node_fs20.copyFileSync)(browser.cookiesPath, tmpCookiesPath);
     for (const suffix of ["-wal", "-shm"]) {
       const sidecar = browser.cookiesPath + suffix;
-      if ((0, import_node_fs16.existsSync)(sidecar)) {
+      if ((0, import_node_fs20.existsSync)(sidecar)) {
         try {
-          (0, import_node_fs16.copyFileSync)(sidecar, tmpCookiesPath + suffix);
+          (0, import_node_fs20.copyFileSync)(sidecar, tmpCookiesPath + suffix);
         } catch {
         }
       }
     }
   } catch {
-    (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
+    (0, import_node_fs20.rmSync)(tmpDir, { recursive: true, force: true });
     return {
       ok: false,
       reason: "Could not copy Firefox cookies database. Try closing Firefox first."
@@ -8494,7 +13273,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
     db.close();
     diag(`  Firefox source has ${rows.length} cookies`);
     if (rows.length === 0) {
-      (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
+      (0, import_node_fs20.rmSync)(tmpDir, { recursive: true, force: true });
       return { ok: false, reason: "No cookies found in Firefox." };
     }
     const now = Math.floor(Date.now() / 1e3);
@@ -8525,7 +13304,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
         partition: readFirefoxRowPartition(row, firefoxColumns)
       });
     }
-    (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
+    (0, import_node_fs20.rmSync)(tmpDir, { recursive: true, force: true });
     if (validated.length === 0) {
       return { ok: false, reason: "No valid cookies found in Firefox." };
     }
@@ -8537,7 +13316,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
       options
     );
   } catch (err) {
-    (0, import_node_fs16.rmSync)(tmpDir, { recursive: true, force: true });
+    (0, import_node_fs20.rmSync)(tmpDir, { recursive: true, force: true });
     diag(`  Firefox import failed: ${String(err)}`);
     return {
       ok: false,
@@ -8547,7 +13326,7 @@ async function importCookiesFromFirefox(browser, targetPartition, options) {
 }
 
 // src/main/browser/browser-cookie-safari-import.ts
-var import_node_fs17 = require("node:fs");
+var import_node_fs21 = require("node:fs");
 
 // src/main/browser/browser-cookie-safari-parser.ts
 var MAC_EPOCH_DELTA = 978307200;
@@ -8673,7 +13452,7 @@ async function importCookiesFromSafari(browser, targetPartition) {
   diag(`importCookiesFromSafari: partition="${targetPartition}"`);
   let data;
   try {
-    data = (0, import_node_fs17.readFileSync)(browser.cookiesPath);
+    data = (0, import_node_fs21.readFileSync)(browser.cookiesPath);
   } catch (err) {
     diag(`  Safari read failed: ${String(err)}`);
     const isPermError = err instanceof Error && "code" in err && err.code === "EPERM";
@@ -8733,20 +13512,20 @@ async function importCookiesFromBrowser(browser, targetPartition, options = {}) 
 
 // src/main/ipc/browser-session-profile-ipc.ts
 function registerBrowserSessionProfileHandlers() {
-  import_electron27.ipcMain.removeHandler("browser:session:listProfiles");
-  import_electron27.ipcMain.removeHandler("browser:session:createProfile");
-  import_electron27.ipcMain.removeHandler("browser:session:deleteProfile");
-  import_electron27.ipcMain.removeHandler("browser:identity:get");
-  import_electron27.ipcMain.removeHandler("browser:identity:set");
-  import_electron27.ipcMain.removeHandler("browser:session:importCookies");
-  import_electron27.ipcMain.removeHandler("browser:session:resolvePartition");
-  import_electron27.ipcMain.handle("browser:session:listProfiles", (event) => {
+  import_electron29.ipcMain.removeHandler("browser:session:listProfiles");
+  import_electron29.ipcMain.removeHandler("browser:session:createProfile");
+  import_electron29.ipcMain.removeHandler("browser:session:deleteProfile");
+  import_electron29.ipcMain.removeHandler("browser:identity:get");
+  import_electron29.ipcMain.removeHandler("browser:identity:set");
+  import_electron29.ipcMain.removeHandler("browser:session:importCookies");
+  import_electron29.ipcMain.removeHandler("browser:session:resolvePartition");
+  import_electron29.ipcMain.handle("browser:session:listProfiles", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return [];
     }
     return browserSessionRegistry.listProfiles();
   });
-  import_electron27.ipcMain.handle(
+  import_electron29.ipcMain.handle(
     "browser:session:createProfile",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -8755,13 +13534,13 @@ function registerBrowserSessionProfileHandlers() {
       return await browserSessionRegistry.createProfile(args.scope, args.label);
     }
   );
-  import_electron27.ipcMain.handle("browser:identity:get", (event) => {
+  import_electron29.ipcMain.handle("browser:identity:get", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return null;
     }
     return getBrowserIdentityModeStatus();
   });
-  import_electron27.ipcMain.handle("browser:identity:set", async (event, mode) => {
+  import_electron29.ipcMain.handle("browser:identity:set", async (event, mode) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return null;
     }
@@ -8770,7 +13549,7 @@ function registerBrowserSessionProfileHandlers() {
     }
     return setBrowserIdentityMode(mode);
   });
-  import_electron27.ipcMain.handle(
+  import_electron29.ipcMain.handle(
     "browser:session:deleteProfile",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -8779,7 +13558,7 @@ function registerBrowserSessionProfileHandlers() {
       return browserSessionRegistry.deleteProfile(args.profileId);
     }
   );
-  import_electron27.ipcMain.handle(
+  import_electron29.ipcMain.handle(
     "browser:session:importCookies",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -8805,7 +13584,7 @@ function registerBrowserSessionProfileHandlers() {
       return result;
     }
   );
-  import_electron27.ipcMain.handle(
+  import_electron29.ipcMain.handle(
     "browser:session:resolvePartition",
     (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -8814,22 +13593,22 @@ function registerBrowserSessionProfileHandlers() {
       return browserSessionRegistry.resolvePartition(args.profileId);
     }
   );
-  import_electron27.ipcMain.removeHandler("browser:session:clearDefaultCookies");
-  import_electron27.ipcMain.handle("browser:session:clearDefaultCookies", async (event) => {
+  import_electron29.ipcMain.removeHandler("browser:session:clearDefaultCookies");
+  import_electron29.ipcMain.handle("browser:session:clearDefaultCookies", async (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return false;
     }
     return browserSessionRegistry.clearDefaultSessionCookies();
   });
-  import_electron27.ipcMain.removeHandler("browser:session:detectBrowsers");
-  import_electron27.ipcMain.removeHandler("browser:session:importFromBrowser");
-  import_electron27.ipcMain.handle("browser:session:detectBrowsers", (event) => {
+  import_electron29.ipcMain.removeHandler("browser:session:detectBrowsers");
+  import_electron29.ipcMain.removeHandler("browser:session:importFromBrowser");
+  import_electron29.ipcMain.handle("browser:session:detectBrowsers", (event) => {
     if (!isTrustedBrowserRenderer(event.sender)) {
       return [];
     }
     return detectedBrowserPickerEntries();
   });
-  import_electron27.ipcMain.handle(
+  import_electron29.ipcMain.handle(
     "browser:session:importFromBrowser",
     async (event, args) => {
       if (!isTrustedBrowserRenderer(event.sender)) {
@@ -8881,11 +13660,11 @@ function detectedBrowserPickerEntries() {
 }
 
 // src/main/browser-profiles-installer.ts
-var import_electron28 = require("electron");
+var import_electron30 = require("electron");
 var installBrowserProfiles = (options) => {
   const { userDataDir } = options.host;
   if (!isBrowserIdentityModeStoreInitialized()) {
-    initializeBrowserIdentityModeStore((0, import_node_path17.join)(userDataDir, "orca-browser"));
+    initializeBrowserIdentityModeStore((0, import_node_path22.join)(userDataDir, "orca-browser"));
   }
   ensureBrowserProcessUserAgentIdentity(getBrowserIdentityModeSnapshot().appliedMode);
   browserSessionRegistry.configure({ userDataDir });
@@ -8897,7 +13676,7 @@ var installBrowserProfiles = (options) => {
   registerBrowserPluginSettingsHandlers(userDataDir);
   return () => {
     for (const channel of BROWSER_PROFILE_INVOKE_CHANNELS) {
-      import_electron28.ipcMain.removeHandler(channel);
+      import_electron30.ipcMain.removeHandler(channel);
     }
     unregisterPartitionSource();
   };
@@ -8907,7 +13686,8 @@ var installBrowserProfiles = (options) => {
 var pluginInstallers = [
   installBrowserCore,
   installBrowserProfiles,
-  installBrowserGrab
+  installBrowserGrab,
+  installBrowserAgentAutomation
 ];
 
 // src/main/plugin-options.ts
@@ -8961,5 +13741,8 @@ function installBrowserPlugin(opts) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  installBrowserPlugin
+  getMcpEndpoint,
+  getMcpStatus,
+  installBrowserPlugin,
+  rotateMcpToken
 });
