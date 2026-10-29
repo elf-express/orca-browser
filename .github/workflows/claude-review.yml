@@ -1,0 +1,122 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Added: one review per PR at a time. A new push cancels the review still
+# running on the previous commit, which would otherwise spend quota commenting
+# on code that is already outdated.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: review
+    # DECIDED EXCEPTION to "every PR is AI-reviewed": bot-authored pull requests
+    # are skipped rather than failed (a human reviews their diff). Dependabot's
+    # PRs cannot read repository secrets by design, so the token would always
+    # arrive empty and every dependency bump would carry a red check for a
+    # review that never could have run. A skipped job still satisfies a
+    # required status check.
+    # Added: draft PRs are skipped too; `ready_for_review` above triggers the
+    # review once the author marks the PR ready, so no review is spent on
+    # work in progress.
+    # Note: PRs opened from another fork cannot read repository secrets either,
+    # so the review step fails for them; review those by hand.
+    if: ${{ !endsWith(github.actor, '[bot]') && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    # Added: a stuck review is cancelled after 30 minutes instead of running to
+    # GitHub's 6-hour job limit on subscription quota.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 1
+
+      # Draws on the Claude subscription. Swap to `anthropic_api_key` with an
+      # ANTHROPIC_API_KEY secret to bill an API account instead — pass exactly
+      # one of the two; passing both only earns a warning for whichever secret
+      # does not exist.
+      - uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request. Reply in Traditional Chinese (Taiwan).
+            This is @elf-express/orca-browser: Orca's embedded browser extracted
+            into an Electron plugin that the Multica desktop app mounts. The
+            pieces have to stay in step, so weigh these first:
+
+            - src/main/      Electron main (CJS). Features are mounted through
+                             src/main/plugin-installers.ts, never by editing
+                             the installBrowserPlugin body. MCP server lives in
+                             src/main/mcp/, the CDP proxy and agent-browser
+                             bridge in src/main/browser/.
+            - src/preload/   CJS, bundled into the host's sandboxed preload;
+                             window.browserAPI is the only bridge. The
+                             "exposes exactly the api surface" test must stay
+                             an exact match.
+            - src/renderer/  React ESM. No CSS build; only standard Tailwind
+                             utilities and shadcn tokens the host scans.
+            - src/shared/    Types and constants (ESM + CJS).
+            - dist/          Committed build output. It must match source:
+                             any src/ change without a rebuilt dist/ fails
+                             `pnpm check:dist`.
+            - tests/         Bundle-level tests run by `pnpm test:dist`.
+            - .github/       CI. Flag any change that weakens a gate: removed
+                             `--frozen-lockfile`, skipped `check:dist`,
+                             added `continue-on-error`, `paths:` filters on
+                             ci.yml, or a renamed aggregate job `ci`.
+
+            Known pitfalls in this repo — check every PR against them:
+            - Files ported from Orca (github.com/stablyai/orca, MIT) stay
+              verbatim apart from changes recorded in the commit body; an
+              unexplained drift from Orca is a finding.
+            - `file:` URLs are blocked everywhere (isFileUrl). A main-process
+              `webContents.loadURL()` does not emit `will-navigate`, so any new
+              main-side navigation path must check the URL itself.
+            - Every ipcMain handler checks isTrustedBrowserRenderer(sender)
+              first and acts only on a guest returned by getAuthorizedGuest.
+            - Never assign app.userAgentFallback; identity mode applies only to
+              browser partition sessions via session.setUserAgent.
+            - tsup must keep `removeNodeProtocol: false`, or dist/main ends up
+              with require("sqlite") and the main bundle fails to load.
+            - The MCP server binds 127.0.0.1 only, rejects requests carrying an
+              Origin header, and must never log or return the bearer token or
+              the CDP proxy port/secret.
+            - Orca i18n keys keep Orca's English fallback; new copy uses
+              `auto.components.browser.*` keys.
+            - Page URLs sent to the agent drop query, hash and credentials.
+
+            Then the usual: correctness, security, performance, and whether
+            tests cover behaviour that would otherwise regress silently.
+
+            Note: The PR branch is already checked out in the current working
+            directory.
+
+            Use `gh pr comment` for top-level feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) to highlight specific code issues.
+            Only post GitHub comments - don't submit review text as messages.
+
+          # Added: `--model` pins the reviewer to Opus. Without it the action
+          # uses its own default model, which is not guaranteed to be Opus.
+          # `--allowedTools` is unchanged from the team template.
+          claude_args: |
+            --model claude-opus-5-5
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      # The action reports only `is_error: true` and swallows the reason. The
+      # full result is written to a file, so print it when something fails —
+      # otherwise diagnosing an auth or quota problem is guesswork.
+      - name: Show the raw result when the review fails
+        if: failure()
+        run: cat "$RUNNER_TEMP/claude-execution-output.json" || echo 'no output file'
