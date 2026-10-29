@@ -1,0 +1,19 @@
+README.md
+  s_db754dba357ec2::t_52c005f3ef9f84 185-186,260-263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b84c8f31aadbdfffa97965a55bf271bf3da1bc57",
+  "prompts": {},
+  "sessions": {
+    "s_db754dba357ec2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72a551e9-102d-4cea-972d-c27b301ff128",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
