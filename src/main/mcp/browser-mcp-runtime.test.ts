@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:net'
+import { connect, createServer, type Server } from 'node:net'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,6 +45,24 @@ async function occupyPort(): Promise<number> {
   blockers.push(blocker)
   await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve))
   return (blocker.address() as { port: number }).port
+}
+
+async function freePort(): Promise<number> {
+  const port = await occupyPort()
+  const blocker = blockers.pop()!
+  await new Promise((r) => blocker.close(r))
+  return port
+}
+
+function canConnect(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect(port, '127.0.0.1')
+    socket.once('connect', () => {
+      socket.destroy()
+      resolve(true)
+    })
+    socket.once('error', () => resolve(false))
+  })
 }
 
 beforeEach(async () => {
@@ -153,5 +171,31 @@ describe('browser MCP runtime', () => {
     await expect(runtime.rotateMcpToken()).rejects.toThrow(
       'orca-browser MCP runtime is not started'
     )
+  })
+
+  it('stop issued while a start is in flight leaves nothing listening', async () => {
+    const port = await freePort()
+    const starting = runtime.startBrowserMcpRuntime({
+      userDataDir,
+      port,
+      logger: logger(),
+      tools: tools()
+    })
+    await runtime.stopBrowserMcpRuntime()
+    await starting
+    expect(runtime.getMcpEndpoint()).toBeNull()
+    expect(runtime.getMcpStatus()).toEqual({ state: 'starting', port })
+    expect(await canConnect(port)).toBe(false)
+  })
+
+  it('overlapping starts on one port leave a single tracked listener', async () => {
+    const port = await freePort()
+    const log = logger()
+    const args = { userDataDir, port, logger: log, tools: tools() }
+    await Promise.all([runtime.startBrowserMcpRuntime(args), runtime.startBrowserMcpRuntime(args)])
+    expect(runtime.getMcpStatus()).toEqual({ state: 'listening', port })
+    expect(log.error).not.toHaveBeenCalled()
+    await runtime.stopBrowserMcpRuntime()
+    expect(await canConnect(port)).toBe(false)
   })
 })

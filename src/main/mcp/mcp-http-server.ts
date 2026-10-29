@@ -127,6 +127,12 @@ export class BrowserMcpHttpServer {
         writeJson(res, 404, jsonRpcError(-32000, 'Not found'))
         return
       }
+      // Browsers always attach Origin to cross-site requests; CLI agents do not. Checking it before
+      // auth means the status never depends on whether the token was valid.
+      if (req.headers.origin !== undefined) {
+        writeJson(res, 403, jsonRpcError(-32000, 'Forbidden'))
+        return
+      }
       // The token is read on every request so a rotation takes effect immediately.
       if (!isAuthorized(req.headers.authorization, this.opts.getToken())) {
         writeJson(res, 401, jsonRpcError(-32001, 'Unauthorized'), {
@@ -136,6 +142,15 @@ export class BrowserMcpHttpServer {
       }
       if (req.method !== 'POST') {
         writeJson(res, 405, jsonRpcError(-32000, 'Method not allowed'), { Allow: 'POST' })
+        return
+      }
+
+      const declaredLength = Number(req.headers['content-length'])
+      if (declaredLength > MCP_MAX_BODY_BYTES) {
+        // Discard what the client is still sending so it can read the 413, and cut off a stalled upload.
+        req.resume()
+        setTimeout(() => req.socket.destroy(), 1000).unref()
+        writeJson(res, 413, jsonRpcError(-32000, 'Payload too large'), { Connection: 'close' })
         return
       }
 

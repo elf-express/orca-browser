@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:net'
+import { connect, createServer, type Server } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -150,5 +150,61 @@ describe('BrowserMcpHttpServer', () => {
     expect(old.status).toBe(401)
     const fresh = await post(url, { Authorization: `Bearer ${current}` }, initializeBody)
     expect(fresh.status).toBe(200)
+  })
+
+  it('rejects any request carrying an Origin header with 403', async () => {
+    const { url } = await startServer()
+    const withOrigin = await post(
+      url,
+      { Authorization: `Bearer ${TOKEN}`, Origin: 'https://evil.example' },
+      initializeBody
+    )
+    expect(withOrigin.status).toBe(403)
+    // A wrong token with an Origin gets the same 403, so Origin never reveals token validity.
+    const wrongToken = await post(
+      url,
+      { Authorization: 'Bearer nope', Origin: 'https://evil.example' },
+      initializeBody
+    )
+    expect(wrongToken.status).toBe(403)
+  })
+
+  it('accepts a valid token without an Origin header', async () => {
+    const { url } = await startServer()
+    const res = await post(url, { Authorization: `Bearer ${TOKEN}` }, initializeBody)
+    expect(res.status).toBe(200)
+  })
+
+  it('answers 413 from Content-Length alone without waiting for the body', async () => {
+    const { port } = await startServer()
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = connect(port, '127.0.0.1')
+      let data = ''
+      const timer = setTimeout(() => {
+        socket.destroy()
+        reject(new Error('no response within 1s'))
+      }, 1000)
+      socket.on('data', (chunk) => {
+        data += chunk.toString()
+        if (data.includes('\r\n\r\n')) {
+          clearTimeout(timer)
+          socket.destroy()
+          resolve(data)
+        }
+      })
+      socket.on('error', reject)
+      socket.write(
+        [
+          'POST /mcp HTTP/1.1',
+          `Host: 127.0.0.1:${port}`,
+          `Authorization: Bearer ${TOKEN}`,
+          'Content-Type: application/json',
+          'Content-Length: 2000000',
+          '',
+          ''
+        ].join('\r\n')
+      )
+    })
+    expect(response.startsWith('HTTP/1.1 413')).toBe(true)
   })
 })

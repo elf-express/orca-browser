@@ -277,4 +277,23 @@ describe('browser MCP tools', () => {
     const tabs = await call(client, 'tabs_list')
     expect(tabs.isError).toBeFalsy()
   })
+
+  it('falls back to a generic message when only the failed command line remains', async () => {
+    const { client, bridge } = await connect()
+    bridge.evaluate.mockRejectedValue(new Error('Command failed: /secret/agent-browser eval'))
+    const result = await call(client, 'eval', { expression: '1' })
+    expect(result.content[0].text).toBe('browser_error: agent-browser command failed')
+  })
+
+  it('strips a Command failed line in the middle of a message', async () => {
+    const { client, bridge } = await connect()
+    bridge.click.mockRejectedValue(
+      new BrowserError(
+        'browser_error',
+        'before\nCommand failed: /secret/agent-browser click\nafter'
+      )
+    )
+    const result = await call(client, 'click', { element: '#a' })
+    expect(result.content[0].text).toBe('browser_error: before\nafter')
+  })
 })

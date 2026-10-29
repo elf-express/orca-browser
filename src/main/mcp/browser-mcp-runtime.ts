@@ -15,14 +15,37 @@ type RuntimeState = {
 let current: RuntimeState | null = null
 let status: BrowserMcpStatus = { state: 'starting', port: DEFAULT_MCP_PORT }
 
-export async function startBrowserMcpRuntime(opts: {
+// Start and stop run one at a time so a stop never races a pending listen and
+// overlapping starts cannot leave an untracked listener behind.
+let lifecycle: Promise<unknown> = Promise.resolve()
+
+function serialize<T>(task: () => Promise<T>): Promise<T> {
+  const run = lifecycle.then(task, task)
+  lifecycle = run.catch(() => undefined)
+  return run
+}
+
+export function startBrowserMcpRuntime(opts: {
+  userDataDir: string
+  port: number
+  logger: BrowserHostLogger
+  tools: BrowserMcpToolDeps
+}): Promise<void> {
+  return serialize(() => startRuntime(opts))
+}
+
+export function stopBrowserMcpRuntime(): Promise<void> {
+  return serialize(stopRuntime)
+}
+
+async function startRuntime(opts: {
   userDataDir: string
   port: number
   logger: BrowserHostLogger
   tools: BrowserMcpToolDeps
 }): Promise<void> {
   const { userDataDir, port, logger, tools } = opts
-  await stopBrowserMcpRuntime()
+  await stopRuntime()
   status = { state: 'starting', port }
   try {
     const state: RuntimeState = {
@@ -66,7 +89,7 @@ export async function startBrowserMcpRuntime(opts: {
   }
 }
 
-export async function stopBrowserMcpRuntime(): Promise<void> {
+async function stopRuntime(): Promise<void> {
   const state = current
   current = null
   status = { state: 'starting', port: status.port }

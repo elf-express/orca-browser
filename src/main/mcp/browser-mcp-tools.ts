@@ -71,9 +71,11 @@ function errorResult(text: string): CallToolResult {
   return { isError: true, content: [{ type: 'text', text }] }
 }
 
-// Drop the "Command failed: <binary> <argv>" line so process paths never reach the agent.
+// Drop every "Command failed: <binary> <argv>" line (as produced by process failures) so process
+// paths do not reach the agent; other message text is kept as is.
 function sanitizeMessage(message: string): string {
-  return message.replace(/^Command failed:[^\n]*\n?/, '').trim()
+  const cleaned = message.replace(/^Command failed:[^\n]*\n?/gm, '').trim()
+  return cleaned === '' ? 'agent-browser command failed' : cleaned
 }
 
 function toErrorResult(error: unknown): CallToolResult {

@@ -61,4 +61,13 @@ describe('mcp-token-store', () => {
     const info = await stat(join(userDataDir, 'orca-browser', 'mcp-token'))
     expect(info.mode & 0o777).toBe(0o600)
   })
+
+  it('concurrent loads on a fresh dir all resolve to the token on disk', async () => {
+    const tokens = await Promise.all(
+      Array.from({ length: 8 }, () => loadOrCreateMcpToken(userDataDir))
+    )
+    const onDisk = await readFile(join(userDataDir, 'orca-browser', 'mcp-token'), 'utf8')
+    expect(new Set(tokens).size).toBe(1)
+    expect(tokens[0]).toBe(onDisk)
+  })
 })

@@ -14,7 +14,24 @@ function tokenPath(userDataDir: string): string {
   return join(userDataDir, ...MCP_TOKEN_RELATIVE_PATH.split('/'))
 }
 
-export async function loadOrCreateMcpToken(userDataDir: string): Promise<string> {
+// Token reads and writes in this process run one at a time so concurrent callers agree on one token.
+let queue: Promise<unknown> = Promise.resolve()
+
+function serialized<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task)
+  queue = run.catch(() => undefined)
+  return run
+}
+
+export function loadOrCreateMcpToken(userDataDir: string): Promise<string> {
+  return serialized(() => loadOrCreate(userDataDir))
+}
+
+export function writeNewMcpToken(userDataDir: string): Promise<string> {
+  return serialized(() => writeNew(userDataDir))
+}
+
+async function loadOrCreate(userDataDir: string): Promise<string> {
   try {
     const existing = (await readFile(tokenPath(userDataDir), 'utf8')).trim()
     if (isValidMcpToken(existing)) {
@@ -23,15 +40,16 @@ export async function loadOrCreateMcpToken(userDataDir: string): Promise<string>
   } catch {
     // Missing or unreadable file: fall through and write a fresh token.
   }
-  return writeNewMcpToken(userDataDir)
+  return writeNew(userDataDir)
 }
 
-export async function writeNewMcpToken(userDataDir: string): Promise<string> {
+async function writeNew(userDataDir: string): Promise<string> {
   const token = randomBytes(32).toString('hex')
   const target = tokenPath(userDataDir)
   await mkdir(dirname(target), { recursive: true, mode: 0o700 })
   // Write to a sibling temp file and rename so readers never see a partial token.
-  const temp = `${target}.tmp`
+  // A unique name per write also keeps other processes sharing the directory from colliding.
+  const temp = `${target}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   await writeFile(temp, token, { mode: 0o600 })
   await rename(temp, target)
   return token
