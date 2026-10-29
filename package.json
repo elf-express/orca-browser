@@ -48,6 +48,7 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:dist && pnpm check:dist"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "agent-browser": "~0.27.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -55,7 +56,8 @@
     "radix-ui": "^1.6.7",
     "tailwind-merge": "^3.4.0",
     "tldts": "7.4.16",
-    "ws": "^8.22.0"
+    "ws": "^8.22.0",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

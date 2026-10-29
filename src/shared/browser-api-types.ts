@@ -145,6 +145,14 @@ export interface BrowserApi {
   }
 }
 
+export type BrowserMcpEndpoint = { url: string; token: string }
+
+export type BrowserMcpStatus = {
+  state: 'starting' | 'listening' | 'port_in_use' | 'error'
+  port: number
+  message?: string
+}
+
 declare global {
   interface Window {
     browserAPI?: BrowserApi
