@@ -182,7 +182,8 @@ resolve: {
 ### Token
 
 - token 是 64 個十六進位字元，存在 `<userDataDir>/orca-browser/mcp-token`（檔案權限 0600）。檔案不存在、空檔或內容不合法時，下次啟動會重新產生。
-- 輪替：main 用 `rotateMcpToken()`，renderer 用 `window.browserAPI.mcp.rotateToken()`。兩者都回傳新 token，舊 token 立刻 401。MCP 還沒啟動過時 reject。
+- 輪替：main 用 `rotateMcpToken()`，renderer 用 `window.browserAPI.mcp.rotateToken()`。兩者都回傳新 token，舊 token 立刻 401。MCP 沒在運行時 reject（還沒啟動過，或 `dispose()` 之後）。
+- `@elf-express/orca-browser/shared` 匯出型別與常數，包括 `BrowserMcpEndpoint`、`BrowserMcpStatus` 與預設埠 `DEFAULT_MCP_PORT`。
 - 讀取目前的端點與 token：main 用 `getMcpEndpoint()`，renderer 用 `window.browserAPI.mcp.getEndpoint()`，回 `{ url, token }`；還沒開始監聽時回 `null`。
 
 ```ts
@@ -256,7 +257,10 @@ claude mcp add --transport http orca-browser http://127.0.0.1:47821/mcp --header
 | `browser_tab_not_found`    | 指定的 `browserPageId` 不存在、已關閉，或不屬於指定的 scope                         |
 | `agent_browser_missing`    | 找不到 agent-browser 二進位；訊息列出找過的路徑。`tabs_list`、`tab_switch` 不受影響 |
 | `invalid_arguments`        | `tab_switch` 沒給或同時給了 `index` 與 `browserPageId`                              |
-| `browser_error`            | 其他例外                                                                            |
+| `invalid_argument`         | `goto` 的網址不支援，或指向本機檔案（`file:`、磁碟路徑、UNC 路徑）                  |
+| `browser_error`            | 非 `BrowserError` 的例外                                                            |
+
+其他 `BrowserError` 的 code（例如 `browser_tab_closed`）原樣回傳；只有非 `BrowserError` 的例外才會變成 `browser_error`。注意 `invalid_arguments`（`tab_switch`）與 `invalid_argument`（`goto`）是兩個不同的 code。
 
 ### agent-browser 二進位
 
