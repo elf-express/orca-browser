@@ -1,0 +1,67 @@
+package.json
+  s_aa47a447e01641::t_69c5b4830c9752 56-57,66
+pnpm-lock.yaml
+  s_aa47a447e01641::t_f284ee62a9ed58 29-31,51-53
+src/main/browser/cdp-bridge.ts
+  s_aa47a447e01641::t_db26d9af528c74 1
+src/main/browser/cdp-client-response-writer.test.ts
+  s_aa47a447e01641::t_99e2fbcead724d 1-123
+src/main/browser/cdp-client-response-writer.ts
+  s_aa47a447e01641::t_2442a19a1fbb54 1-103
+src/main/browser/cdp-debugger-channel.ts
+  s_aa47a447e01641::t_4a8cc9127e2997 1-119
+src/main/browser/cdp-dom-focus-replay.ts
+  s_aa47a447e01641::t_44764ee79c1191 1-116
+src/main/browser/cdp-loopback-request-guard.ts
+  s_aa47a447e01641::t_6e0c75602ad224 1-15
+src/main/browser/cdp-page-capture-commands.ts
+  s_aa47a447e01641::t_1849894e2bb74f 1-87
+src/main/browser/cdp-page-navigation-commands.ts
+  s_aa47a447e01641::t_59a0b00faa2824 1-105
+src/main/browser/cdp-print-to-pdf.test.ts
+  s_aa47a447e01641::t_cc754f04227da7 1-171
+src/main/browser/cdp-print-to-pdf.ts
+  s_aa47a447e01641::t_bc903d531f7873 1-177
+src/main/browser/cdp-screenshot.test.ts
+  s_aa47a447e01641::t_d7fdaf4e659c06 1-388
+src/main/browser/cdp-screenshot.ts
+  s_aa47a447e01641::t_0d831db8e26129 1-278
+src/main/browser/cdp-synthetic-session-registry.ts
+  s_aa47a447e01641::t_efb6ca39738032 1-69
+src/main/browser/cdp-target-discovery.ts
+  s_aa47a447e01641::t_d84923c520b7fc 1-117
+src/main/browser/cdp-ws-proxy-focus-replay.test.ts
+  s_aa47a447e01641::t_7e2c7c3c3d771f 1-377
+src/main/browser/cdp-ws-proxy-origin.test.ts
+  s_aa47a447e01641::t_1a05af14b4e539 1-94
+src/main/browser/cdp-ws-proxy-test-harness.ts
+  s_aa47a447e01641::t_1a16c743f39b14 1-121
+src/main/browser/cdp-ws-proxy.test.ts
+  s_aa47a447e01641::t_8a0af33b7efcec 1-806
+src/main/browser/cdp-ws-proxy.ts
+  s_aa47a447e01641::t_ec2fa0e7fa894a 1-252
+src/main/browser/electron-debugger-lease.test.ts
+  s_aa47a447e01641::t_93f52fab9fdd46 1-44
+src/main/browser/guest-cdp-command.test.ts
+  s_aa47a447e01641::t_597c852b13d9bc 1-57
+src/shared/ws-outbound-backpressure-queue.test.ts
+  s_aa47a447e01641::t_b5d4be27a2689e 1-373
+src/shared/ws-outbound-backpressure-queue.ts
+  s_aa47a447e01641::t_23b87269fede5c 1-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8b13b564efde4272dfc4f29519e47f3e6ab39ff",
+  "prompts": {},
+  "sessions": {
+    "s_aa47a447e01641": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2891c356-2731-47bf-a115-f174331b7699",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
