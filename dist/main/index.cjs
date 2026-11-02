@@ -27,7 +27,7 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 
-// node_modules/.pnpm/tsup@8.5.1_postcss@8.5.32_typescript@5.9.3/node_modules/tsup/assets/cjs_shims.js
+// node_modules/.pnpm/tsup@8.5.1_jiti@2.7.0_postcss@8.5.32_typescript@5.9.3/node_modules/tsup/assets/cjs_shims.js
 var getImportMetaUrl = () => typeof document === "undefined" ? new URL(`file:${__filename}`).href : document.currentScript && document.currentScript.tagName.toUpperCase() === "SCRIPT" ? document.currentScript.src : new URL("main.js", document.baseURI).href;
 var importMetaUrl = /* @__PURE__ */ getImportMetaUrl();
 
