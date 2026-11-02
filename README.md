@@ -285,7 +285,10 @@ host 打包發佈版時要把對應平台的二進位放進 `resourcesPath`（�
 ```bash
 pnpm install
 pnpm verify   # lint、typecheck、單元測試、建置、dist 測試，並檢查 dist 與原始碼一致
+pnpm dev      # 開出 playground：不用 host app 就能手動測試瀏覽器
 ```
+
+`pnpm dev` 用 electron-vite 啟動 `playground/`，裡面是一個最小的 Electron host，直接載入 `src/`，不經過 `dist/`。視窗裡有兩個 scope 可以切換，也可以打開設定面板。Grab／Annotate／Draw 送出的內容會印在 DevTools console。資料存在 repo 的 `.playground-data/`，跟真正的 Electron userData 分開。終端機會印出 MCP 端點、token，以及可以直接貼上的 `claude mcp add` 指令。renderer 改了會自動 HMR；改了 main 或 preload 要重新執行 `pnpm dev`。
 
 `dist/` 有進版控。改了 `src/` 之後要跑 `pnpm build`，把 `dist/` 一起 commit。分支規則見 [BRANCHING.md](BRANCHING.md)，開發約定見 [AGENTS.md](AGENTS.md)。
 

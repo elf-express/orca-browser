@@ -3,5 +3,11 @@
   "semi": false,
   "printWidth": 100,
   "trailingComma": "none",
-  "ignorePatterns": ["dist/**", "pnpm-lock.yaml", ".superpowers/**"]
+  "ignorePatterns": [
+    "dist/**",
+    "out/**",
+    ".playground-data/**",
+    "pnpm-lock.yaml",
+    ".superpowers/**"
+  ]
 }
