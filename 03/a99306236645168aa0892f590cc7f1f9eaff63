@@ -1,0 +1,72 @@
+.oxlintrc.json
+  s_d94d485ebe0b64::t_5f896c18dedc21 4
+package.json
+  s_d94d485ebe0b64::t_bb6c60a5db8e76 41
+  s_d94d485ebe0b64::t_4eb1d074c1ddc8 64,72,74,83,85,87
+playground/renderer/App.tsx
+  s_d94d485ebe0b64::t_c98d71f1523445 61
+  s_d94d485ebe0b64::t_ff80767470179e 1-4,6-10,12-13,17-46,48-60,62-68
+  s_d94d485ebe0b64::t_452707b0828091 47
+  s_d94d485ebe0b64::t_5f896c18dedc21 14-16
+  s_d94d485ebe0b64::t_402b74727fc394 5,11
+.oxfmtrc.json
+  s_d94d485ebe0b64::t_5f896c18dedc21 6-12
+playground/renderer/locales/ja.json
+  s_d94d485ebe0b64::t_4d0d6fce264015 1-205
+playground/renderer/locales/zh-Hans.json
+  s_d94d485ebe0b64::t_4d0d6fce264015 1-205
+playground/renderer/styles.css
+  s_d94d485ebe0b64::t_41271d98a9c7f4 1-90
+README.md
+  s_d94d485ebe0b64::t_0c2d46c60dfdfe 288,291
+  s_d94d485ebe0b64::t_3a58203fb5aa45 292
+dist/main/index.cjs
+  s_d94d485ebe0b64::t_4edf406e54ccfb 30
+playground/main/index.ts
+  s_d94d485ebe0b64::t_dfbdda93e8550e 24
+  s_d94d485ebe0b64::t_e90d0c0b215160 1-23,25-80
+electron.vite.config.ts
+  s_d94d485ebe0b64::t_20efbeb8f025b0 6-8
+  s_d94d485ebe0b64::t_982657079b85c0 1-5,9-44
+playground/renderer/locales/en.json
+  s_d94d485ebe0b64::t_4d0d6fce264015 1-205
+playground/renderer/index.html
+  s_d94d485ebe0b64::t_8f477ce5b94a1e 1,3-11
+  s_d94d485ebe0b64::t_94e3b0ec4c3d30 2
+playground/renderer/locales/fr.json
+  s_d94d485ebe0b64::t_4d0d6fce264015 1-205
+playground/renderer/i18n.ts
+  s_d94d485ebe0b64::t_e3f610cca8a77b 1-63
+tsconfig.json
+  s_d94d485ebe0b64::t_5ee31f43bfd432 15
+  s_d94d485ebe0b64::t_bfa0a10c47432e 12-13
+playground/renderer/locales/ko.json
+  s_d94d485ebe0b64::t_4d0d6fce264015 1-205
+playground/renderer/main.tsx
+  s_d94d485ebe0b64::t_513395a0aa8b3b 1-3,5,8-21
+  s_d94d485ebe0b64::t_28744f3041b4cc 4,6-7
+playground/preload/index.ts
+  s_d94d485ebe0b64::t_edbc4401ed8682 1-3
+playground/renderer/locales/zh-Hant.json
+  s_d94d485ebe0b64::t_4d0d6fce264015 1-205
+.gitignore
+  s_d94d485ebe0b64::t_88f4bd3a8119eb 4-5
+pnpm-lock.yaml
+  s_d94d485ebe0b64::t_1bdebc55c22ff7 42-44,66-68,72-74,99-101,104-107,111-113,116,145-182,187-205,210-221,459-461,1666-1759,1824-1839,1920-1924,1932-1936,1955-1958,1967-1969,2087-2100,2110-2113,2146-2149,2220-2223,2295-2298,2318-2322,2329-2339,2346-2351,2358-2363,2370-2375,2382-2387,2394-2400,2408-2414,2422-2428,2436-2442,2450-2455,2462-2467,2474-2477,2497-2499,2516-2518,2564-2567,2793-2796,2887-2893,2971-2973,2997-3002,3163-3165,3222-3281,3284-3299,3302-3324,3474-3478,4505-4572,4641-4645,4655,4661,4725-4726,4745-4752,4766-4767,4778-4779,4875-4888,4899-4903,4949-4950,5042-5043,5121-5122,5155-5156,5161-5165,5169-5171,5175-5177,5181-5183,5187-5189,5193-5195,5199-5201,5205-5207,5211-5213,5217-5219,5223-5225,5229-5244,5269-5272,5285-5288,5326-5327,5414,5418,5637-5638,5745-5748,5794,5805,5822-5823,5840-5845,5863,5874,5876,5879,5896,5940-5941
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "03a99306236645168aa0892f590cc7f1f9eaff63",
+  "prompts": {},
+  "sessions": {
+    "s_d94d485ebe0b64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7174bd16-3fe8-44d8-8f2b-82db53a04912",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "楊清雲 <41539966+TW199501@users.noreply.github.com>"
+    }
+  }
+}
